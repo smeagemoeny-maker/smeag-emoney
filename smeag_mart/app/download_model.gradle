@@ -1,0 +1,50 @@
+// Downloads a MobileNetV2 TFLite model used by ImageEmbedder.kt for the Sales screen's
+// "find product by photo" feature, if one isn't already sitting in assets/.
+//
+// A copy already ships in this project at src/main/assets/mobilenet_v2_feature_vector.tflite,
+// so on a normal build this task will just no-op (see the "already present" check below). It's
+// the standard MobileNetV2 (1.0, 224) ImageNet *classification* model — not a dedicated
+// "headless" feature-vector export, since that variant is only published via tfhub.dev, which
+// wasn't reachable when this project was set up. ImageEmbedder.kt repurposes its output
+// probability vector as a similarity fingerprint; see that file's doc comment for the
+// accuracy trade-off this implies, and for how to swap in a proper feature-vector model later
+// if you get one (drop it in under the same filename — no code changes needed).
+//
+// The fallback URL below points at TF Hub's official feature-vector module directly, in case
+// you delete the bundled file and your build machine DOES have general internet access — worth
+// trying, since it's a better-suited model than the bundled fallback. This mirrors how
+// TensorFlow's own official example apps fetch their model assets at build time (see e.g.
+// tensorflow/examples' lite/examples/*/android/app/download.gradle) instead of always
+// committing a multi-megabyte binary to source control.
+//   https://tfhub.dev/google/imagenet/mobilenet_v2_100_224/feature_vector/5
+
+def modelDir = "${projectDir}/src/main/assets"
+def modelFile = "mobilenet_v2_feature_vector.tflite"
+def modelUrl = "https://tfhub.dev/google/lite-model/imagenet/mobilenet_v2_100_224/feature_vector/5/default/1?lite-format=tflite"
+
+tasks.register("downloadProductMatchModel") {
+    doLast {
+        def dest = file("${modelDir}/${modelFile}")
+        if (dest.exists() && dest.length() > 0) {
+            logger.lifecycle("Product-match model already present, skipping download: ${dest}")
+            return
+        }
+        file(modelDir).mkdirs()
+        logger.lifecycle("Downloading product-match model to ${dest} ...")
+        try {
+            ant.get(src: modelUrl, dest: dest, verbose: true)
+        } catch (Exception e) {
+            throw new GradleException(
+                "Could not download the product-match TFLite model from ${modelUrl}, and no " +
+                "fallback file was found at ${dest}. If your build machine has no access to " +
+                "tfhub.dev, download that URL manually (it's a plain file download, e.g. via a " +
+                "browser or 'curl -L') and place it at ${dest} yourself, then re-run the build.", e
+            )
+        }
+    }
+}
+
+// Run before every build, but the task itself no-ops instantly once the file is already there.
+tasks.named("preBuild").configure {
+    dependsOn("downloadProductMatchModel")
+}

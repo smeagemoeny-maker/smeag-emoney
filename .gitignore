@@ -1,0 +1,33 @@
+.DS_Store
+node_modules/
+.env
+*.env
+!.env.example
+api/.env
+dist/
+.vercel/
+
+# signing keys / secrets
+*.jks
+*.keystore
+key(11111111)/
+smeag_mart/key/
+smeag_mart/local.properties
+
+# customer/admin DB dumps (local mock data only)
+DBSQL/
+
+# Android build output
+smeag_mart/.gradle/
+smeag_mart/.gradle-home/
+smeag_mart/build/
+smeag_mart/app/build/
+smeag_mart/.idea/
+*.zip
+
+# hardcoded DB/SFTP credentials (legacy Android app) + release builds that embed them
+smeag_mart/app/src/main/java/com/smeag/mobilemart/data/DbConfig.kt
+smeag_mart/app/src/main/java/com/smeag/mobilemart/data/SftpConfig.kt
+smeag_mart/app/release/
+*.apk
+*.aab

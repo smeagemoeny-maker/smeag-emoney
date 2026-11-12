@@ -1,0 +1,19 @@
+{
+  "name": "SMEAG Cafe · PUSAN Mart POS",
+  "short_name": "SMEAG POS",
+  "description": "SMEAG Cafe / PUSAN Mart POS PWA with NFC card payment.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f2ea",
+  "theme_color": "#e85a24",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
