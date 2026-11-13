@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SMEAG MART - Management System</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="logged-out">
+  <!-- ===== Header ===== -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">
+        <div class="globe"></div>
+        <div class="logo-text">
+          <span class="logo-name">SMEAG</span>
+          <span class="logo-sub">GLOBAL EDUCATION</span>
+        </div>
+      </div>
+      <div class="store">
+        <h1>SMEAG MART</h1>
+        <p id="sellerInfo">Seller: - | Position: - | Campus: -</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="logoutBtn" class="btn btn-ghost">Logout</button>
+      <button id="themeToggle" class="btn btn-ghost">Light</button>
+    </div>
+  </header>
+
+  <!-- ===== Tabs ===== -->
+  <nav class="tabs">
+    <button class="tab" data-tab="products">Product Registration</button>
+    <button class="tab active" data-tab="sales">Sales</button>
+    <button class="tab" data-tab="history">Sales History</button>
+    <button class="tab" data-tab="report">Report</button>
+    <button class="tab" data-tab="buyers">Buyer Info</button>
+  </nav>
+
+  <main>
+    <!-- ===== LOGIN ===== -->
+    <div id="loginView" class="login-wrap">
+      <form id="loginForm" class="panel form login-panel" autocomplete="on">
+        <div class="label">Manager login</div>
+        <label>Login ID<input id="loginId" class="input" autocomplete="username" required /></label>
+        <label>Password<input id="loginPassword" class="input" type="password" autocomplete="current-password" required /></label>
+        <button type="submit" id="loginBtn" class="btn btn-green">Login</button>
+        <div id="loginError" class="login-error"></div>
+      </form>
+    </div>
+
+    <!-- ===== SALES ===== -->
+    <section id="tab-sales" class="tab-page active">
+      <div class="sales-grid">
+        <!-- Buyer panel -->
+        <div class="panel buyer-panel">
+          <div class="label">Buyer info</div>
+          <div class="row">
+            <input id="buyerInput" class="input" placeholder="Tap card or type UID / Student ID" autocomplete="off" />
+            <button id="scanBtn" class="btn">Scan</button>
+          </div>
+          <div class="row two">
+            <button class="btn btn-orange" data-discount="10">10% Discount</button>
+            <button class="btn btn-pink" data-discount="30">30% Discount</button>
+          </div>
+          <button id="resetBtn" class="btn btn-salmon full">Reset</button>
+
+          <dl class="buyer-fields">
+            <dt>Name</dt><dd id="bName">-</dd>
+            <dt>Card UID</dt><dd id="bUid">-</dd>
+            <dt>Student ID</dt><dd id="bSid">-</dd>
+            <dt>Age</dt><dd id="bAge">-</dd>
+          </dl>
+          <hr />
+          <div class="label">Current balance (PHP)</div>
+          <div id="bBalance" class="big">0.00</div>
+          <div class="label mt">Projected balance (after purchase)</div>
+          <div id="bProjected" class="big muted">0.00</div>
+        </div>
+
+        <!-- Products panel -->
+        <div class="panel products-panel">
+          <div class="label">Products <span class="count">— <span id="productCount">0</span> items</span></div>
+          <div class="filters">
+            <label>Campus<select id="fCampus" class="input"></select></label>
+            <label>Category<select id="fCategory" class="input"></select></label>
+            <label>Sub-category<select id="fSub" class="input"></select></label>
+          </div>
+          <label class="full-label">Product name<input id="fName" class="input" autocomplete="off" /></label>
+          <div id="productGrid" class="product-grid"></div>
+        </div>
+
+        <!-- Cart column -->
+        <div class="cart-col">
+          <div class="panel cart-panel">
+            <div class="label">Cart</div>
+            <div id="cartList" class="cart-list"></div>
+          </div>
+          <div class="panel summary">
+            <div class="sum-row"><span>Subtotal</span><span id="sSubtotal">0.00</span></div>
+            <div class="sum-row" id="discountRow" hidden><span id="sDiscLabel">Discount</span><span id="sDiscount">0.00</span></div>
+            <div class="sum-row"><span>Items</span><span id="sItems">0</span></div>
+            <hr />
+            <div class="sum-total"><span>Total</span><span id="sTotal">0.00 PHP</span></div>
+          </div>
+          <button id="checkoutBtn" class="btn btn-green checkout">Checkout / pay</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PRODUCT REGISTRATION ===== -->
+    <section id="tab-products" class="tab-page">
+      <div class="two-col">
+        <form id="productForm" class="panel form">
+          <div class="label">Register / edit product</div>
+          <input type="hidden" id="pId" />
+          <label>Product name<input id="pName" class="input" required /></label>
+          <label>Campus<select id="pCampus" class="input"></select></label>
+          <label>Category<input id="pCategory" class="input" list="categoryList" required /></label>
+          <label>Sub-category<input id="pSub" class="input" list="subList" /></label>
+          <div class="row two">
+            <label>Price (PHP)<input id="pPrice" class="input" type="number" min="0" step="0.01" required /></label>
+            <label>Stock<input id="pStock" class="input" type="number" min="0" step="1" required /></label>
+          </div>
+          <label>Barcode (optional)<input id="pBarcode" class="input" /></label>
+          <div class="row two">
+            <button type="submit" class="btn btn-green">Save</button>
+            <button type="button" id="pClear" class="btn">Clear</button>
+          </div>
+          <datalist id="categoryList"></datalist>
+          <datalist id="subList"></datalist>
+        </form>
+        <div class="panel table-panel">
+          <div class="row between">
+            <div class="label">Product list</div>
+            <input id="pSearch" class="input small" placeholder="Search…" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Campus</th><th>Category</th><th>Sub-category</th><th class="num">Price</th><th class="num">Stock</th><th></th></tr></thead>
+              <tbody id="productTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SALES HISTORY ===== -->
+    <section id="tab-history" class="tab-page">
+      <div class="panel table-panel">
+        <div class="row between">
+          <div class="label">Sales history</div>
+          <div class="row">
+            <input id="hFrom" type="date" class="input small" />
+            <input id="hTo" type="date" class="input small" />
+            <input id="hSearch" class="input small" placeholder="Buyer / receipt…" />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Receipt</th><th>Date / time</th><th>Buyer</th><th>Seller</th><th>Items</th><th class="num">Discount</th><th class="num">Total</th><th></th></tr></thead>
+            <tbody id="historyTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== REPORT ===== -->
+    <section id="tab-report" class="tab-page">
+      <div class="row">
+        <label>From<input id="rFrom" type="date" class="input small" /></label>
+        <label>To<input id="rTo" type="date" class="input small" /></label>
+      </div>
+      <div class="stats" id="reportStats"></div>
+      <div class="two-col even">
+        <div class="panel table-panel">
+          <div class="label">Sales by category</div>
+          <table><thead><tr><th>Category</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead><tbody id="rCategory"></tbody></table>
+        </div>
+        <div class="panel table-panel">
+          <div class="label">Top products</div>
+          <table><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead><tbody id="rTop"></tbody></table>
+        </div>
+      </div>
+      <div class="panel table-panel">
+        <div class="label">Low stock (10 or fewer)</div>
+        <table><thead><tr><th>Product</th><th>Campus</th><th class="num">Stock</th></tr></thead><tbody id="rLow"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ===== BUYER INFO ===== -->
+    <section id="tab-buyers" class="tab-page">
+      <div class="two-col">
+        <form id="buyerForm" class="panel form">
+          <div class="label">Register / edit buyer</div>
+          <input type="hidden" id="byId" />
+          <label>Name<input id="byName" class="input" required /></label>
+          <label>Card UID<input id="byUid" class="input" required /></label>
+          <label>Student ID<input id="bySid" class="input" /></label>
+          <div class="row two">
+            <label>Age<input id="byAge" class="input" type="number" min="0" /></label>
+            <label>Balance (PHP)<input id="byBalance" class="input" type="number" step="0.01" min="0" value="0" /></label>
+          </div>
+          <div class="row two">
+            <button type="submit" class="btn btn-green">Save</button>
+            <button type="button" id="byClear" class="btn">Clear</button>
+          </div>
+        </form>
+        <div class="panel table-panel">
+          <div class="row between">
+            <div class="label">Buyers</div>
+            <input id="bySearch" class="input small" placeholder="Search…" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Card UID</th><th>Student ID</th><th>Age</th><th class="num">Balance</th><th></th></tr></thead>
+              <tbody id="buyerTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Receipt / dialog -->
+  <dialog id="dialog"><div id="dialogBody"></div><form method="dialog"><button class="btn full">Close</button></form></dialog>
+  <div id="toast" class="toast"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

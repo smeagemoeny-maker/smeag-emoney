@@ -1,9 +1,12 @@
 (() => {
-  const DEFAULT_API_BASE = "http://localhost:8787";
+  const IS_LOCAL_PAGE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === "file:";
+  // Hosted (Vercel): the API is served from the same domain (/api). Local dev: the Node API on :8787.
+  const DEFAULT_API_BASE = IS_LOCAL_PAGE ? "http://localhost:8787" : location.origin;
+  const savedApi = (v) => (v && (IS_LOCAL_PAGE || !/\/\/(localhost|127\.0\.0\.1)[:/]?/.test(v)) ? v : "");
 
   function getApiBase() {
     try {
-      return localStorage.getItem("pusanApiBase") || DEFAULT_API_BASE;
+      return savedApi(localStorage.getItem("pusanApiBase")) || DEFAULT_API_BASE;
     } catch {
       return DEFAULT_API_BASE;
     }

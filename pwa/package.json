@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4173",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "sync-api": "node scripts/sync-api.mjs",
+    "deploy": "node scripts/sync-api.mjs && vercel deploy --prod"
   },
   "dependencies": {
     "vite": "^6.0.7"

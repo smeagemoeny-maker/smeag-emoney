@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMEAG OFFICE ONLINE PROGRAM</title>
+<link rel="stylesheet" href="office.css">
+</head>
+<body>
+<div id="stage">
+  <div id="win" class="win">
+    <!-- Win10 title bar (31px) -->
+    <div class="titlebar">
+      <span class="tb-icon"></span>
+      <span class="tb-title">SMEAG OFFICE ONLINE PROGRAM</span>
+      <div class="tb-buttons">
+        <button class="tb-btn" title="Minimize" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="#000" stroke-width="1"/></svg></button>
+        <button class="tb-btn" title="Maximize" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="#000" stroke-width="1"/></svg></button>
+        <button class="tb-btn tb-close" title="Close" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      </div>
+    </div>
+
+    <!-- client area 1706 x 998 -->
+    <div class="client" id="client">
+      <!-- ① header banner -->
+      <div class="banner">
+        <svg id="logo" class="logo" width="260" height="80" viewBox="0 0 260 80" aria-label="SMEAG GLOBAL EDUCATION"></svg>
+      </div>
+
+      <!-- ② tab strip -->
+      <div class="tabstrip" id="tabstrip"></div>
+
+      <!-- content -->
+      <div class="content" id="content">
+        <div class="page" id="officePage">
+          <!-- ③ student info panel -->
+          <div class="infopanel">
+            <span class="lbl-uid">UID:</span>
+            <input id="txtUid" class="txt-uid" type="text" maxlength="20" spellcheck="false" autocomplete="off">
+            <span id="lblName" class="lbl-info lbl-name">Name: </span>
+            <span id="lblCampus" class="lbl-info lbl-campus">Campus: </span>
+            <span id="lblBalance" class="lbl-info lbl-balance">Balance: 0.00 PHP</span>
+          </div>
+
+          <!-- ④ input area -->
+          <label class="fld-label" style="left:20px;top:93px">CATEGORY:</label>
+          <label class="fld-label" style="left:20px;top:140px">PRICE:</label>
+          <label class="fld-label" style="left:846px;top:93px">ITEM:</label>
+          <label class="fld-label" style="left:846px;top:140px">QTY:</label>
+
+          <div class="combo" style="left:141px;top:91px;width:710px">
+            <select id="cboCategory"></select><span class="chev"></span>
+          </div>
+          <input id="txtPrice" class="txt-price" type="text" value="0.00" style="left:141px;top:121px;width:710px" autocomplete="off">
+          <div class="combo" style="left:967px;top:91px;width:711px">
+            <select id="cboItem"></select><span class="chev"></span>
+          </div>
+          <div class="numud" style="left:967px;top:121px;width:711px">
+            <input id="numQty" type="text" value="1" autocomplete="off">
+            <div class="spin">
+              <button type="button" id="qtyUp" tabindex="-1"><svg width="7" height="4" viewBox="0 0 7 4"><path d="M0 4L3.5 0L7 4z" fill="#000"/></svg></button>
+              <button type="button" id="qtyDown" tabindex="-1"><svg width="7" height="4" viewBox="0 0 7 4"><path d="M0 0L3.5 4L7 0z" fill="#000"/></svg></button>
+            </div>
+          </div>
+
+          <!-- ⑤ action buttons -->
+          <button class="flat" id="btnIncrease" style="left:142px;top:197px;width:128px;height:38px;background:#2E7D32">+ INCREASE</button>
+          <button class="flat" id="btnDecrease" style="left:285px;top:194px;width:128px;height:38px;background:#C62828">- DECREASE</button>
+          <button class="flat" id="btnException" style="left:425px;top:194px;width:128px;height:38px;background:#1976D2">! EXCEPTION</button>
+          <button class="flat" id="btnRemove" style="left:585px;top:194px;width:128px;height:38px;background:#FF9800">REMOVE ITEM</button>
+
+          <!-- ⑥ grid -->
+          <div class="gridframe">
+            <div class="grid" id="grid">
+              <table>
+                <colgroup>
+                  <col style="width:40px"><col style="width:268px"><col style="width:268px"><col style="width:268px">
+                  <col style="width:266px"><col style="width:270px"><col>
+                </colgroup>
+                <thead>
+                  <tr><th class="rh"></th><th>Type</th><th>Main Menu</th><th>Sub Menu</th><th>Price</th><th>Qty</th><th class="last">Amount after payment</th></tr>
+                </thead>
+                <tbody id="gridBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ⑦ bottom area -->
+          <div class="bottom">
+            <div id="lblNet" class="lbl-net">NET CHANGE: +0.00 PHP</div>
+            <button class="flat big" id="btnConfirm" style="left:30px;top:56px;width:346px;height:51px;background:#0078D7">CONFIRM TRANSACTION</button>
+            <button class="flat" id="btnDefault" style="left:412px;top:52px;width:178px;height:53px;background:#6E6E78;font-size:12px">DEFAULT (Reset)</button>
+          </div>
+        </div>
+        <div class="placeholder" id="placeholder" hidden></div>
+      </div>
+
+      <!-- modal layer for MessageBox / InputDialog -->
+      <div class="modal-layer" id="modalLayer" hidden></div>
+    </div>
+  </div>
+</div>
+<script src="office.js"></script>
+</body>
+</html>

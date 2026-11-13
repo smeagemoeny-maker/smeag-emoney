@@ -1,0 +1,351 @@
+/* SMEAG OFFICE ONLINE PROGRAM — static replica of the WinForms OFFICE MENU screen.
+   All coordinates are design pixels (window 1708 x 1030, client 1706 x 998).
+   pt -> px at 96 dpi: 8.25pt=11px, 9pt=12px, 9.75pt=13px, 10pt=13.33px, 10.5pt=14px, 11pt=14.67px, 13pt=17.33px */
+
+:root {
+  --font: "Segoe UI", "Segoe UI Variable", Selawik, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --body: #F3F3F7;
+  --tabbar: #F0F0F0;
+  --tabsep: #D9D9D9;
+  --border: #A0A0A0;
+  --readonly: #F0F0F0;
+  --gridline: #E0E0E0;
+  --gridsel: #CCE4F7;
+  --blue: #0078D7;
+  --green: #2E7D32;
+  --red: #C62828;
+  --exblue: #1976D2;
+  --orange: #FF9800;
+  --gray: #6E6E78;
+  --netred: #D32F2F;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #D7D7DC;
+  font-family: var(--font);
+  font-size: 12px;
+  color: #000;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#stage { position: relative; width: 100%; overflow: hidden; }
+
+/* ---------- window frame ---------- */
+.win {
+  position: absolute;
+  left: 0; top: 0;
+  width: 1708px; height: 1030px;
+  background: var(--body);
+  border: 1px solid #8C8C8C;
+  transform-origin: 0 0;
+  box-shadow: 0 0 18px rgba(0,0,0,.25);
+}
+.titlebar {
+  position: absolute; left: 0; top: 0;
+  width: 1706px; height: 30px;
+  background: #FFFFFF;
+  display: flex; align-items: center;
+  user-select: none;
+}
+.tb-icon {
+  position: absolute; left: 8px; top: 7px;
+  width: 16px; height: 16px;
+  background: #111;
+  border: 1px solid #444;
+  box-shadow: inset 0 0 0 2px #111, inset 0 0 0 3px #555;
+}
+.tb-title {
+  position: absolute; left: 32px; top: 0;
+  line-height: 30px;
+  font-size: 12px;
+  color: #000;
+  letter-spacing: 0;
+}
+.tb-buttons { position: absolute; right: 0; top: 0; height: 30px; display: flex; }
+.tb-btn {
+  width: 46px; height: 30px; border: 0; margin: 0; padding: 0;
+  background: transparent; color: #000;
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+}
+.tb-btn:hover { background: #E5E5E5; }
+.tb-close:hover { background: #E81123; color: #fff; }
+
+.client {
+  position: absolute; left: 0; top: 30px;
+  width: 1706px; height: 998px;
+  background: var(--body);
+  overflow: hidden;
+}
+
+/* ---------- ① banner ---------- */
+.banner {
+  position: absolute; left: 0; top: 0;
+  width: 1706px; height: 80px;
+  background: #000;
+}
+.logo { position: absolute; left: 0; top: 0; }
+
+/* ---------- ② tab strip ---------- */
+.tabstrip {
+  position: absolute; left: 0; top: 80px;
+  width: 1706px; height: 38px;
+  background: var(--tabbar);
+  user-select: none;
+}
+.tabstrip::after { /* bottom border line */
+  content: ""; position: absolute; left: 0; right: 0; top: 37px; height: 1px; background: var(--border);
+}
+.tab {
+  position: absolute; top: 2px;
+  width: 125px; height: 36px;
+  font-size: 12px; line-height: 36px;
+  text-align: center; white-space: nowrap;
+  cursor: pointer;
+}
+.tab-text { display: inline-block; transform-origin: 50% 50%; }
+.tab::after { /* separator at right-1, from top+2 to bottom-2 */
+  content: ""; position: absolute; right: 0; top: 2px; bottom: 2px; width: 1px; background: var(--tabsep);
+}
+.tab:hover:not(.sel) { background: linear-gradient(#E5F1FB, #E5F1FB) 0 2px / 100% 33px no-repeat; }
+.tab.sel {
+  background: #FFFFFF;
+  border: 1px solid var(--border); border-bottom: 0;
+  line-height: 31px; /* text 2px higher */
+  z-index: 1;
+}
+.tab.sel::after { display: none; }
+
+/* ---------- content ---------- */
+.content {
+  position: absolute; left: 0; top: 118px;
+  width: 1706px; height: 880px;
+  background: var(--body);
+}
+.page { position: absolute; left: 0; top: 0; width: 1706px; height: 880px; }
+.placeholder {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; white-space: pre-line;
+  font-size: 18.67px; line-height: 1.35; color: #808080;
+}
+.placeholder[hidden] { display: none; }
+
+/* ---------- ③ info panel ---------- */
+.infopanel {
+  position: absolute; left: 5px; top: 1px;
+  width: 1698px; height: 63px;
+  background: #FFF; border: 1px solid var(--border);
+}
+.infopanel > * { position: absolute; }
+.lbl-uid { left: 29px; top: 22px; font-size: 13px; font-weight: 700; line-height: 17px; }
+.txt-uid {
+  left: 71px; top: 13px; width: 158px; height: 22px;
+  background: var(--readonly);
+  border: 1px solid #7A7A7A;
+  font: 12px var(--font); color: #000;
+  padding: 0 2px; margin: 0; outline: none;
+  text-transform: uppercase;
+}
+.lbl-info { top: 24px; font-size: 14.67px; line-height: 20px; white-space: nowrap; padding-left: 2px; }
+.lbl-name { left: 252px; }
+.lbl-campus { left: 487px; }
+.lbl-balance { left: 642px; font-weight: 700; color: var(--blue); }
+
+/* ---------- ④ inputs ---------- */
+.fld-label {
+  position: absolute; width: 112px; height: 18px;
+  font-size: 11px; font-weight: 700; line-height: 18px;
+  text-align: right; padding-right: 1px; white-space: nowrap;
+}
+.combo {
+  position: absolute; height: 27px;
+  background: #E1E1E1;
+  border: 1px solid #ADADAD;
+}
+.combo:hover { background: #E5F1FB; border-color: #0078D7; }
+.combo select {
+  -webkit-appearance: none; appearance: none;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; margin: 0; padding: 0 22px 0 4px;
+  background: transparent;
+  font: 13.33px var(--font); color: #000;
+  outline: none; cursor: default;
+}
+.combo select:focus { box-shadow: inset 0 0 0 1px #E1E1E1; }
+.combo .chev {
+  position: absolute; right: 6px; top: 10px; width: 8px; height: 5px;
+  pointer-events: none;
+  background: no-repeat center / 8px 5px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0.5 0.5L4 4L7.5 0.5' fill='none' stroke='%23404040' stroke-width='1.1'/%3E%3C/svg%3E");
+}
+.txt-price {
+  position: absolute; height: 27px;
+  background: #FFF;
+  border: 1px solid #E3E3E3; border-bottom-color: #9C9C9C;
+  font: 700 14px var(--font); color: #000;
+  text-align: right; padding: 0 3px; margin: 0; outline: none;
+}
+.txt-price:focus { border-bottom-color: #0078D7; }
+.numud {
+  position: absolute; height: 27px;
+  background: #FFF; border: 1px solid #7A7A7A;
+}
+.numud input {
+  position: absolute; left: 0; top: 0; right: 17px; height: 100%;
+  border: 0; margin: 0; padding: 0;
+  font: 13.33px var(--font); color: #000; text-align: center;
+  background: transparent; outline: none;
+}
+.numud .spin { position: absolute; right: 0; top: 0; width: 17px; height: 100%; display: flex; flex-direction: column; }
+.numud .spin button {
+  flex: 1; margin: 0; padding: 0; border: 0;
+  background: #F0F0F0; border-left: 1px solid #E3E3E3;
+  display: flex; align-items: center; justify-content: center; cursor: default;
+}
+.numud .spin button + button { border-top: 1px solid #FFF; }
+.numud .spin button:hover { background: #E5F1FB; }
+.numud .spin button:active { background: #CCE4F7; }
+
+/* ---------- ⑤ / ⑦ flat buttons ---------- */
+.flat {
+  position: absolute;
+  border: 0; margin: 0; padding: 0;
+  color: #FFF;
+  font: 700 11px var(--font);
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+}
+.flat.big { font-size: 14.67px; }
+.flat:hover { filter: brightness(1.13); }
+.flat:active { filter: brightness(0.9); }
+.flat:focus-visible { outline: 1px dotted #fff; outline-offset: -4px; }
+
+/* ---------- ⑥ grid ---------- */
+.gridframe {
+  position: absolute; left: 28px; top: 248px;
+  width: 1653px; height: 473px;
+  background: #FFF; border: 1px solid var(--border);
+  padding: 6px 0 0 0;
+}
+.grid {
+  position: relative; width: 100%; height: 100%;
+  overflow-y: auto; overflow-x: hidden;
+  background: #FFF;
+}
+.grid table {
+  width: 100%; table-layout: fixed;
+  border-collapse: separate; border-spacing: 0;
+  font-size: 13.33px;
+}
+.grid thead th {
+  position: sticky; top: 0; z-index: 1;
+  height: 33px; padding: 0 0 0 4px;
+  background: var(--blue); color: #FFF;
+  font-weight: 400; text-align: left;
+  border-right: 1px solid #FFF;
+  white-space: nowrap; overflow: hidden;
+}
+.grid thead th.last { border-right: 0; }
+.grid tbody td {
+  height: 28px; padding: 0 4px;
+  border-right: 1px solid var(--gridline);
+  border-bottom: 1px solid var(--gridline);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: default;
+}
+.grid tbody td.rh {
+  padding: 0; background: #FFF;
+  border-right: 1px solid #A0A0A0;
+  border-bottom: 1px solid #A0A0A0;
+  position: relative;
+}
+.grid tbody tr.sel td { background: var(--gridsel); }
+.grid tbody tr.sel td.rh { background: var(--gridsel); }
+.grid tbody tr.cur td.rh::before { /* current-row arrow */
+  content: ""; position: absolute; left: 16px; top: 9px;
+  border-left: 5px solid #000; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+}
+.grid td.r { text-align: right; }
+.grid td.c { text-align: center; }
+.grid tr.t-increase td { color: var(--green); }
+.grid tr.t-decrease td { color: var(--red); }
+.grid tr.t-exception td { color: var(--exblue); }
+
+/* ---------- ⑦ bottom ---------- */
+.bottom {
+  position: absolute; left: 0; top: 743px;
+  width: 1706px; height: 137px;
+  background: #FFF;
+}
+.lbl-net {
+  position: absolute; left: 1077px; top: 8px; width: 600px; height: 34px;
+  line-height: 34px; text-align: right;
+  font-size: 17.33px; font-weight: 700; color: var(--netred);
+  white-space: nowrap;
+}
+
+/* ---------- modal dialogs (MessageBox / InputDialog) ---------- */
+.modal-layer {
+  position: absolute; inset: 0; z-index: 50;
+  background: rgba(0,0,0,0);
+}
+.modal-layer[hidden] { display: none; }
+.dlg {
+  position: absolute;
+  background: #FFF;
+  border: 1px solid #1883D7;
+  box-shadow: 0 6px 28px rgba(0,0,0,.35);
+  font-size: 12px;
+}
+.dlg-title {
+  height: 30px; line-height: 30px; padding-left: 10px;
+  background: #FFF; color: #000; font-size: 12px;
+  position: relative; user-select: none;
+}
+.dlg-x {
+  position: absolute; right: 0; top: 0; width: 46px; height: 30px;
+  border: 0; background: transparent; color: #000;
+  display: flex; align-items: center; justify-content: center;
+}
+.dlg-x:hover { background: #E81123; color: #FFF; }
+.mb-body { display: flex; align-items: flex-start; padding: 24px 28px 26px 12px; min-height: 84px; }
+.mb-icon { flex: 0 0 32px; width: 32px; height: 32px; margin: 0 12px 0 14px; }
+.mb-text { white-space: pre-line; line-height: 16px; padding-top: 1px; font-size: 12px; max-width: 520px; }
+.mb-foot {
+  background: #F0F0F0; height: 42px;
+  display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 0 11px;
+}
+.w10btn {
+  min-width: 75px; height: 23px; padding: 0 10px;
+  background: #E1E1E1; border: 1px solid #ADADAD;
+  font: 12px var(--font); color: #000; cursor: default;
+}
+.w10btn:hover { background: #E5F1FB; border-color: #0078D7; }
+.w10btn.def { border: 2px solid #0078D7; }
+.w10btn:focus { outline: 1px dotted #000; outline-offset: -4px; }
+.idlg-body { position: relative; width: 420px; height: 140px; }
+.idlg-body > * { position: absolute; }
+.idlg-body label { left: 16px; top: 16px; font-weight: 700; font-size: 12px; }
+.idlg-body input {
+  left: 16px; top: 42px; width: 388px; height: 25px;
+  border: 1px solid #7A7A7A; font: 12px var(--font); padding: 0 3px; outline: none;
+}
+.idlg-body input:focus { border-color: #0078D7; }
+.idlg-body .flat { font-weight: 400; font-size: 12px; }
+/* staff login dialog (same Win10 message-box chrome) */
+.ldlg-body { position: relative; width: 360px; height: 92px; }
+.ldlg-body > * { position: absolute; }
+.ldlg-body label { font-weight: 700; font-size: 12px; line-height: 16px; }
+.ldlg-body input {
+  width: 240px; height: 25px;
+  border: 1px solid #7A7A7A; font: 12px var(--font); padding: 0 3px; outline: none;
+}
+.ldlg-body input:focus { border-color: #0078D7; }
+.dlg-x:disabled { color: #A0A0A0; }
+.dlg-x:disabled:hover { background: transparent; color: #A0A0A0; }
+.w10btn:disabled { color: #A0A0A0; border-color: #BFBFBF; }
+.flat:disabled { opacity: .6; cursor: default; }

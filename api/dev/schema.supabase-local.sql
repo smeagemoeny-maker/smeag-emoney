@@ -1,0 +1,98 @@
+-- LOCAL stand-in for the Supabase project, for testing the API's DB_BACKEND=supabase path.
+-- Column types follow the Supabase schema: citext for uid/studentid/login_id, timestamptz.
+-- Roles mimic Supabase: PostgREST logs in as `authenticator`, the API's key is a JWT for `service_role`.
+create extension if not exists citext;
+
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticator') then
+    create role authenticator login password 'localtest' noinherit;
+  end if;
+end $$;
+grant anon, authenticated, service_role to authenticator;
+
+create table if not exists mgperson (
+  id integer generated always as identity primary key,
+  login_id citext not null,
+  password varchar(64),
+  name varchar(50),
+  position varchar(100) not null,
+  campus varchar(100) not null,
+  register_date timestamptz default now()
+);
+
+create table if not exists person (
+  id integer generated always as identity primary key,
+  uid citext not null,
+  studentid citext,
+  name varchar(100),
+  photo varchar(255),
+  age integer,
+  gender varchar(100),
+  campus varchar(100),
+  s_date date not null,
+  e_date date not null,
+  totalmoney numeric(10,2) default 0,
+  register_date timestamptz default now()
+);
+create index if not exists person_uid on person (uid);
+
+create table if not exists store_menus (
+  id integer generated always as identity primary key,
+  "Campus" varchar(50) not null,
+  m_menu varchar(100),
+  s_menu varchar(100),
+  image_path varchar(255),
+  payment numeric(10,2) not null,
+  stock integer not null default 0,
+  sales_number integer not null default 0,
+  min_stock integer not null default 5,
+  manager varchar(100),
+  register_date timestamptz default now()
+);
+
+create table if not exists office_menus (
+  id integer generated always as identity primary key,
+  "Campus" varchar(100) not null,
+  m_menu varchar(100),
+  s_menu varchar(100),
+  payment numeric(10,2) not null,
+  register_date timestamptz default now()
+);
+
+create table if not exists bank (
+  id bigint generated always as identity primary key,
+  uid citext not null,
+  studentid citext not null,
+  name varchar(100),
+  campus varchar(50),
+  beforeamount numeric(10,2),
+  category varchar(50),
+  subcategory varchar(120),
+  transaction_type varchar(100) not null,
+  payment numeric(10,2),
+  totalmoney numeric(10,2) default 0,
+  quantity integer,
+  picture varchar(255),
+  transaction_date timestamptz default now(),
+  remark varchar(50),
+  transaction_source varchar(20) default 'office',
+  "order" text
+);
+create index if not exists bank_date on bank (transaction_date);
+
+create table if not exists "PusanmartPayments" (
+  id integer generated always as identity primary key,
+  nfcid varchar(100) not null,
+  center varchar(100) not null,
+  name varchar(100) not null,
+  allpayments numeric(10,2) not null default 0,
+  stock integer not null default 0,
+  register_days timestamptz not null
+);
+
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;

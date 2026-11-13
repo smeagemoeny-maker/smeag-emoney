@@ -12,6 +12,7 @@
 - PWA screens render from `file://` without a build step.
 - API `/api/health` works.
 - Live MySQL connection currently times out from this machine/network.
+- Supabase mode: health, products, NFC lookup and login queries tested against the live project.
 - Mock API mode works from the local SQL dumps in `DBSQL/`.
 - Mock login, product list, buyer lookup, checkout, and PusanMart payment endpoints have been smoke-tested.
 
@@ -58,6 +59,26 @@ Defined in `api/src/access.mjs`, enforced by the API and mirrored in the PWA nav
 - Login returns an HMAC-signed token (12h). All endpoints except `/api/health` and login need `Authorization: Bearer <token>`.
 - Set `TOKEN_SECRET` in `api/.env`; without it a random secret is used and everyone must log in again after an API restart.
 - Charge's `bank.order` (staff id) is taken from the token, not from the request body.
+
+## Database: Supabase (default)
+
+The API uses the Supabase project that holds the full copy of the legacy MySQL `smeagemoney` DB
+(the same DB as the Emoney app). Set in `api/.env`:
+
+```text
+USE_MOCK_DB=false
+DB_BACKEND=supabase          # or mysql = legacy server (fallback during cutover)
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...     # service_role key, server-side only
+```
+
+One-time setup: paste `api/migrations/supabase_pos_functions.sql` into Supabase → SQL Editor → Run.
+It creates `pos_checkout` / `pos_charge`, which do the balance + stock + `bank` writes in one transaction.
+
+- Login: `mgperson.password` is stored as SHA-256 hex in Supabase; the API hashes the typed password.
+- `uid` / `login_id` are `citext` (case-insensitive, like MySQL).
+- Data written to MySQL after the copy is not in Supabase: re-run the Emoney
+  `backend/scripts/sync_from_mysql.py` right before switching the stores over.
 
 ## Run with mock data
 
