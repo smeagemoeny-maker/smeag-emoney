@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
 import { httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
+import { checkoutCategory } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
 
@@ -90,6 +91,7 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
       p_cart: cart.map((item) => ({ productId: Number(item.productId), quantity: Number(item.quantity) })),
       p_discount_label: discountLabel || "No Discount",
       p_discount_rate: Number(discountRate || 0),
+      p_category: checkoutCategory(store || "mart", campus),
     },
   });
 }

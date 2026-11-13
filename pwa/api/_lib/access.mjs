@@ -1,15 +1,17 @@
 import crypto from "node:crypto";
 import "./env.mjs";
 import { httpError } from "./repository.mjs";
+import { PUSAN_MART } from "./stores.mjs";
 
 // mgperson.campus enum uses the typo 'Talrac'; store_menus / the PWA use 'Tarlac'.
 const CAFE_CAMPUS_BY_ACCOUNT = { CAPITAL: "Capital", ENCANTO: "Encanto", TALRAC: "Tarlac", TARLAC: "Tarlac" };
 export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
 
 // What a manager account may do in the POS.
-//   Admin/Manager @ Pusan Mart       -> mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
+//   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
 //   Admin @ any other campus          -> everything (incl. the office program)
-//   Manager @ Capital/Encanto/Talrac  -> own campus cafe sales, buyer lookup, office program
+//   Manager @ Capital/Encanto/Talrac  -> own campus cafe AND mart sales, buyer lookup, office program
+//   martCampuses = campuses whose mart the account may sell at (each campus has its own mart).
 //   E-money is charged ONLY in the office program (OFFICE MENU -> + INCREASE), never at a POS: canCharge is false for all.
 //   anything else (Baydream Manager, Security, StoreOrder) -> no POS access
 export function accessFor(manager) {
@@ -17,13 +19,14 @@ export function accessFor(manager) {
   const campus = String(manager?.campus || "").toUpperCase();
 
   if ((position === "Admin" || position === "Manager") && campus === "PUSAN MART") {
-    return { stores: ["mart"], cafeCampuses: [], canCharge: false, canPusanPay: true, office: false };
+    return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART], canCharge: false, canPusanPay: true, office: false };
   }
   if (position === "Admin") {
-    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, canCharge: false, canPusanPay: true, office: true };
+    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, martCampuses: [...ALL_CAFE_CAMPUSES, PUSAN_MART], canCharge: false, canPusanPay: true, office: true };
   }
   if (position === "Manager" && CAFE_CAMPUS_BY_ACCOUNT[campus]) {
-    return { stores: ["cafe"], cafeCampuses: [CAFE_CAMPUS_BY_ACCOUNT[campus]], canCharge: false, canPusanPay: false, office: true };
+    const own = CAFE_CAMPUS_BY_ACCOUNT[campus];
+    return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: false, office: true };
   }
   return null;
 }
@@ -73,8 +76,8 @@ export function assertCanSell(access, store, campus) {
   if (store === "cafe" && !access.cafeCampuses.some((c) => c.toUpperCase() === String(campus || "").toUpperCase())) {
     throw httpError(403, `This account cannot sell at the ${campus} cafe.`);
   }
-  if (store === "mart" && String(campus || "").toUpperCase() !== "PUSAN MART") {
-    throw httpError(403, "Mart sales must use the Pusan Mart campus.");
+  if (store === "mart" && !(access.martCampuses || []).some((c) => c.toUpperCase() === String(campus || "").toUpperCase())) {
+    throw httpError(403, `This account cannot sell at the ${campus} mart.`);
   }
 }
 

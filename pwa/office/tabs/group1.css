@@ -1,0 +1,148 @@
+/* Office tab group 1 — INFORMATION, MODIFY INFO, MENU LIST (REGISTRATION: no screenshot yet).
+   Every selector is scoped to .tab-page.g1 (class added by the tabs' mount()).
+   Ported from the WinForms controls (Segoe UI 10pt = 13.33px, 9pt = 12px, 11pt = 14.67px); coordinates are content-area px. */
+
+.tab-page.g1 { background: #F5F5FA; font-family: var(--font); color: #000; overflow: hidden; }
+.tab-page.g1 > *, .tab-page.g1 .g1-pnl > * { position: absolute; }
+
+/* Label (AutoSize) */
+.tab-page.g1 .g1-lbl { font-size: 13.33px; line-height: 18px; white-space: nowrap; user-select: none; cursor: default; }
+.tab-page.g1 .g1-title { font-size: 12px; line-height: 16px; font-weight: 700; color: #808080; white-space: nowrap; user-select: none; }
+
+/* TextBox (Win11 look: light frame, dark bottom line) */
+.tab-page.g1 .g1-txt {
+  height: 25px; margin: 0; padding: 0 3px;
+  background: #FFF;
+  border: 1px solid #E6E6E8; border-bottom-color: #838385;
+  font: 13.33px var(--font); color: #000;
+  outline: none; border-radius: 0;
+}
+.tab-page.g1 .g1-txt::placeholder { color: #6D6D6D; opacity: 1; }
+.tab-page.g1 .g1-txt:hover { border-color: #D0D0D2; border-bottom-color: #6E6E70; }
+.tab-page.g1 .g1-txt:focus { border-bottom: 1px solid #0078D7; box-shadow: inset 0 -1px 0 #0078D7; }
+
+/* ComboBox — DropDownList (light frame) and DropDown (editable, dark frame) */
+.tab-page.g1 .g1-cbo {
+  height: 25px; background: #FFF;
+  border: 1px solid #D2D2D4; border-bottom-color: #BCBCBE;
+}
+.tab-page.g1 .g1-cbo.edit { border-color: #8F8F91; }
+.tab-page.g1 .g1-cbo:hover { border-color: #0078D7; }
+.tab-page.g1 .g1-cbo select {
+  -webkit-appearance: none; appearance: none;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; padding: 0 20px 0 3px; border: 0; background: transparent;
+  font: 13.33px var(--font); color: #000; outline: none; cursor: default;
+}
+.tab-page.g1 .g1-cbo select:focus { box-shadow: inset 0 0 0 1px #FFF; }
+.tab-page.g1 .g1-cbo input {
+  position: absolute; left: 0; top: 0; right: 20px; height: 100%;
+  margin: 0; padding: 0 0 0 3px; border: 0; background: transparent;
+  font: 13.33px var(--font); color: #000; outline: none;
+}
+.tab-page.g1 .g1-cbo input::selection { background: #0078D7; color: #FFF; }
+.tab-page.g1 .g1-cbo.edit select { left: auto; right: 0; width: 20px; padding: 0; color: transparent; }
+.tab-page.g1 .g1-cbo.edit select option { color: #000; }
+.tab-page.g1 .g1-cbo .chev {
+  position: absolute; right: 4px; top: 10px; width: 8px; height: 4px; pointer-events: none;
+  background: no-repeat center / 8px 4px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'%3E%3Cpath d='M0.4 0.3L4 3.6L7.6 0.3' fill='none' stroke='%23606060' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* DateTimePicker (Short format) */
+.tab-page.g1 .g1-dtp {
+  height: 25px; background: #FFF; border: 1px solid #8E8E90;
+}
+.tab-page.g1 .g1-dtp .val {
+  position: absolute; left: 0; top: 0; right: 26px; height: 100%;
+  margin: 0; padding: 0 0 0 8px; border: 0; background: transparent;
+  font: 13.33px var(--font); color: #000; outline: none;
+}
+.tab-page.g1 .g1-dtp .val:focus { background: transparent; }
+.tab-page.g1 .g1-dtp .btn {
+  position: absolute; right: 0; top: 0; width: 26px; height: 100%;
+  margin: 0; padding: 0; border: 0; background: transparent; cursor: default;
+}
+.tab-page.g1 .g1-dtp .btn svg { position: absolute; left: 1px; top: 5px; }
+.tab-page.g1 .g1-dtp .btn:hover { background: #E5F1FB; }
+.tab-page.g1 .g1-dtp .btn:active { background: #CCE4F7; }
+.tab-page.g1 .g1-dtp input[type=date] {
+  position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none;
+}
+
+/* CheckBox */
+.tab-page.g1 .g1-chk { height: 18px; white-space: nowrap; user-select: none; cursor: default; font-size: 13.33px; line-height: 18px; }
+.tab-page.g1 .g1-chk input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+.tab-page.g1 .g1-chk .box {
+  position: absolute; left: 0; top: 2px; width: 13px; height: 13px;
+  border: 1px solid #5E5E60; border-radius: 2px; background: #F2F2F4;
+}
+.tab-page.g1 .g1-chk:hover .box { border-color: #0078D7; background: #E5F1FB; }
+.tab-page.g1 .g1-chk input:checked + .box { background: #0078D7; border-color: #0078D7; }
+.tab-page.g1 .g1-chk input:checked + .box::after {
+  content: ""; position: absolute; left: 3px; top: 0px; width: 4px; height: 8px;
+  border: solid #FFF; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg);
+}
+.tab-page.g1 .g1-chk input:focus-visible + .box { outline: 1px dotted #000; outline-offset: 1px; }
+.tab-page.g1 .g1-chk .txt { position: absolute; left: 20px; top: 0; }
+
+/* Flat buttons (FlatStyle.Flat, BorderSize 0) */
+.tab-page.g1 .g1-btn {
+  margin: 0; padding: 0; border: 0;
+  color: #FFF; font: 14.67px var(--font);
+  display: flex; align-items: center; justify-content: center;
+  white-space: nowrap; cursor: pointer; outline: none;
+}
+.tab-page.g1 .g1-btn.bold { font-size: 12px; font-weight: 700; }
+.tab-page.g1 .g1-btn:hover { filter: brightness(1.12); }
+.tab-page.g1 .g1-btn:active { filter: brightness(0.9); }
+.tab-page.g1 .g1-btn:focus-visible { box-shadow: inset 0 0 0 1px #000; }
+
+/* Panels */
+.tab-page.g1 .g1-pnl { overflow: hidden; }
+.tab-page.g1 .g1-pnl.single { border: 1px solid #646464; }
+
+/* DataGridView (BorderStyle None, EnableHeadersVisualStyles = false) */
+.tab-page.g1 .g1-dgv { background: #FFF; overflow: auto; }
+.tab-page.g1 .g1-dgv table {
+  table-layout: fixed; width: 100%;
+  border-collapse: separate; border-spacing: 0;
+  font-size: 12px;
+}
+.tab-page.g1 .g1-dgv thead th {
+  position: sticky; top: 0; z-index: 1;
+  height: 40px; padding: 0 0 0 5px;
+  background: #0078D7; color: #FFF;
+  font-weight: 400; text-align: left; white-space: nowrap; overflow: hidden;
+  border-top: 1px solid #646464; border-right: 1px solid #646464; border-bottom: 1px solid #646464;
+  box-shadow: inset 1px 1px 0 #FFF;
+  user-select: none; cursor: default;
+}
+.tab-page.g1 .g1-dgv thead th.rh { border-left: 1px solid #646464; padding: 0; }
+.tab-page.g1 .g1-dgv tbody td {
+  height: 35px; padding: 0 0 0 2px;
+  border-right: 1px solid #E6E6EB; border-bottom: 1px solid #E6E6EB;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+}
+.tab-page.g1 .g1-dgv tbody td.rh {
+  padding: 0; background: #F0F0F0;
+  border-left: 1px solid #646464; border-right: 1px solid #646464; border-bottom: 1px solid #646464;
+}
+
+/* ---------- REGISTRATION (RegistrationControl.cs: Segoe UI 11pt inputs/labels) ---------- */
+.tab-page.g1-reg .g1-rlbl {
+  position: absolute; width: 180px; height: 25px; padding-right: 2px;
+  font-size: 14.67px; line-height: 25px; text-align: right; white-space: nowrap; user-select: none; cursor: default;
+}
+.tab-page.g1-reg .g1-txt, .tab-page.g1-reg .g1-cbo select, .tab-page.g1-reg .g1-dtp .val { font-size: 14.67px; }
+.tab-page.g1-reg .g1-txt.ro { background: #F0F0F0; }
+.tab-page.g1-reg .g1-cbo .chev { top: 11px; }
+.tab-page.g1-reg .g1-dtp .btn svg { top: 6px; }
+.tab-page.g1-reg .g1-btn { font-size: 12px; }
+.tab-page.g1-reg .g1-btn.bold { font-size: 12px; }
+.tab-page.g1-reg .g1-rflat { box-shadow: inset 0 0 0 1px #FFF; }   /* FlatStyle.Flat, BorderSize 1 (ForeColor) */
+.tab-page.g1-reg .g1-photo {
+  position: absolute; width: 150px; height: 150px;
+  /* default photo, same file as the original program's photo/human.png (PictureBox Zoom) */
+  border: 1px solid #646464; background: transparent url("human.png") no-repeat center / contain;
+  z-index: 1; pointer-events: none;   /* added before UPLOAD PHOTO -> above it in WinForms z-order (overlaps its top 5px) */
+}

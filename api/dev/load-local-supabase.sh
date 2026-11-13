@@ -23,7 +23,7 @@ sleep 2
 
 psql() { docker exec -i "$PG" psql -q -v ON_ERROR_STOP=1 -U postgres postgres "$@"; }
 psql < "$HERE/schema.supabase-local.sql"
-for table in mgperson person store_menus office_menus bank PusanmartPayments; do
+for table in mgperson person store_menus office_menus bank PusanmartPayments beforebank person_graduate_backup report_adjustments; do
   files=""
   for file in "$DUMPS/$table.sql" "$DUMPS/${table}"_part*.sql; do
     [ -f "$file" ] && files="$files $file"
@@ -39,7 +39,7 @@ done
 # Identity columns were loaded with explicit ids: move the sequences past them.
 psql <<'SQL'
 do $$ declare t text; begin
-  foreach t in array array['mgperson','person','store_menus','office_menus','bank','PusanmartPayments'] loop
+  foreach t in array array['mgperson','person','store_menus','office_menus','bank','PusanmartPayments','beforebank','person_graduate_backup','report_adjustments'] loop
     execute format('select setval(pg_get_serial_sequence(%L, ''id''), coalesce((select max(id) from %I), 1))', format('%I', t), t);
   end loop;
 end $$;

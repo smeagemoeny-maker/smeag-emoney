@@ -70,7 +70,9 @@
       login: function (loginId, password) { return request('POST', '/api/auth/login', { loginId: loginId, password: password }); },
       personByUid: function (uid) { return request('GET', '/api/people/by-nfc/' + encodeURIComponent(uid)); },
       menus: function (campus) { return request('GET', '/api/office/menus?campus=' + encodeURIComponent(campus || '')); },
-      saveTransaction: function (uid, lines) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines }); }
+      saveTransaction: function (uid, lines) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines }); },
+      // Generic call for the other tabs (tabs/*.js): request('GET', '/api/...', body?)
+      request: function (method, path, body) { return request(method, path, body); }
     };
   }
 
@@ -291,14 +293,35 @@
     return m ? parseFloat(m[1]) : 1;
   }
 
+  // Other tabs register themselves from tabs/*.js:
+  //   window.OfficeTabs['INFORMATION'] = { mount: function (root, ctx) {...}, show: function () {...} }
+  // mount() runs once with an empty 1706x880 page div; show() (optional) runs every time the tab is opened.
+  var tabCtx = null;      // set in start(): { api, messageBox, warn, inputDialog, escapeHtml }
+  var tabPages = {};
   function showPage(index) {
     var office = el('officePage'), ph = el('placeholder');
-    if (index === OFFICE_MENU_INDEX) {
-      office.hidden = false; ph.hidden = true;
-    } else {
-      office.hidden = true; ph.hidden = false;
-      ph.textContent = TAB_NAMES[index] + '\n(not implemented)';
+    Object.keys(tabPages).forEach(function (k) { tabPages[k].root.hidden = true; });
+    office.hidden = index !== OFFICE_MENU_INDEX;
+    ph.hidden = true;
+    if (index === OFFICE_MENU_INDEX) return;
+    var name = TAB_NAMES[index];
+    var impl = window.OfficeTabs && window.OfficeTabs[name];
+    if (!impl) {
+      ph.hidden = false;
+      ph.textContent = name + '\n(not implemented)';
+      return;
     }
+    var page = tabPages[name];
+    if (!page) {
+      var root = document.createElement('div');
+      root.className = 'page tab-page';
+      root.setAttribute('data-tab', name);
+      el('content').appendChild(root);
+      page = tabPages[name] = { root: root, impl: impl };
+      impl.mount(root, tabCtx);
+    }
+    page.root.hidden = false;
+    if (impl.show) impl.show();
   }
 
   /* ================= OFFICE MENU page (OfficeMenuPage.cs) ================= */
@@ -406,7 +429,7 @@
     }
     function onItemChanged() {
       var it = selectedItem();
-      txtPrice.value = it ? plain(it.price) : '0.00';
+      txtPrice.value = it ? money(it.price) : '0.00';
     }
 
     cboCategory.addEventListener('change', onCategoryChanged);
@@ -428,7 +451,7 @@
     });
     txtPrice.addEventListener('blur', function () {
       var c = parsePriceCents(txtPrice.value);
-      txtPrice.value = plain(c === null ? 0 : c);
+      txtPrice.value = money(c === null ? 0 : c);
     });
     txtPrice.addEventListener('focus', function () { setTimeout(function () { txtPrice.select(); }, 0); });
 
@@ -625,6 +648,7 @@
   /* ================= startup ================= */
   function start() {
     var api = createApi();
+    tabCtx = { api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml };
     drawLogo();
     buildTabs(showPage);
     var page = createOfficeMenu(api);
@@ -653,6 +677,18 @@
       return pendingLogin;
     }
     api.setUnauthorizedHandler(login);
+
+    // Layout preview for development: ?preview=1 on a localhost page skips the login and all API calls.
+    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    if (isLocal && /[?&]preview=1\b/.test(location.search)) {
+      titleEl.textContent = baseTitle + ' - preview';
+      tabCtx.preview = true;
+      var m = /[?&]tab=([^&]+)/.exec(location.search);
+      var want = m ? decodeURIComponent(m[1]).toUpperCase() : '';
+      var idx = TAB_NAMES.map(function (n) { return n.toUpperCase(); }).indexOf(want);
+      if (idx >= 0) document.querySelectorAll('#tabstrip .tab')[idx].click();
+      return;
+    }
 
     var s = api.session();
     var ready = s && s.token && s.manager ? (applySession(s), page.loadMenus(s.manager.campus)) : login();

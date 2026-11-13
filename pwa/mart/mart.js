@@ -109,12 +109,18 @@
       startDate: dateOnly(p.startDate), endDate: dateOnly(p.endDate), totalMoney: num(p.totalMoney)
     };
   }
-  function storeFor(campus) { return String(campus).toUpperCase() === MART_CAMPUS.toUpperCase() ? 'mart' : 'cafe'; }
+  // This screen is the MART of the selected campus (each campus has its own mart; cafes use /cafe/).
+  function storeFor() { return 'mart'; }
+  // Pusan Mart keeps its campus-wide history/report; the other campuses only show their mart's sales.
+  function storeParam(campus) { return String(campus).toUpperCase() === MART_CAMPUS.toUpperCase() ? undefined : 'mart'; }
+  // m_menu for products registered here (same names as the campus store terminals) — api/src/stores.mjs.
+  var MART_MENU = { CAPITAL: 'Capital Mart', ENCANTO: 'ENCANTO MART', TARLAC: 'Tarlac Store' };
+  function martMenuFor(campus) { return MART_MENU[String(campus).toUpperCase()] || campus; }
 
   var repo = {
     login: function (loginId, password) { return apiCall('POST', '/api/auth/login', { loginId: loginId, password: password }); },
     fetchProducts: function (campus) {
-      return apiCall('GET', '/api/products' + q({ campus: campus })).then(function (rows) { return (rows || []).map(normProduct); });
+      return apiCall('GET', '/api/products' + q({ campus: campus, store: 'mart' })).then(function (rows) { return (rows || []).map(normProduct); });
     },
     findPersonByUid: function (uid) {
       return apiCall('GET', '/api/people/by-nfc/' + encodeURIComponent(uid)).then(function (r) { return normPerson(r && r.person); });
@@ -124,10 +130,10 @@
     updateProduct: function (id, body) { return apiCall('PATCH', '/api/products/' + id, body).then(function (r) { return r.product; }); },
     deleteProduct: function (id) { return apiCall('DELETE', '/api/products/' + id); },
     fetchHistory: function (campus, s, e) {
-      return apiCall('GET', '/api/sales' + q({ from: s, to: e, campus: campus })).then(function (r) { return (r && r.sales) || []; });
+      return apiCall('GET', '/api/sales' + q({ from: s, to: e, campus: campus, store: storeParam(campus) })).then(function (r) { return (r && r.sales) || []; });
     },
     fetchWeeklyReport: function (campus, s, e) {
-      return apiCall('GET', '/api/reports/sales' + q({ from: s, to: e, campus: campus })).then(function (r) {
+      return apiCall('GET', '/api/reports/sales' + q({ from: s, to: e, campus: campus, store: storeParam(campus) })).then(function (r) {
         var rep = r.report, total = num(rep.total), count = num(rep.orderCount);
         return {
           totalRevenue: total, transactionCount: count,
@@ -191,13 +197,12 @@
   }
   function sessionExpired(msg) { setTimeout(function () { logout(msg || 'Login session expired. Please log in again.'); }, 0); }
 
-  // Campuses this account may manage: Pusan Mart for mart accounts, plus the cafes an admin may use.
+  // Campuses whose mart this account may run (access.martCampuses from the API).
   function allowedCampuses() {
-    var a = session.access || {}, stores = a.stores || [], cafes = (a.cafeCampuses || []).map(function (c) { return c.toUpperCase(); });
-    return CAMPUS_OPTIONS.filter(function (c) {
-      if (c === MART_CAMPUS) return stores.indexOf('mart') >= 0;
-      return stores.indexOf('cafe') >= 0 && cafes.indexOf(c.toUpperCase()) >= 0;
-    });
+    var a = session.access || {}, stores = a.stores || [];
+    if (stores.indexOf('mart') < 0) return [];
+    var marts = (a.martCampuses || [MART_CAMPUS]).map(function (c) { return c.toUpperCase(); });
+    return CAMPUS_OPTIONS.filter(function (c) { return marts.indexOf(c.toUpperCase()) >= 0; });
   }
 
   function setDefaultDiscount() {
@@ -429,7 +434,7 @@
     var s = S;
     s.paying = true; vm.checkoutError = null; render();
     repo.checkout({
-      uid: uidStr, store: storeFor(campus), campus: campus,
+      uid: uidStr, store: storeFor(), campus: campus,
       cart: cart.map(function (it) { return { productId: it.product.id, quantity: it.quantity }; }),
       discountLabel: label, discountRate: rate
     }).then(function (c) {
@@ -593,7 +598,7 @@
     s.saving = true; s.message = null;
     // Same row as DbRepository.insertProduct: Campus upper-cased, m_menu = campus. The Android app
     // uploads the photo by SFTP first; a browser cannot, so the product is saved without an image.
-    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.campus, sMenu: s.name.trim(), payment: price, stock: qty, minStock: min })
+    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: martMenuFor(s.campus), sMenu: s.name.trim(), payment: price, stock: qty, minStock: min })
       .then(function () {
         s.message = 'Registered successfully.';
         s.name = ''; s.price = ''; s.qty = ''; s.desc = ''; s.photo = null;

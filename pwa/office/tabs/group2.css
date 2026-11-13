@@ -1,0 +1,105 @@
+/* styles for office tab group 2: LIST MENU, Graduate, Default, REPORT (all classes prefixed .g2-) */
+
+.g2-page { background: var(--body); font-family: var(--font); color: #000; }
+.g2-page .g2-abs { position: absolute; }
+
+/* Label (AutoSize) */
+.g2-lbl {
+  position: absolute; height: 18px; line-height: 18px;
+  font-size: 12px; white-space: nowrap; user-select: none; cursor: default;
+}
+.g2-lbl.f10 { font-size: 13.33px; }
+
+/* TextBox (Win11 look: hairline border, darker bottom line) */
+.g2-txt {
+  position: absolute; margin: 0; padding: 0 4px;
+  background: #FFF;
+  border: 1px solid #E5E5E5; border-bottom-color: #868686; border-radius: 3px;
+  font: 12px var(--font); color: #000; outline: none;
+}
+.g2-txt::placeholder { color: #8C8C8C; opacity: 1; }
+.g2-txt:hover { background: #FAFAFA; }
+.g2-txt:focus { border-bottom: 2px solid #0067C0; background: #FFF; }
+.g2-txt.f10 { font-size: 13.33px; }
+
+/* ComboBox (DropDownList, Win11 look) */
+.g2-combo {
+  position: absolute;
+  background: #FFF; border: 1px solid #D0D0D0; border-bottom-color: #B8B8B8; border-radius: 3px;
+}
+.g2-combo:hover { background: #F9F9F9; border-color: #C4C4C4; }
+.g2-combo select {
+  -webkit-appearance: none; appearance: none;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; margin: 0; padding: 0 22px 0 3px;
+  background: transparent;
+  font: 12px var(--font); color: #000;
+  outline: none; cursor: default;
+}
+.g2-combo select:focus-visible { box-shadow: inset 0 -2px 0 #0067C0; }
+.g2-combo .g2-chev {
+  position: absolute; right: 7px; top: 50%; margin-top: -3px; width: 9px; height: 5px;
+  pointer-events: none;
+  background: no-repeat center / 9px 5px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' viewBox='0 0 9 5'%3E%3Cpath d='M0.5 0.5L4.5 4.5L8.5 0.5' fill='none' stroke='%23606060' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* DateTimePicker (classic: 1px gray box, calendar glyph + drop arrow) */
+.g2-dtp {
+  position: absolute;
+  background: #FFF; border: 1px solid #8C8C8C;
+}
+.g2-dtp:hover { border-color: #0078D7; }
+.g2-dtp .g2-dtp-txt {
+  position: absolute; left: 0; top: 0; bottom: 0; right: 26px;
+  border: 0; margin: 0; padding: 0 0 0 7px;
+  background: transparent; outline: none;
+  font: 12px var(--font); color: #000; white-space: pre;
+}
+.g2-dtp.f10 .g2-dtp-txt { font-size: 13.33px; }
+.g2-dtp .g2-dtp-txt:focus { background: transparent; }
+.g2-dtp .g2-dtp-btn {
+  position: absolute; right: 5px; top: 50%; margin-top: -6px; width: 20px; height: 12px;
+  cursor: default;
+}
+.g2-dtp .g2-dtp-btn:hover { background: #E5F1FB; }
+.g2-dtp .g2-dtp-native {
+  position: absolute; right: 0; bottom: 0; width: 1px; height: 1px;
+  opacity: 0; border: 0; padding: 0; margin: 0; pointer-events: none;
+}
+
+/* empty DataGridView area (no columns) */
+.g2-panel { position: absolute; background: #FFF; }
+
+/* REPORT summary cards */
+.g2-card {
+  position: absolute; width: 180px; height: 80px;
+  background: #FFF; border: 1px solid #646464;
+}
+.g2-card .g2-card-hd {
+  position: absolute; left: 0; top: 0; right: 0; height: 30px;
+  background: #E6E6E6; text-align: center; line-height: 30px;
+  font-size: 12px; white-space: nowrap; overflow: hidden; cursor: default; user-select: none;
+}
+.g2-card .g2-card-val {
+  position: absolute; left: 10px; top: 40px; width: 160px; height: 29px;
+  border: 1px solid #646464; margin: 0; padding: 0 2px;
+  background: #FFF; text-align: center;
+  font: 16px var(--font); color: #000; outline: none;
+}
+.g2-title {
+  position: absolute; left: 0; width: 1706px; text-align: center;
+  font-size: 20px; line-height: 26px; color: #000080; white-space: nowrap; cursor: default; user-select: none;
+}
+
+/* flat buttons (extends .flat from office.css) */
+.flat.g2-btn { font-weight: 400; font-size: 14px; }
+.flat.g2-btn.b { font-weight: 700; }
+
+/* REPORT data grids (OfficeKit.grid) */
+/* cell value comes from a saved UPDATE correction: small orange corner mark */
+.g2-rep-grid.og-grid tbody td.g2-adj { background-image: linear-gradient(225deg, #F0A030 6px, transparent 6px); }
+.g2-rep-tot.og-grid { background: #DCDCE1; overflow: hidden; }
+.g2-rep-tot.og-grid thead { display: none; }
+.g2-rep-tot.og-grid tbody td,
+.g2-rep-tot.og-grid tbody tr.cur td { background: #DCDCE1 !important; color: #000; border-bottom: 0; }
+.g2-rep-tot.og-grid tbody tr.cur td.rh::before { content: none; }

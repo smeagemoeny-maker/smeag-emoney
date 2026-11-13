@@ -499,7 +499,7 @@ function loadSales(from, to) {
   salesCache.key = key;
   salesCache.promise = (async function () {
     var list = campuses();
-    var results = await Promise.all(list.map(function (c) { return API.sales({ from: from, to: to, campus: c }); }));
+    var results = await Promise.all(list.map(function (c) { return API.sales({ from: from, to: to, campus: c, store: 'cafe' }); }));
     var byId = new Map();
     results.forEach(function (rows) {
       rows.forEach(function (r) {

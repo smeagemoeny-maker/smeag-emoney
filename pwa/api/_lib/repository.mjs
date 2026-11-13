@@ -45,10 +45,9 @@ export function validateCheckoutInput({ uid, store, campus, cart, discountRate }
   }
 }
 
-// bank.category: cafe sales are "<Campus> Cafe"; mart sales keep the Android format "<Campus> Mart".
-export function checkoutCategory(store, campus) {
-  return store === "cafe" ? `${campus} Cafe` : `${campus} Mart`;
-}
+// bank.category per campus store (same names as the store terminals) — see stores.mjs.
+export { checkoutCategory } from "./stores.mjs";
+import { checkoutCategory } from "./stores.mjs";
 
 export async function createCheckout({ uid, store, campus, cart, discountLabel, discountRate }) {
   validateCheckoutInput({ uid, store, campus, cart, discountRate });

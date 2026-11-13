@@ -97,8 +97,9 @@ var API = (function () {
   }
 
   api.login = function (loginId, password) { return request('POST', '/api/auth/login', { loginId: loginId, password: password }); };
+  // Cafe screen: only this campus's cafe products + unclassified ones (api/src/stores.mjs).
   api.products = async function (campus) {
-    var rows = await request('GET', '/api/products' + qs({ campus: campus }));
+    var rows = await request('GET', '/api/products' + qs({ campus: campus, store: 'cafe' }));
     return (Array.isArray(rows) ? rows : (rows && rows.products) || []).map(mapProduct);
   };
   api.createProduct = async function (data) { return mapProduct((await request('POST', '/api/products', data)).product); };

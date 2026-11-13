@@ -7,13 +7,19 @@
 -- Errors use PostgREST "PTxxx" SQLSTATEs so the HTTP status is xxx (400/404/409).
 
 -- ------------------------------------------------------------------ checkout
+-- p_category = bank.category chosen by the API per campus store ("Capital Mart", "Tarlac Store",
+-- "ENCANTO CAFE", ...). When it is null the old "<campus> Cafe|Mart" rule is used.
+-- The 6-argument version is replaced (the new one also accepts calls without p_category).
+drop function if exists public.pos_checkout(text, text, text, jsonb, text, numeric);
+
 create or replace function public.pos_checkout(
     p_uid            text,
     p_store          text,
     p_campus         text,
     p_cart           jsonb,
     p_discount_label text    default 'No Discount',
-    p_discount_rate  numeric default 0
+    p_discount_rate  numeric default 0,
+    p_category       text    default null
 )
 returns jsonb
 language plpgsql
@@ -51,7 +57,8 @@ begin
     end if;
 
     v_balance  := coalesce(v_person.totalmoney, 0);
-    v_category := case when p_store = 'cafe' then p_campus || ' Cafe' else p_campus || ' Mart' end;
+    v_category := coalesce(nullif(trim(p_category), ''),
+                           case when p_store = 'cafe' then p_campus || ' Cafe' else p_campus || ' Mart' end);
 
     for v_item in select * from jsonb_array_elements(p_cart) loop
         v_pid := (v_item ->> 'productId')::bigint;
@@ -153,9 +160,9 @@ end;
 $$;
 
 -- Only the API (service_role key) may call these.
-revoke execute on function public.pos_checkout(text, text, text, jsonb, text, numeric) from public, anon, authenticated;
+revoke execute on function public.pos_checkout(text, text, text, jsonb, text, numeric, text) from public, anon, authenticated;
 revoke execute on function public.pos_charge(text, text, numeric, text) from public, anon, authenticated;
-grant  execute on function public.pos_checkout(text, text, text, jsonb, text, numeric) to service_role;
+grant  execute on function public.pos_checkout(text, text, text, jsonb, text, numeric, text) to service_role;
 grant  execute on function public.pos_charge(text, text, numeric, text) to service_role;
 
 notify pgrst, 'reload schema';
