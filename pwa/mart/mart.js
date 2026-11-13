@@ -275,6 +275,11 @@
     return '<div class="field"><div class="field-label">' + esc(label || 'Campus') + '</div>' +
       '<button class="btn btn-secondary" data-dd="' + esc(key) + '"><span>' + esc(selected) + '</span></button></div>';
   }
+  // Compact one-line selector (Sales header): same dropdown overlay as dropdown(), much less height.
+  function pillDropdown(key, selected, options, onSelect, label) {
+    ddRegistry[key] = { options: options, onSelect: onSelect };
+    return '<button class="pill" data-dd="' + esc(key) + '"><span class="k">' + esc(label) + '</span> ' + esc(selected) + ' ▾</button>';
+  }
   function labeledField(id, label, value, onChange, placeholder, mode, plain) {
     actions['in_' + id] = onChange;
     return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
@@ -390,20 +395,24 @@
     uidStr = String(uidStr || '').trim();
     if (!uidStr) return;
     if (!session.manager) { toast('NFC tag read: ' + uidStr); return; }
+    // The phone reader is always on, so a tap can come before the NFC box was pressed: pay right away when
+    // the screen is ready (the box says "Payment completes as soon as you tap"), otherwise say why not.
     if (route === 'sales') {
-      if (!S.awaitingTap || S.paying) { render(); return; }
+      if (S.paying) { toast('Processing payment... please wait.'); return; }
+      if (!vm.cart.length) { toast('Card read (' + uidStr + '). Add items to the cart first.', 3000); return; }
       S.awaitingTap = false;
       checkoutWithUid(uidStr, S.campus);
     } else if (route === 'buyer') {
       lookupBuyer(uidStr);
     } else if (route === 'pusanpay') {
-      if (!S.awaitingTap || vm.pz.submitting) { render(); return; }
-      S.awaitingTap = false;
+      if (vm.pz.submitting) { toast('Saving payment... please wait.'); return; }
       var amt = pusanFinalTotal();
-      if (amt == null) { render(); return; }
+      var storeOk = S.store.trim().replace(/ /g, '').toUpperCase() === 'PUSANMART';
+      if (!storeOk || amt == null || !(amt > 0)) { toast('Card read (' + uidStr + '). Select the store and enter the amount first.', 3000); return; }
+      S.awaitingTap = false;
       submitPusanmartPayment(uidStr, amt);
     } else {
-      render();
+      toast('Card read (' + uidStr + '). Open Buyer Info to look up this card.', 3000);
     }
   }
 
@@ -503,13 +512,15 @@
     });
     if (!vm.cart.length) S.awaitingTap = false;
 
-    var h = '<div class="screen">' + eyebrow('Sales') + title('Sales') +
-      campusDropdown('s_campus', function (v) { S.campus = v; session.selectedCampus = v; saveSession(); vm.cart = []; loadProducts(v); S.category = 'All'; S.subcategory = 'All'; }) +
-      half(
-        dropdown('s_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = allLabel; S.category = v; }, 'Category'),
-        dropdown('s_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Subcategory')
-      ) + spacer(8) +
-      secondaryBtn('📷 Find product by photo', notInBrowser) +
+    // Campus / category / subcategory sit in one compact menu row so the products, cart and total stay visible.
+    var h = '<div class="screen">' +
+      '<div class="sb" style="padding-bottom:8px"><div class="title" style="padding:0">Sales</div>' +
+      '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
+      '<div class="filterbar">' +
+      pillDropdown('s_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; session.selectedCampus = v; saveSession(); vm.cart = []; loadProducts(v); S.category = 'All'; S.subcategory = 'All'; }, '📍') +
+      pillDropdown('s_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = allLabel; S.category = v; }, 'Cat') +
+      pillDropdown('s_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Sub') +
+      '</div>' +
       '<div class="vscroll fill" id="sales-scroll">';
     if (S.error) h += errorLine();
     else if (!filtered.length) h += loadingOr('No products match the selected filters.', 'font-size:12px;color:var(--ink3);padding:12px 0');
@@ -873,7 +884,14 @@
       '<span style="color:var(--ok);font-size:26px;line-height:normal">✓</span></div>' + spacer(12) +
       '<div style="font-size:17px;font-weight:800;text-align:center">Payment Complete</div>' +
       '<div style="font-size:11.5px;color:var(--ink2);padding:2px 0 14px">' + esc(L.campus || session.selectedCampus) + '</div>' +
-      '<div style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px">';
+      '<div style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px">' +
+      '<div class="eyebrow" style="padding-bottom:4px">Buyer</div>' +
+      '<div class="sb" style="padding:3px 0"><span style="font-size:12px;color:var(--ink2)">Name</span><span style="font-size:13px;font-weight:700">' + esc(L.buyerName || '-') + '</span></div>' +
+      '<div class="sb" style="padding:3px 0"><span style="font-size:12px;color:var(--ink2)">Card UID</span><span style="font-size:12px">' + esc(L.uid || '-') + '</span></div>' +
+      (L.orderId != null ? '<div class="sb" style="padding:3px 0"><span style="font-size:12px;color:var(--ink2)">Order</span><span style="font-size:12px">#' + esc(L.orderId) + '</span></div>' : '') +
+      '</div>' +
+      '<div style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px">' +
+      '<div class="eyebrow" style="padding-bottom:4px">Purchase</div>';
     L.cart.forEach(function (it) {
       h += '<div class="sb" style="padding:5px 0"><span style="font-size:12px;color:var(--ink2)">' + esc(it.product.sMenu + ' × ' + it.quantity) + '</span>' +
         '<span style="font-size:12px;font-weight:700">₱' + money(it.product.payment * it.quantity) + '</span></div>';

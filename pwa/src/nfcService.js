@@ -61,6 +61,7 @@
   }
 
   function dispatchNfcTag(detail) {
+    flashPhoneBadge(`✓ 카드 읽음 ${normalizeUid(detail?.uid)}`, "#1565C0");
     window.dispatchEvent(new CustomEvent(eventName, { detail }));
   }
 
@@ -101,7 +102,10 @@
       );
       reader.addEventListener(
         "readingerror",
-        () => window.dispatchEvent(new CustomEvent("nfc-error", { detail: { message: "카드를 읽지 못했습니다. 다시 대주세요." } })),
+        () => {
+          flashPhoneBadge("✕ 카드를 읽지 못했습니다. 다시 대주세요.", "#C62828");
+          window.dispatchEvent(new CustomEvent("nfc-error", { detail: { message: "카드를 읽지 못했습니다. 다시 대주세요." } }));
+        },
         { signal: controller.signal },
       );
       try {
@@ -148,8 +152,31 @@
     return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
   }
 
+  // Every tap briefly shows on the badge, so it is clear the card reached the page even when the open
+  // screen does nothing with it.
+  let flashText = "";
+  let flashColor = "";
+  let flashTimer = null;
+  function flashPhoneBadge(text, color) {
+    if (!phoneBadge) return;
+    flashText = text;
+    flashColor = color;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      flashText = "";
+      renderPhoneBadge();
+    }, 2500);
+    renderPhoneBadge();
+  }
+
   function renderPhoneBadge() {
     if (!phoneBadge) return;
+    if (flashText) {
+      phoneBadge.hidden = false;
+      phoneBadge.textContent = flashText;
+      phoneBadge.style.background = flashColor;
+      return;
+    }
     const support = phoneNfcSupport();
     let text;
     let color;

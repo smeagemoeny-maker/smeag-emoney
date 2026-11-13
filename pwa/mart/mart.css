@@ -332,3 +332,19 @@ button, input { font-family: inherit; }
   .demo { top: 16px; left: calc(50% + 222px); right: auto; }
   .demo .menu { left: 0; right: auto; }
 }
+
+/* ---------- Sales: compact selector row ---------- */
+.filterbar { display: flex; gap: 6px; width: 100%; padding-bottom: 10px; flex: none; }
+.pill {
+  flex: 1 1 0; min-width: 0; height: 34px; padding: 0 10px;
+  border-radius: 17px; border: 1px solid var(--border-strong); background: var(--surface2); color: var(--ink);
+  font: inherit; font-size: 12px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.pill .k { color: var(--ink3); font-weight: 600; }
+.pill:active { background: #EDEAE4; }
+.iconbtn {
+  width: 38px; height: 38px; flex: none; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--surface2);
+  font-size: 17px; line-height: 1; cursor: pointer;
+}
