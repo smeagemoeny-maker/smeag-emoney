@@ -585,14 +585,12 @@ export const OFFICE_CATEGORIES = ["Recharge", "AGRecharge", "EBILL", "Records", 
 export const STORE_CATEGORIES = ["Mart", "Cafe"];
 const REPORT_CATEGORIES = [...OFFICE_CATEGORIES, ...STORE_CATEGORIES];
 
-// Store sales are recorded per store ("ENCANTO MART", "Capital Cafe", "Tarlac Store", ...).
+// Same as the old Windows program: a column counts only rows whose category is exactly that name.
+// Store terminal sales ("ENCANTO MART", "Capital Cafe", "Tarlac Store", ...) are NOT in Mart/Cafe,
+// so those columns (and the Store shop card) show 0 unless a row is literally "Mart"/"Cafe".
 function reportColumn(category) {
-  const c = String(category || "").trim();
-  const office = OFFICE_CATEGORIES.find((o) => o.toLowerCase() === c.toLowerCase());
-  if (office) return office;
-  if (/\bcafe\b/i.test(c)) return "Cafe";
-  if (/\b(mart|store)\b/i.test(c)) return "Mart";
-  return null;
+  const c = String(category || "").trim().toLowerCase();
+  return REPORT_CATEGORIES.find((name) => name.toLowerCase() === c) || null;
 }
 
 export async function report({ campus, from, to }) {
