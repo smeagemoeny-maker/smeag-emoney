@@ -180,8 +180,33 @@
     true,
   );
 
+  // ---------- PC/SC reader (ACR122U) via the desktop bridge ----------
+  // desktop-bridge/ (acr122u-bridge on macOS, start-bridge.cmd on Windows) reads the reader and serves each
+  // tap as a Server-Sent Event on this computer only. EventSource reconnects by itself, so the bridge can be
+  // started before or after the page. onStatus(true|false) reports whether the bridge is connected.
+
+  const PC_BRIDGE_URL = "http://127.0.0.1:47321/events";
+  let pcBridge = null;
+
+  function connectPcReader(onStatus) {
+    if (pcBridge || typeof EventSource === "undefined") return;
+    pcBridge = new EventSource(PC_BRIDGE_URL);
+    pcBridge.addEventListener("open", () => onStatus?.(true));
+    pcBridge.addEventListener("error", () => onStatus?.(false));
+    pcBridge.addEventListener("card", (event) => {
+      let data = null;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (data?.uid) dispatchNfcTag({ uid: data.uid, source: "pc-reader", timestamp: Date.now() });
+    });
+  }
+
   window.PusanNfc = {
     READER_FORMATS,
+    connectPcReader,
     dispatchManualUid,
     dispatchNfcTag,
     enableKeyboardReader,

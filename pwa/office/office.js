@@ -712,6 +712,19 @@
     window.addEventListener('nfc-error', function (e) {
       if (canTap()) warn((e.detail && e.detail.message) || 'Could not read the card. Please tap it again.');
     });
+    // ACR122U (PC/SC) through desktop-bridge: status shown in the title bar.
+    if (N.connectPcReader) {
+      var status = document.createElement('span');
+      status.className = 'tb-nfc';
+      document.querySelector('.titlebar').appendChild(status);
+      var setStatus = function (on) {
+        status.classList.toggle('on', on);
+        status.textContent = on ? '● Card reader connected' : '○ Card reader not connected';
+        status.title = on ? 'ACR122U bridge (127.0.0.1:47321)' : 'Start the card reader bridge (desktop-bridge) on this PC';
+      };
+      setStatus(false);
+      N.connectPcReader(setStatus);
+    }
     // Phone NFC needs a user gesture to start: begin scanning on the first click/tap after load.
     var support = N.phoneNfcSupport();
     if (support === 'android-native' || support === 'web-nfc') {

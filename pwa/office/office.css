@@ -358,3 +358,7 @@ body {
 .cdlg-info td { padding: 4px 0; color: #000; }
 .cdlg-info tr.bal th, .cdlg-info tr.bal td { font-size: 15px; color: #0078D7; font-weight: 700; padding-top: 10px; }
 .cdlg-note { padding: 0 24px 10px; font-size: 12px; color: #C62828; }
+
+/* ACR122U bridge status (office.js wireNfc) */
+.tb-nfc { position: absolute; right: 160px; top: 0; line-height: 30px; font-size: 12px; color: #A0A0A0; }
+.tb-nfc.on { color: #2E7D32; font-weight: 700; }
