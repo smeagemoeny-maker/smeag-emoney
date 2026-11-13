@@ -357,6 +357,15 @@
         ctx.messageBox('In the web version the PDF is saved by the browser.\n\nClick DOWNLOAD PDF and choose "Save as PDF" in the print dialog; ' +
           'the file goes to your Downloads folder (or the folder you pick).', 'SMEAG', 'OK', 'info');
       });
+
+      // NFC tap: search this card only (other filters cleared)
+      return {
+        onNfc: function (uid) {
+          if (btnSearch.disabled) return;
+          txtUid.value = uid; txtName.value = ''; txtAge.value = ''; cbCampus.selectedIndex = 0; chkReg.checked = false;
+          search();
+        }
+      };
     },
     show: function () {}
   };

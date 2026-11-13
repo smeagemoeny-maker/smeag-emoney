@@ -165,7 +165,8 @@
           event.stopPropagation();
           // Clear any characters the reader typed into a focused text field.
           const target = event.target;
-          if (target instanceof HTMLInputElement && target.value.endsWith(raw)) {
+          // Case-insensitive: some screens upper-case what is typed into UID boxes.
+          if (target instanceof HTMLInputElement && target.value.toLowerCase().endsWith(raw.toLowerCase())) {
             target.value = target.value.slice(0, -raw.length);
             target.dispatchEvent(new Event("input", { bubbles: true }));
           }

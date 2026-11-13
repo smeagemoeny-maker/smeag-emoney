@@ -349,3 +349,12 @@ body {
 .dlg-x:disabled:hover { background: transparent; color: #A0A0A0; }
 .w10btn:disabled { color: #A0A0A0; border-color: #BFBFBF; }
 .flat:disabled { opacity: .6; cursor: default; }
+
+/* NFC card popup (office.js showCardInfo) */
+.cdlg-body { display: flex; gap: 18px; padding: 20px 24px 14px; min-width: 520px; }
+.cdlg-photo { width: 120px; height: 150px; object-fit: cover; border: 1px solid #A0A0A0; background: #F0F0F0; flex: 0 0 auto; }
+.cdlg-info { border-collapse: collapse; font-size: 13px; flex: 1; }
+.cdlg-info th { text-align: left; font-weight: 700; color: #505050; padding: 4px 14px 4px 0; white-space: nowrap; vertical-align: top; }
+.cdlg-info td { padding: 4px 0; color: #000; }
+.cdlg-info tr.bal th, .cdlg-info tr.bal td { font-size: 15px; color: #0078D7; font-weight: 700; padding-top: 10px; }
+.cdlg-note { padding: 0 24px 10px; font-size: 12px; color: #C62828; }

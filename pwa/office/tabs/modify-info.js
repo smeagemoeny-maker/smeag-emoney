@@ -293,6 +293,15 @@
           if (e.key === 'Enter') { e.preventDefault(); if (!btnSearch.disabled) search(); }
         });
       });
+
+      // NFC tap: load this card's student for editing (other filters cleared)
+      return {
+        onNfc: function (uid) {
+          if (btnSearch.disabled) return;
+          txtUid.value = uid; txtName.value = ''; cbCampus.value = 'All';
+          search();
+        }
+      };
     },
     show: function () {}
   };

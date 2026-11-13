@@ -260,6 +260,15 @@
           'the file is saved to your Downloads folder (or the folder you pick in that dialog).\n\n' +
           'Open it from the browser downloads list (Ctrl+J) or from the Downloads folder.', 'PDF Folder');
       });
+
+      // NFC tap: switch to card mode and show this card's full payment history
+      return {
+        onNfc: function (uid) {
+          if (btnSearch.disabled) return;
+          chkNfc.checked = true; txtNfc.disabled = false; txtNfc.value = uid;
+          search();
+        }
+      };
     },
     show: function () {}
   };

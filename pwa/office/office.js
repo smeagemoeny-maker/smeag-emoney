@@ -263,6 +263,40 @@
   }
 
   /* ================= tab strip + pages (MainForm / TabStrip) ================= */
+  /* ================= NFC card info popup (tabs without their own card handler) ================= */
+  var NO_PHOTO = 'tabs/human.png';
+  var cardDialogClose = null;   // close() of the open card popup: a new tap replaces it
+  function showCardInfo(api, uid) {
+    var U = String(uid || '').trim().toUpperCase();
+    if (cardDialogClose) cardDialogClose();
+    return api.request('GET', '/api/office/people?uid=' + encodeURIComponent(U)).then(function (res) {
+      var people = (res && res.people) || [];
+      if (!people.length) return warn('This NFC card is not registered.\nUID: ' + U);
+      var p = people[0];
+      function row(k, v) { return '<tr><th>' + k + '</th><td>' + escapeHtml(v == null || v === '' ? '-' : v) + '</td></tr>'; }
+      var html = '<div class="dlg-title">NFC CARD<button class="dlg-x" tabindex="-1">' + X_SVG + '</button></div>' +
+        '<div class="cdlg-body">' +
+        '<img class="cdlg-photo" alt="" src="' + escapeHtml(p.photoUrl || NO_PHOTO) + '">' +
+        '<table class="cdlg-info">' +
+        row('UID', p.uid) + row('Student ID', p.studentId) + row('Name', p.name) +
+        row('Campus', p.campus) + row('Age / Gender', [p.age, p.gender].filter(function (x) { return x != null && x !== ''; }).join(' / ')) +
+        row('Period', (p.startDate || '-') + ' ~ ' + (p.endDate || '-')) +
+        '<tr class="bal"><th>Balance</th><td>' + money(toCents(p.totalMoney)) + ' PHP</td></tr>' +
+        '</table></div>' +
+        (people.length > 1 ? '<div class="cdlg-note">' + people.length + ' students use this UID.</div>' : '') +
+        '<div class="mb-foot"><button class="w10btn def" data-v="OK" data-autofocus>OK</button></div>';
+      return openDialog(html, function (dlg, close) {
+        cardDialogClose = function () { cardDialogClose = null; close(); };
+        var img = dlg.querySelector('.cdlg-photo');
+        img.addEventListener('error', function () { if (img.getAttribute('src') !== NO_PHOTO) img.setAttribute('src', NO_PHOTO); });
+        dlg.querySelector('[data-v]').addEventListener('click', function () { close(); });
+        return {};
+      }).then(function () { cardDialogClose = null; });
+    }, function (err) {
+      return messageBox('Card lookup failed.\n' + (err && err.message ? err.message : err), 'SMEAG', 'OK', 'error');
+    });
+  }
+
   function buildTabs(onSelect) {
     var strip = el('tabstrip');
     TAB_NAMES.forEach(function (name, i) {
@@ -296,13 +330,17 @@
   // Other tabs register themselves from tabs/*.js:
   //   window.OfficeTabs['INFORMATION'] = { mount: function (root, ctx) {...}, show: function () {...} }
   // mount() runs once with an empty 1706x880 page div; show() (optional) runs every time the tab is opened.
-  var tabCtx = null;      // set in start(): { api, messageBox, warn, inputDialog, escapeHtml }
+  // mount() may return { onNfc: function (uid) {...} }: called when a card is tapped while that tab is open.
+  // Tabs without onNfc show the card owner in a popup (showCardInfo).
+  var tabCtx = null;      // set in start(): { api, messageBox, warn, inputDialog, escapeHtml, showCardInfo }
   var tabPages = {};
+  var currentTab = TAB_NAMES[OFFICE_MENU_INDEX];
   function showPage(index) {
     var office = el('officePage'), ph = el('placeholder');
     Object.keys(tabPages).forEach(function (k) { tabPages[k].root.hidden = true; });
     office.hidden = index !== OFFICE_MENU_INDEX;
     ph.hidden = true;
+    currentTab = TAB_NAMES[index];
     if (index === OFFICE_MENU_INDEX) return;
     var name = TAB_NAMES[index];
     var impl = window.OfficeTabs && window.OfficeTabs[name];
@@ -318,7 +356,8 @@
       root.setAttribute('data-tab', name);
       el('content').appendChild(root);
       page = tabPages[name] = { root: root, impl: impl };
-      impl.mount(root, tabCtx);
+      var hooks = impl.mount(root, tabCtx);
+      page.onNfc = hooks && typeof hooks.onNfc === 'function' ? hooks.onNfc : null;
     }
     page.root.hidden = false;
     if (impl.show) impl.show();
@@ -645,13 +684,56 @@
     stage.style.height = Math.ceil(WIN_H * scale) + 'px';
   }
 
+  /* ================= NFC: one reader for every tab ================= */
+  // ../src/nfcService.js (window.PusanNfc) handles a USB/Bluetooth keyboard-mode reader on any tab
+  // (even when no UID box has focus) and, on Android, the phone's NFC (native bridge / Web NFC).
+  // Each tap goes to the open tab: its onNfc() hook, the OFFICE MENU student lookup, or the card popup.
+  function wireNfc(api, officePage) {
+    var N = window.PusanNfc;
+    if (!N) return;
+    var layer = el('modalLayer');
+    function loggedIn() { var s = api.session(); return !!(s && s.token); }
+    // Not while a dialog (login, confirm, ...) is open, except the card popup itself: a new tap replaces it.
+    function canTap() { return loggedIn() && (layer.hidden || (!!cardDialogClose && layer.children.length === 1)); }
+    N.enableKeyboardReader(canTap);
+    N.listenForNfc(function (d) {
+      if (!canTap()) return;
+      if (cardDialogClose) cardDialogClose();
+      var uid = String(d.uid || '').toUpperCase();
+      if (!uid) return;
+      if (currentTab === TAB_NAMES[OFFICE_MENU_INDEX]) {
+        if (!el('txtUid').readOnly) officePage.loadStudent(uid);   // readOnly while a transaction is saving
+        return;
+      }
+      var page = tabPages[currentTab];
+      if (page && page.onNfc) page.onNfc(uid);
+      else showCardInfo(api, uid);
+    });
+    window.addEventListener('nfc-error', function (e) {
+      if (canTap()) warn((e.detail && e.detail.message) || 'Could not read the card. Please tap it again.');
+    });
+    // Phone NFC needs a user gesture to start: begin scanning on the first click/tap after load.
+    var support = N.phoneNfcSupport();
+    if (support === 'android-native' || support === 'web-nfc') {
+      var startPhone = function () {
+        document.removeEventListener('pointerdown', startPhone, true);
+        N.startNfcScan().catch(function (e) { warn(e && e.message ? e.message : 'NFC is not available.'); });
+      };
+      document.addEventListener('pointerdown', startPhone, true);
+    }
+  }
+
   /* ================= startup ================= */
   function start() {
     var api = createApi();
-    tabCtx = { api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml };
+    tabCtx = {
+      api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml,
+      showCardInfo: function (uid) { return showCardInfo(api, uid); }
+    };
     drawLogo();
     buildTabs(showPage);
     var page = createOfficeMenu(api);
+    wireNfc(api, page);
     showPage(OFFICE_MENU_INDEX);
     fit();
     window.addEventListener('resize', fit);

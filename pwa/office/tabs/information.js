@@ -202,6 +202,15 @@
           if (e.key === 'Enter') { e.preventDefault(); if (!btnSearch.disabled) search(); }
         });
       });
+
+      // NFC tap: search this card only (other filters cleared)
+      return {
+        onNfc: function (uid) {
+          if (btnSearch.disabled) return;
+          txtUid.value = uid; txtName.value = ''; cbCampus.value = 'All'; chkUseDate.checked = false;
+          search();
+        }
+      };
     },
     show: function () {}
   };

@@ -291,6 +291,20 @@
           });
         }).catch(OfficeKit.fail(ctx, 'Excel Import Error'));
       }
+
+      // NFC tap (HandleNfcUid): put the card UID in the box; warn when the card already belongs to a student
+      return {
+        onNfc: function (uid) {
+          if (btnRegister.disabled) return;
+          txtUid.value = uid;
+          ctx.api.request('GET', '/api/office/people?uid=' + encodeURIComponent(uid)).then(function (res) {
+            var p = res && res.people && res.people[0];
+            if (!p) { txtName.focus(); return; }
+            return ctx.messageBox('This card is already registered.\n\nName: ' + (p.name || '-') + '\nStudent ID: ' + (p.studentId || '-') +
+              '\nCampus: ' + (p.campus || '-') + '\nBalance: ' + OfficeKit.money(p.totalMoney) + ' PHP', 'NFC UID', 'OK', 'warning');
+          }, function () { /* lookup failed: the register step still checks duplicates */ });
+        }
+      };
     },
     show: function () {}
   };

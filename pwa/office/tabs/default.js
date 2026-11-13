@@ -71,6 +71,15 @@
         if (u) search(u);
       });
       btnDefault.addEventListener('click', function () { if (!btnDefault.disabled) OfficeKit.busy(btnDefault, initialize()); });
+
+      // NFC tap: fill the UID box and search (same as typing it + Enter)
+      return {
+        onNfc: function (u) {
+          if (btnDefault.disabled) return;
+          uid.value = u;
+          search(u);
+        }
+      };
     },
     show: function () {}
   };
