@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "node scripts/sync-api.mjs",
   "installCommand": "",
   "outputDirectory": ".",
   "headers": [
@@ -18,6 +18,23 @@
     {
       "source": "/api/:path*",
       "destination": "/api?__path=:path*"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/api/index.js",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/api/_lib/:path*",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/scripts/:path*",
+      "destination": "/",
+      "permanent": false
     }
   ]
 }
