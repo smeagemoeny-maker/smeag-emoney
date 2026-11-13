@@ -725,15 +725,8 @@
       setStatus(false);
       N.connectPcReader(setStatus);
     }
-    // Phone NFC needs a user gesture to start: begin scanning on the first click/tap after load.
-    var support = N.phoneNfcSupport();
-    if (support === 'android-native' || support === 'web-nfc') {
-      var startPhone = function () {
-        document.removeEventListener('pointerdown', startPhone, true);
-        N.startNfcScan().catch(function (e) { warn(e && e.message ? e.message : 'NFC is not available.'); });
-      };
-      document.addEventListener('pointerdown', startPhone, true);
-    }
+    // Phone NFC: kept running (retried on touch, restarted when the page returns) with a status badge.
+    if (N.keepPhoneNfc) N.keepPhoneNfc();
   }
 
   /* ================= startup ================= */

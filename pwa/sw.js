@@ -1,4 +1,4 @@
-const cacheName = "pusan-mart-pwa-v6";
+const cacheName = "pusan-mart-pwa-v9";
 const appShell = ["./", "./index.html", "./pos.html", "./manifest.webmanifest", "./src/main.js", "./src/styles.css", "./src/api.js", "./src/nfcService.js", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

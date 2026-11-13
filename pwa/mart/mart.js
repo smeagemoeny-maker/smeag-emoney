@@ -407,25 +407,17 @@
     }
   }
 
-  // Start/stop the phone reader (Android bridge / Web NFC) and the USB keyboard reader with the screen state.
-  var nfcScanning = false;
+  // The phone reader stays on for the whole login: if it stopped between screens, Android would read the
+  // card itself and show "Empty tag". onNfc() ignores taps on screens that are not waiting for a card.
+  var phoneNfc = null;
   function wantsNfc() {
     return !!(session.manager && (route === 'buyer' || ((route === 'sales' || route === 'pusanpay') && S.awaitingTap)));
   }
   function syncNfc() {
     var N = window.PusanNfc;
-    if (!N) return;
-    var want = wantsNfc();
-    if (want && !nfcScanning) {
-      nfcScanning = true;
-      var support = N.phoneNfcSupport();
-      if (support === 'android-native' || support === 'web-nfc') {
-        N.startNfcScan().catch(function (e) { nfcScanning = false; toast(e.message || 'NFC unavailable', 3500); });
-      }
-    } else if (!want && nfcScanning) {
-      nfcScanning = false;
-      N.stopNfcScan();
-    }
+    if (!N || !N.keepPhoneNfc) return;
+    if (!phoneNfc) phoneNfc = N.keepPhoneNfc(function () { return !!session.manager; });
+    else phoneNfc.refresh();
   }
 
   function checkoutWithUid(uidStr, campus) {

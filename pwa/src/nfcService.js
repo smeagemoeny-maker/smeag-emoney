@@ -132,6 +132,139 @@
     stopWebNfc();
   }
 
+  // ---------- keep phone NFC running + on-screen status ----------
+  // While the page is NOT scanning, Android itself reads the card and shows "Empty tag" (the student cards
+  // hold no NDEF data). So the page keeps the scan on: it starts as soon as it is allowed, retries on every
+  // touch after a failure, restarts when the page comes back to the front, and shows its state in a badge.
+  // Web NFC can ask for permission only inside a touch, so without permission it waits for the next touch.
+
+  let phoneState = "off"; // off | starting | on | error
+  let phoneMessage = "";
+  let phoneWanted = () => true;
+  let phoneBadge = null;
+  let nfcPermission = "prompt";
+
+  function isPhone() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  }
+
+  function renderPhoneBadge() {
+    if (!phoneBadge) return;
+    const support = phoneNfcSupport();
+    let text;
+    let color;
+    if (support === "none") {
+      text = "✕ 이 브라우저는 NFC를 지원하지 않습니다. Android Chrome으로 여세요.";
+      color = "#C62828";
+    } else if (support === "web-nfc-insecure") {
+      text = "✕ NFC는 HTTPS 주소에서만 동작합니다.";
+      color = "#C62828";
+    } else if (!phoneWanted()) {
+      phoneBadge.hidden = true;
+      return;
+    } else if (phoneState === "on") {
+      text = "● NFC 대기 중";
+      color = "#2E7D32";
+    } else if (phoneState === "starting") {
+      text = "… NFC 켜는 중";
+      color = "#757575";
+    } else if (phoneState === "error") {
+      text = `✕ ${phoneMessage || "NFC를 켜지 못했습니다."} (터치해서 다시 시도)`;
+      color = "#C62828";
+    } else {
+      text = "○ 화면을 터치하면 NFC가 켜집니다";
+      color = "#E65100";
+    }
+    phoneBadge.hidden = false;
+    phoneBadge.textContent = text;
+    phoneBadge.style.background = color;
+  }
+
+  function setPhoneState(state, message = "") {
+    phoneState = state;
+    phoneMessage = message;
+    renderPhoneBadge();
+  }
+
+  function ensurePhoneNfc(fromTouch = false) {
+    const support = phoneNfcSupport();
+    if (support !== "android-native" && support !== "web-nfc") return renderPhoneBadge();
+    if (!phoneWanted()) {
+      if (phoneState === "on" || phoneState === "starting") {
+        stopNfcScan();
+        setPhoneState("off");
+      }
+      return renderPhoneBadge();
+    }
+    if (phoneState === "on" || phoneState === "starting") return;
+    // Without permission, scan() fails unless it is called inside a touch: wait for one.
+    if (support === "web-nfc" && !fromTouch && nfcPermission !== "granted") return setPhoneState("off");
+    setPhoneState("starting");
+    startNfcScan()
+      .then((result) => {
+        if (result.mode === "unsupported") setPhoneState("error", result.reason || "NFC를 사용할 수 없습니다.");
+        else setPhoneState("on");
+      })
+      .catch((error) => {
+        // NotAllowedError without a "denied" setting means the browser did not count it as a user tap:
+        // wait for the next tap instead of telling the user to change settings.
+        if (error?.name === "NotAllowedError" || /권한/.test(error?.message || "")) {
+          if (nfcPermission !== "denied") return setPhoneState("off");
+          return setPhoneState(
+            "error",
+            "이 사이트의 NFC가 차단되어 있습니다. 주소창 왼쪽 아이콘 → 권한 → NFC 허용 후 새로고침하세요.",
+          );
+        }
+        setPhoneState("error", error?.message || "NFC를 켜지 못했습니다.");
+      });
+  }
+
+  // isWanted(): whether the page wants the phone reader right now (e.g. logged in). Call the returned
+  // refresh() whenever that may have changed.
+  function keepPhoneNfc(isWanted) {
+    if (typeof isWanted === "function") phoneWanted = isWanted;
+    const support = phoneNfcSupport();
+    if (!phoneBadge && (support !== "none" || isPhone())) {
+      phoneBadge = document.createElement("div");
+      phoneBadge.className = "pusan-nfc-badge";
+      phoneBadge.style.cssText =
+        "position:fixed;left:50%;bottom:8px;transform:translateX(-50%);z-index:2147483000;max-width:calc(100% - 32px);" +
+        "padding:6px 12px;border-radius:14px;color:#fff;font:600 12px/1.3 sans-serif;text-align:center;" +
+        "box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer;pointer-events:auto;";
+      phoneBadge.hidden = true;
+      document.body.appendChild(phoneBadge);
+    }
+    if (support === "android-native" || support === "web-nfc") {
+      // Chrome counts a touch as a user action only when the finger lifts (pointerup / click), not on
+      // pointerdown, and Web NFC needs that to ask for permission.
+      const onUserAction = () => ensurePhoneNfc(true);
+      document.addEventListener("pointerup", onUserAction, true);
+      document.addEventListener("click", onUserAction, true);
+      document.addEventListener("keydown", onUserAction, true);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        // Chrome can drop the scan while the screen was off or another app was in front: start it again.
+        if (support === "web-nfc" && phoneState === "on") phoneState = "off";
+        ensurePhoneNfc(false);
+      });
+      if (support === "web-nfc" && navigator.permissions?.query) {
+        navigator.permissions
+          .query({ name: "nfc" })
+          .then((status) => {
+            nfcPermission = status.state;
+            status.onchange = () => {
+              nfcPermission = status.state;
+              ensurePhoneNfc(false);
+            };
+            ensurePhoneNfc(false);
+          })
+          .catch(() => ensurePhoneNfc(false));
+      }
+    }
+    ensurePhoneNfc(false);
+    return { refresh: () => ensurePhoneNfc(false) };
+  }
+
   // ---------- USB / Bluetooth reader in keyboard (HID) mode ----------
   // Readers "type" the UID very fast and finish with Enter. Human typing is much slower,
   // so a burst of >= 6 characters with < 60ms gaps ending in Enter is treated as a card.
@@ -211,6 +344,7 @@
     dispatchNfcTag,
     enableKeyboardReader,
     getReaderFormat,
+    keepPhoneNfc,
     listenForNfc,
     normalizeUid,
     phoneNfcSupport,
