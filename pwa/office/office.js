@@ -677,10 +677,17 @@
   function fit() {
     var win = el('win'), stage = el('stage');
     var vw = document.documentElement.clientWidth || window.innerWidth;
-    var scale = Math.min(1, vw / WIN_W);
-    var left = Math.max(0, Math.floor((vw - WIN_W * scale) / 2));
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    // Desktop: fit the width; on big monitors grow past 1:1 only while the whole window still fits the height.
+    // Tablet / phone: never shrink below MIN_SCALE so the text stays readable; the page then scrolls sideways.
+    var MIN_SCALE = vw < 768 ? 0.5 : 0.55;
+    var scale = Math.min(vw / WIN_W, Math.max(1, vh / WIN_H), 1.6);
+    scale = Math.max(scale, Math.min(MIN_SCALE, 1));
+    var w = Math.ceil(WIN_W * scale);
+    var left = Math.max(0, Math.floor((vw - w) / 2));
     win.style.transform = 'scale(' + scale + ')';
     win.style.left = left + 'px';
+    stage.style.width = Math.max(vw, w) + 'px';
     stage.style.height = Math.ceil(WIN_H * scale) + 'px';
   }
 

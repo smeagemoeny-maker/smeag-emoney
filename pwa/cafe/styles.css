@@ -197,3 +197,57 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .login-error { color: var(--danger); font-size: 12px; min-height: 16px; }
 .logged-out .login-wrap { display: flex; }
 .logged-out .tabs, .logged-out .tab-page.active, .logged-out #logoutBtn { display: none; }
+
+/* ===== Responsive: desktop → tablet → phone ===== */
+@media (max-width: 1280px) {
+  .sales-grid { grid-template-columns: 280px 1fr 340px; }
+}
+/* Tablet: buyer + cart side by side, products full width below. */
+@media (max-width: 1024px) {
+  main { padding: 18px 14px 14px; }
+  .sales-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "buyer cart" "products products";
+    height: auto; min-height: 0;
+  }
+  .buyer-panel { grid-area: buyer; }
+  .cart-col { grid-area: cart; }
+  .products-panel { grid-area: products; }
+  .cart-panel { max-height: 320px; }
+  .product-grid { max-height: 60vh; }
+  .two-col, .two-col.even { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .table-wrap { max-height: 60vh; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex: none; }
+}
+/* Phone: one column. */
+@media (max-width: 680px) {
+  main { padding: 12px 10px; }
+  .app-header { flex-wrap: wrap; gap: 8px; padding: 10px; }
+  .brand { gap: 12px; min-width: 0; }
+  .globe { width: 32px; height: 32px; }
+  .logo-name { font-size: 22px; }
+  .store h1 { font-size: 17px; }
+  .store p { font-size: 11px; }
+  .header-actions { margin-left: auto; }
+  .btn-ghost { min-width: 0; }
+  .tabs { padding: 0 6px; gap: 0; }
+  .tab { padding: 10px 12px; }
+  .sales-grid { grid-template-columns: 1fr; grid-template-areas: "buyer" "products" "cart"; }
+  .filters { grid-template-columns: 1fr 1fr; }
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; max-height: none; overflow: visible; }
+  .product-card { height: 130px; padding: 10px; }
+  .product-card .name { margin-bottom: 10px; }
+  .cart-panel { max-height: none; }
+  .stats { gap: 8px; }
+  .panel { padding: 12px; }
+  .table-wrap { max-height: none; }
+  table { min-width: 560px; }
+  .login-wrap { padding-top: 24px; }
+  .login-panel { width: 100%; max-width: 380px; }
+  dialog { min-width: 0; width: calc(100vw - 24px); max-width: 420px; }
+  .row { flex-wrap: wrap; }
+  .row > .input { flex: 1 1 160px; }
+}
