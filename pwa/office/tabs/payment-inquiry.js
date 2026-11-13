@@ -1,5 +1,5 @@
 /* PAYMENT INQUIRY tab — registers window.OfficeTabs['PAYMENT INQUIRY'] (see showPage() in office.js).
-   Screen only (phase 1): port of the WinForms PaymentInquiryControl.cs layout; no backend calls yet. */
+   Port of the WinForms PaymentInquiryControl.cs; also lists PUSAN MART purchases (PusanmartPayments, TABLE = PUSANMART). */
 (function () {
   'use strict';
 
@@ -117,7 +117,7 @@
   // WinForms AutoSize Label at Location (x, y): glyphs start ~5px right and are centred ~10px below.
   function wlbl(k, text, x, y, cls, parent) { return k.lbl(text, x + 4, y + 10, cls, parent); }
 
-  var CAMPUSES = ['All', 'CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM'];
+  var CAMPUSES = ['All', 'CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM', 'PUSAN MART'];
 
   window.OfficeTabs = window.OfficeTabs || {};
   window.OfficeTabs['PAYMENT INQUIRY'] = {
@@ -161,7 +161,7 @@
       band.style.fontSize = '23.8px';
 
       /* ---- pnlContent (Fill, padding 20) ---- */
-      k.lbl('PAYMENT LIST (bank + beforebank)', 24, 211, 'b navy').style.fontSize = '15.8px';
+      k.lbl('PAYMENT LIST (bank + beforebank + PUSAN MART)', 24, 211, 'b navy').style.fontSize = '15.8px';
       // DisplayColumns, table_source first (DisplayIndex = 0)
       var COLUMNS = [
         { key: 'table', header: 'TABLE', width: 95 },
@@ -195,7 +195,7 @@
           if (txtName.value.trim()) parts.push('name=' + encodeURIComponent(txtName.value.trim()));
           if (cbCampus.value !== 'All') parts.push('campus=' + encodeURIComponent(cbCampus.value));
           if (chkDate.checked) parts.push('from=' + OfficeKit.iso(dtpStart.value()), 'to=' + OfficeKit.iso(dtpEnd.value()));
-          // The web API refuses an unfiltered search over bank + beforebank.
+          // The web API refuses an unfiltered search over bank + beforebank + PusanmartPayments.
           if (!parts.length) { info('Enter a card, a name, a campus or a date range first.'); return; }
           qs = parts.join('&');
         }
@@ -246,7 +246,7 @@
         var html = '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
           '<div><h1 style="color:#2196F3">PAYMENT INQUIRY REPORT</h1><p class="meta">' + esc(criteria) + '</p></div>' +
           '<div class="meta">Generated: ' + stamp(now, '-') + ' ' + hms(now, ':') + '</div></div>' +
-          '<h2 style="color:#2196F3">RESULTS (' + rows.length + ' rows, bank + beforebank)</h2>' +
+          '<h2 style="color:#2196F3">RESULTS (' + rows.length + ' rows, bank + beforebank + PUSAN MART)</h2>' +
           OfficeKit.tableHtml(COLUMNS, rows);
         OfficeKit.printDoc('Payment_Inquiry_' + stamp(now, '') + '_' + hms(now, ''), html, {
           landscape: true,

@@ -513,25 +513,85 @@ export async function rechargeCashout({ campus, from, to, rechargeCategory, cash
   return { recharge: recharge.map((r) => mapBank(r)), cashout: cashout.map((r) => mapBank(r)), truncated };
 }
 
-// ---------- PAYMENT INQUIRY (bank + beforebank) ----------
+// ---------- PAYMENT INQUIRY (bank + beforebank + PusanmartPayments) ----------
+
+// PUSAN MART purchases are only in PusanmartPayments (nfcid citext, allpayments, register_days);
+// they never touch bank or the e-money balance. Rows are shaped like bank rows for the same grid.
+// PusanmartPayments has no campus: "PUSAN MART" in the campus box shows only these rows,
+// a real campus (CAPITAL, ...) leaves them out, All includes them.
+const NO_RESULT = { rows: [], truncated: false };
+const isPusanCampus = (campus) => /^pusan\s*mart$/i.test(String(campus || "").trim());
+
+function mapPusanmart(r, studentIds) {
+  return {
+    id: Number(r.id),
+    table: "PUSANMART",
+    uid: r.nfcid,
+    studentId: studentIds.get(String(r.nfcid || "").toLowerCase()) ?? null,
+    name: r.name,
+    campus: "Pusan Mart",
+    beforeAmount: null,
+    category: "Pusan Mart",
+    subcategory: null,
+    type: "decrease",
+    payment: num(r.allpayments),
+    totalMoney: null,
+    quantity: null,
+    remark: null,
+    source: "PusanMart",
+    order: null,
+    date: phDateTime(r.register_days),
+  };
+}
+
+async function studentIdsFor(uids) {
+  const list = [...new Set(uids.filter(Boolean).map((u) => String(u)))];
+  const ids = new Map();
+  for (const part of chunk(list, 150)) {
+    const rows = await rest(`person?select=uid,studentid&uid=in.(${part.map((u) => q(u)).join(",")})&order=id.asc`);
+    for (const r of rows) {
+      const key = String(r.uid).toLowerCase();
+      if (!ids.has(key)) ids.set(key, r.studentid); // duplicate uids: oldest person row, like checkout
+    }
+  }
+  return ids;
+}
 
 export async function paymentInquiry({ uid, name, campus, from, to }) {
   const filters = [];
-  if (String(uid || "").trim()) {
+  const pusanFilters = ["center=eq.PusanMart"];
+  const byCard = Boolean(String(uid || "").trim());
+  const pusanOnly = !byCard && isPusanCampus(campus);
+  if (byCard) {
     // Card search: the whole history, ignoring the other filters.
     filters.push(...exact("uid", uid));
+    pusanFilters.push(...exact("nfcid", uid));
   } else {
-    filters.push(...contains("name", name), ...campusFilter("campus", campus));
-    if (from || to) filters.push(...tsRange("transaction_date", from, to));
+    filters.push(...contains("name", name));
+    pusanFilters.push(...contains("name", name));
+    if (!pusanOnly) filters.push(...campusFilter("campus", campus));
+    if (from || to) {
+      filters.push(...tsRange("transaction_date", from, to));
+      pusanFilters.push(...tsRange("register_days", from, to));
+    }
   }
-  if (!filters.length) throw httpError(400, "Enter a card, name, campus or date range.");
+  if (!filters.length && !pusanOnly) throw httpError(400, "Enter a card, name, campus or date range.");
+  const withPusan = byCard || pusanOnly || !campusFilter("campus", campus).length;
   const order = "transaction_date.desc,id.desc";
-  const [a, b] = await Promise.all([
-    paged("bank", BANK_COLS, filters, order, MAX_BANK_ROWS),
-    paged("beforebank", BANK_COLS, filters, order, MAX_BANK_ROWS),
+  const [a, b, p] = await Promise.all([
+    pusanOnly ? NO_RESULT : paged("bank", BANK_COLS, filters, order, MAX_BANK_ROWS),
+    pusanOnly ? NO_RESULT : paged("beforebank", BANK_COLS, filters, order, MAX_BANK_ROWS),
+    withPusan
+      ? paged("PusanmartPayments", "id,nfcid,name,allpayments,register_days", pusanFilters, "register_days.desc,id.desc", MAX_BANK_ROWS)
+      : NO_RESULT,
   ]);
-  const all = [...a.rows.map((r) => mapBank(r, "BANK")), ...b.rows.map((r) => mapBank(r, "BEFOREBANK"))].sort(newestFirst);
-  return { rows: all.slice(0, MAX_BANK_ROWS), truncated: a.truncated || b.truncated || all.length > MAX_BANK_ROWS };
+  const studentIds = await studentIdsFor(p.rows.map((r) => r.nfcid));
+  const all = [
+    ...a.rows.map((r) => mapBank(r, "BANK")),
+    ...b.rows.map((r) => mapBank(r, "BEFOREBANK")),
+    ...p.rows.map((r) => mapPusanmart(r, studentIds)),
+  ].sort(newestFirst);
+  return { rows: all.slice(0, MAX_BANK_ROWS), truncated: a.truncated || b.truncated || p.truncated || all.length > MAX_BANK_ROWS };
 }
 
 // ---------- TransData (bank -> beforebank) ----------
@@ -579,15 +639,16 @@ export async function transDataMove(ids) {
   return { moved, atomic: false };
 }
 
-// ---------- REPORT (daily totals by category; bank + beforebank; saved corrections) ----------
+// ---------- REPORT (daily totals by category; bank + beforebank + PusanmartPayments; saved corrections) ----------
 
 export const OFFICE_CATEGORIES = ["Recharge", "AGRecharge", "EBILL", "Records", "Refund", "CashOut", "Souvenir", "Visa", "Academic", "Admin", "Activities", "Diving Shop"];
-export const STORE_CATEGORIES = ["Mart", "Cafe"];
+export const STORE_CATEGORIES = ["Mart", "Cafe", "Pusan Mart"];
 const REPORT_CATEGORIES = [...OFFICE_CATEGORIES, ...STORE_CATEGORIES];
 
 // Same as the old Windows program: a column counts only rows whose category is exactly that name.
 // Store terminal sales ("ENCANTO MART", "Capital Cafe", "Tarlac Store", ...) are NOT in Mart/Cafe,
 // so those columns (and the Store shop card) show 0 unless a row is literally "Mart"/"Cafe".
+// "Pusan Mart" = bank rows with category exactly "Pusan Mart" + PusanmartPayments (see pusanmartByDay).
 function reportColumn(category) {
   const c = String(category || "").trim().toLowerCase();
   return REPORT_CATEGORIES.find((name) => name.toLowerCase() === c) || null;
@@ -603,9 +664,11 @@ export async function report({ campus, from, to }) {
 
   const filters = [...tsRange("transaction_date", a, b), ...campusFilter("campus", campus)];
   const select = "id,category,transaction_type,payment,transaction_date";
-  const [bank, before] = await Promise.all([
-    paged("bank", select, filters, "id.asc", 100000),
-    paged("beforebank", select, filters, "id.asc", 100000),
+  const pusanOnly = isPusanCampus(campus);
+  const [bank, before, pusan] = await Promise.all([
+    pusanOnly ? NO_RESULT : paged("bank", select, filters, "id.asc", 100000),
+    pusanOnly ? NO_RESULT : paged("beforebank", select, filters, "id.asc", 100000),
+    pusanmartByDay(campus, a, b),
   ]);
 
   // day -> column -> { inc, dec }
@@ -620,6 +683,13 @@ export async function report({ campus, from, to }) {
     if (t === "increase") s.inc += Number(r.payment || 0);
     else if (t === "decrease") s.dec += Number(r.payment || 0);
     byCol.set(col, s);
+    sums.set(day, byCol);
+  }
+  for (const [day, amount] of pusan.byDay) {
+    const byCol = sums.get(day) || new Map();
+    const s = byCol.get("Pusan Mart") || { inc: 0, dec: 0 };
+    s.dec += amount;
+    byCol.set("Pusan Mart", s);
     sums.set(day, byCol);
   }
 
@@ -648,8 +718,42 @@ export async function report({ campus, from, to }) {
     officeCategories: OFFICE_CATEGORIES,
     storeCategories: STORE_CATEGORIES,
     days,
-    truncated: bank.truncated || before.truncated,
+    truncated: bank.truncated || before.truncated || pusan.truncated,
   };
+}
+
+// PUSAN MART purchases (PusanmartPayments) per PH day. The table has no campus, so a campus
+// report counts the purchases of that campus's students (person.campus, like bank.campus);
+// campus "PUSAN MART" counts every purchase.
+async function pusanmartByDay(campus, from, to) {
+  const filters = ["center=eq.PusanMart", ...tsRange("register_days", from, to)];
+  const { rows, truncated } = await paged("PusanmartPayments", "id,nfcid,allpayments,register_days", filters, "id.asc", 100000);
+  let keep = () => true;
+  if (!isPusanCampus(campus)) {
+    const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
+    const campusOf = await campusesFor(rows.map((r) => r.nfcid));
+    keep = (r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase());
+  }
+  const byDay = new Map();
+  for (const r of rows) {
+    if (!keep(r)) continue;
+    const day = phDay(r.register_days);
+    byDay.set(day, (byDay.get(day) || 0) + Number(r.allpayments || 0));
+  }
+  return { byDay, truncated };
+}
+
+async function campusesFor(uids) {
+  const list = [...new Set(uids.filter(Boolean).map((u) => String(u)))];
+  const campuses = new Map();
+  for (const part of chunk(list, 150)) {
+    const rows = await rest(`person?select=uid,campus&uid=in.(${part.map((u) => q(u)).join(",")})&order=id.asc`);
+    for (const r of rows) {
+      const key = String(r.uid).toLowerCase();
+      if (!campuses.has(key)) campuses.set(key, r.campus); // duplicate uids: oldest person row
+    }
+  }
+  return campuses;
 }
 
 // UPDATE: store every value shown on screen for that campus/day (upsert on campus+date+category).

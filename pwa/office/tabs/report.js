@@ -58,7 +58,7 @@
       var html =
         '<div class="g2-panel" style="left:0;top:0;width:1706px;height:231px"></div>' +
         '<span class="g2-lbl f10" style="left:33px;top:26px">Campus:</span>' +
-        comboHtml('campus', 'left:135px;top:21px;width:110px;height:25px', ['CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM'], 'CAPITAL') +
+        comboHtml('campus', 'left:135px;top:21px;width:110px;height:25px', ['CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM', 'PUSAN MART'], 'CAPITAL') +
         dtpHtml('start', 'f10', 'left:310px;top:21px;width:110px;height:25px') +
         dtpHtml('end', 'f10', 'left:485px;top:21px;width:110px;height:25px') +
         '<input class="g2-txt" data-k="week" type="text" value="1" spellcheck="false" autocomplete="off" style="left:660px;top:21px;width:50px;height:25px">' +
@@ -92,14 +92,14 @@
       });
 
       var OFFICE = ['Recharge', 'AGRecharge', 'EBILL', 'Records', 'Refund', 'CashOut', 'Souvenir', 'Visa', 'Academic', 'Admin', 'Activities', 'Diving Shop'];
-      var STORE = ['Mart', 'Cafe'];
+      var STORE = ['Mart', 'Cafe', 'Pusan Mart'];
       var loaded = null;        // { campus, from, to, ref } of the last SEARCH
       var weekly = null, totals = null, adjusted = {};   // adjusted[date] = { category: true }
 
       function columnsFor(editable) {
         var cols = [{ key: 'NO', header: 'NO', width: 50, align: 'center' }, { key: 'DATE', header: 'DATE', width: 100, align: 'center' }];
         OFFICE.concat(STORE).forEach(function (c) {
-          cols.push({ key: c, header: c, width: 104, align: 'right', format: 'money', editable: editable });
+          cols.push({ key: c, header: c, width: 100, align: 'right', format: 'money', editable: editable });
         });
         return cols;
       }
@@ -224,7 +224,7 @@
             weekly.setRows(clean);
             markAdjusted();
             recalc();
-            return ctx.messageBox('저장되었습니다. (' + (res && res.saved != null ? res.saved : body.days.length * 14) + '건 반영)\nSaved.', 'UPDATE 완료', 'OK', 'info');
+            return ctx.messageBox('저장되었습니다. (' + (res && res.saved != null ? res.saved : body.days.length * OFFICE.concat(STORE).length) + '건 반영)\nSaved.', 'UPDATE 완료', 'OK', 'info');
           }, function (err) {
             return ctx.messageBox('UPDATE 중 오류가 발생했습니다: ' + (err && err.message ? err.message : err), '오류', 'OK', 'error');
           });
