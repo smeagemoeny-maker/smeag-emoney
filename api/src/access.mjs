@@ -9,7 +9,8 @@ export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
 // What a manager account may do in the POS.
 //   Admin/Manager @ Pusan Mart       -> mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
 //   Admin @ any other campus          -> everything (incl. the office program)
-//   Manager @ Capital/Encanto/Talrac  -> own campus cafe sales + charge, buyer lookup, office program
+//   Manager @ Capital/Encanto/Talrac  -> own campus cafe sales, buyer lookup, office program
+//   E-money is charged ONLY in the office program (OFFICE MENU -> + INCREASE), never at a POS: canCharge is false for all.
 //   anything else (Baydream Manager, Security, StoreOrder) -> no POS access
 export function accessFor(manager) {
   const position = String(manager?.position || "");
@@ -19,10 +20,10 @@ export function accessFor(manager) {
     return { stores: ["mart"], cafeCampuses: [], canCharge: false, canPusanPay: true, office: false };
   }
   if (position === "Admin") {
-    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, canCharge: true, canPusanPay: true, office: true };
+    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, canCharge: false, canPusanPay: true, office: true };
   }
   if (position === "Manager" && CAFE_CAMPUS_BY_ACCOUNT[campus]) {
-    return { stores: ["cafe"], cafeCampuses: [CAFE_CAMPUS_BY_ACCOUNT[campus]], canCharge: true, canPusanPay: false, office: true };
+    return { stores: ["cafe"], cafeCampuses: [CAFE_CAMPUS_BY_ACCOUNT[campus]], canCharge: false, canPusanPay: false, office: true };
   }
   return null;
 }
@@ -78,7 +79,7 @@ export function assertCanSell(access, store, campus) {
 }
 
 export function assertCanCharge(access, campus) {
-  if (!access.canCharge) throw httpError(403, "This account cannot charge e-money.");
+  if (!access.canCharge) throw httpError(403, "E-money can only be charged in the SMEAG Office program (OFFICE MENU > + INCREASE).");
   if (!access.cafeCampuses.some((c) => c.toUpperCase() === String(campus || "").toUpperCase())) {
     throw httpError(403, `This account cannot charge at the ${campus} cafe.`);
   }
@@ -97,7 +98,7 @@ export function assertCanManageStore(access, campus) {
   assertCanSell(access, storeForCampus(campus), campus);
 }
 
-// Editing buyer profiles: cafe/office staff (the same accounts that may charge).
+// Editing buyer profiles: office staff (Admin / campus Managers).
 export function assertCanEditPeople(access) {
   if (!access.canCharge && !access.office) throw httpError(403, "This account cannot edit buyers.");
 }

@@ -47,13 +47,17 @@
 
 ## Account access (locked by mgperson position/campus)
 
+E-money is charged only in the Office program (`office/`, OFFICE MENU → + INCREASE → `/api/office/transactions`).
+`POST /api/charges` (old POS charge) is refused for every account; the cafe "Top up" button only shows that notice.
+The site root (`index.html`) links to the three legacy screens; the earlier mobile POS moved to `pos.html`.
+
 Defined in `api/src/access.mjs`, enforced by the API and mirrored in the PWA nav.
 
 | Account | Screens | Cafe campus | Charge |
 |---|---|---|---|
 | Admin / Manager @ Pusan Mart (e.g. psmart) | PUSAN Mart, 구매자, 부산페이 | - | No |
-| Admin @ Capital/Encanto/Talrac (e.g. ceo) | All | All (selectable) | Yes |
-| Manager @ Capital / Encanto / Talrac | SMEAG Cafe, 구매자 | Own campus only (Talrac → Tarlac) | Yes |
+| Admin @ Capital/Encanto/Talrac (e.g. ceo) | All | All (selectable) | Office only |
+| Manager @ Capital / Encanto / Talrac | SMEAG Cafe, 구매자, Office | Own campus only (Talrac → Tarlac) | Office only |
 | Baydream Manager, Security, StoreOrder | Login refused | - | - |
 
 - Login returns an HMAC-signed token (12h). All endpoints except `/api/health` and login need `Authorization: Bearer <token>`.

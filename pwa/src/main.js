@@ -883,7 +883,7 @@ function accessSummary() {
 
 function enterDemo() {
   state.manager = { id: 0, name: "Demo Manager", position: "Admin", campus: "Pusan Mart" };
-  state.access = { stores: ["cafe", "mart"], cafeCampuses: [...STORES.cafe.campuses], canCharge: true, canPusanPay: true };
+  state.access = { stores: ["cafe", "mart"], cafeCampuses: [...STORES.cafe.campuses], canCharge: false, canPusanPay: true };
   state.demoMode = true;
   resetStores();
   state.status = "데모 모드입니다. 실제 DB에는 저장되지 않습니다.";

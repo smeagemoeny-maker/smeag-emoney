@@ -669,23 +669,8 @@ $('buyerTable').onclick = function (e) {
     $('byId').value = b.id; $('byName').value = b.name; $('byUid').value = b.uid; $('byUid').readOnly = true;
     $('bySid').value = b.sid || ''; $('byAge').value = b.age == null ? '' : b.age; $('byBalance').value = b.balance;
   }
-  if (ds.topup) {
-    b = db.buyers.find(function (x) { return x.id === Number(ds.topup); });
-    if (!b) return;
-    if (!access().canCharge) return toast('This account cannot charge e-money.', true);
-    var campus = campuses().find(function (c) { return upper(c) === upper(normCampus(b.campus)); }) || sellCampus();
-    var input = prompt('Top-up amount for ' + (b.name || b.uid) + ' (PHP) at ' + campus + ':', '100');
-    if (input === null) return;
-    var amt = Number(input);
-    if (!(amt > 0)) return toast('Enter an amount greater than 0', true);
-    busy(e.target, async function () {
-      var res = await API.charge({ uid: b.uid, campus: campus, amount: amt });
-      b.balance = Number(res.totalMoney);
-      if (state.buyer && state.buyer.uid === b.uid) { state.buyer.balance = b.balance; renderCart(); }
-      drawBuyers();
-      toast('New balance: ' + money(b.balance));
-    });
-  }
+  // Same button as the legacy cafe, but e-money is charged only in the Office program.
+  if (ds.topup) return toast('E-money can only be charged in the SMEAG Office program (OFFICE MENU > + INCREASE).', true);
   if (ds.del) toast('Buyers cannot be deleted here. Use the Office program.', true);
 };
 

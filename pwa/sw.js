@@ -1,5 +1,5 @@
-const cacheName = "pusan-mart-pwa-v5";
-const appShell = ["./", "./index.html", "./manifest.webmanifest", "./src/main.js", "./src/styles.css", "./src/api.js", "./src/nfcService.js", "./icons/icon.svg"];
+const cacheName = "pusan-mart-pwa-v6";
+const appShell = ["./", "./index.html", "./pos.html", "./manifest.webmanifest", "./src/main.js", "./src/styles.css", "./src/api.js", "./src/nfcService.js", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(appShell)));
