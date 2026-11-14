@@ -1,4 +1,4 @@
-// ===== SMEAG MART (cafe POS) - app logic, backed by the e-money API (data.js) =====
+// ===== SMEAG CAFE (cafe POS) - app logic, backed by the e-money API (data.js) =====
 var $ = function (id) { return document.getElementById(id); };
 var money = function (n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -13,7 +13,8 @@ var db = {
   buyers: [],         // last Buyer Info search result
   sales: [],          // POS sale lines for the history/report range
 };
-var state = { buyer: null, discount: 0, cart: [] }; // cart: [{id, qty}]
+// cart: [{id, qty}]; confirm: tapped card {uid, loading, person, error} waiting for Pay / Cancel
+var state = { discount: 0, discountLabel: 'No Discount', cart: [], confirm: null, awaitingTap: false, paying: false, error: '' };
 
 function toast(msg, isError) {
   var t = $('toast');
@@ -138,7 +139,6 @@ function startApp() {
   if (!$('rTo').value) $('rTo').value = todayStr(0);
   renderCart();
   renderTab(activeTab(), true);
-  $('buyerInput').focus();
 }
 
 // ===================================================================
@@ -170,7 +170,7 @@ function campusProducts(c) {
 }
 
 // ===================================================================
-// SALES
+// SALES  (same flow as the PUSAN Mart screen: pick products → tap card → check student info → Pay)
 // ===================================================================
 function fillSelect(sel, values, keep) {
   if (keep === undefined) keep = true;
@@ -186,26 +186,31 @@ function refreshFilters() {
   fillSelect($('fSub'), uniq(byCat.map(function (p) { return p.sub; })));
 }
 
+// Search matches the product name or its category (like PUSAN Mart). Sold-out items go last.
 function filteredProducts() {
   var cat = $('fCategory').value, sub = $('fSub').value;
   var q = $('fName').value.trim().toLowerCase();
   return campusProducts(sellCampus()).filter(function (p) {
-    return (!cat || p.category === cat) && (!sub || p.sub === sub) && (!q || p.name.toLowerCase().includes(q));
-  }).sort(function (a, b) { return a.category.localeCompare(b.category) || a.name.localeCompare(b.name); });
+    return (!cat || p.category === cat) && (!sub || p.sub === sub) &&
+      (!q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+  }).sort(function (a, b) {
+    return (a.stock <= 0) - (b.stock <= 0) || a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+  });
 }
 
 function renderProducts() {
   var list = filteredProducts();
   $('productCount').textContent = list.length;
   $('productGrid').innerHTML = list.length ? list.map(function (p) {
-    var badge = p.stock > 0 ? '<span class="badge ' + (p.stock <= 10 ? 'low' : '') + '">' + p.stock + '</span>' : '';
-    return '<div class="product-card ' + (p.stock <= 0 ? 'out' : '') + '" data-id="' + p.id + '" title="' + esc(p.category) + ' / ' + esc(p.sub) + '">' +
+    var out = p.stock <= 0;
+    var badge = out ? '<span class="badge out">품절</span>' : '<span class="badge ' + (p.stock <= 10 ? 'low' : '') + '">' + p.stock + '</span>';
+    return '<div class="product-card ' + (out ? 'out' : '') + '" data-id="' + p.id + '" title="' + esc(p.category) + ' / ' + esc(p.sub) + '">' +
       badge +
       '<div class="name">' + esc(p.name) + '</div>' +
-      '<div class="campus">' + esc(p.campus) + '</div>' +
-      '<div class="price">' + money(p.price) + '</div>' +
+      '<div class="campus">' + esc(p.category || p.campus) + '</div>' +
+      '<div class="price">₱' + money(p.price) + '</div>' +
     '</div>';
-  }).join('') : '<div class="empty">' + (productsLoading ? 'Loading…' : 'No products found') + '</div>';
+  }).join('') : '<div class="empty">' + (productsLoading ? 'Loading…' : 'No products match the selected filters.') + '</div>';
 }
 
 $('productGrid').onclick = function (e) {
@@ -225,23 +230,44 @@ $('fCampus').onchange = function () {
 };
 ['fCategory', 'fSub'].forEach(function (id) { $(id).onchange = function () { refreshFilters(); renderProducts(); }; });
 $('fName').oninput = renderProducts;
-// Enter in the name box adds the product when the name matches exactly (or only one product is left).
+// Enter in the search box adds the product when the name matches exactly (or only one product is left).
 $('fName').onkeydown = function (e) {
   if (e.key !== 'Enter') return;
   var q = $('fName').value.trim().toLowerCase();
   if (!q) return;
-  var list = filteredProducts();
+  var list = filteredProducts().filter(function (x) { return x.stock > 0; });
   var p = list.find(function (x) { return x.name.toLowerCase() === q; }) || (list.length === 1 ? list[0] : null);
   if (p) { addToCart(p.id); $('fName').value = ''; renderProducts(); }
 };
+
+// Short UI sounds (Web Audio, no files). ok = two rising notes, error = one low buzz.
+var audioCtx = null;
+function beep(kind) {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    audioCtx = audioCtx || new AC();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var notes = kind === 'error' ? [[220, 0, 0.22, 'square']] : [[880, 0, 0.08, 'sine'], [1320, 0.07, 0.1, 'sine']];
+    notes.forEach(function (n) {
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + n[1];
+      o.type = n[3]; o.frequency.value = n[0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + n[2]);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + n[2] + 0.02);
+    });
+  } catch (e) { /* sound is optional */ }
+}
 
 function addToCart(id) {
   var p = findProduct(id);
   if (!p) return;
   var line = state.cart.find(function (l) { return l.id === id; });
   var inCart = line ? line.qty : 0;
-  if (inCart + 1 > p.stock) return toast('Not enough stock for ' + p.name, true);
+  if (p.stock <= 0) { beep('error'); return toast('재고가 없습니다', true); }
+  if (inCart + 1 > p.stock) { beep('error'); return toast('Not enough stock: ' + p.name + ' (in stock: ' + p.stock + ')', true); }
   if (line) line.qty++; else state.cart.push({ id: id, qty: 1 });
+  state.error = '';
   renderCart();
 }
 
@@ -249,7 +275,7 @@ function changeQty(id, delta) {
   var line = state.cart.find(function (l) { return l.id === id; });
   var p = findProduct(id);
   if (!line || !p) return;
-  if (delta > 0 && line.qty + 1 > p.stock) return toast('Not enough stock for ' + p.name, true);
+  if (delta > 0 && line.qty + 1 > p.stock) { beep('error'); return toast('Not enough stock: ' + p.name + ' (in stock: ' + p.stock + ')', true); }
   line.qty += delta;
   if (line.qty <= 0) state.cart = state.cart.filter(function (l) { return l.id !== id; });
   renderCart();
@@ -271,7 +297,7 @@ function totals() {
 }
 
 function renderCart() {
-  $('cartList').innerHTML = state.cart.map(function (l) {
+  $('cartList').innerHTML = state.cart.length ? state.cart.map(function (l) {
     var p = findProduct(l.id);
     if (!p) return '';
     return '<div class="cart-item">' +
@@ -282,22 +308,18 @@ function renderCart() {
         '<button class="btn btn-danger btn-sm" data-q="x" data-id="' + p.id + '">✕</button>' +
       '</div>' +
     '</div>';
-  }).join('');
+  }).join('') : '<div class="muted cart-empty">Your cart is empty. Select a product.</div>';
 
   var t = totals();
   $('sSubtotal').textContent = money(t.subtotal);
   $('sItems').textContent = t.items;
   $('discountRow').hidden = !state.discount;
-  $('sDiscLabel').textContent = 'Discount (' + state.discount + '%)';
+  $('sDiscLabel').textContent = state.discountLabel;
   $('sDiscount').textContent = '-' + money(t.discount);
   $('sTotal').textContent = money(t.total) + ' PHP';
-
-  var bal = state.buyer ? state.buyer.balance : 0;
-  $('bBalance').textContent = money(bal);
-  var proj = bal - t.total;
-  $('bProjected').textContent = money(proj);
-  $('bProjected').style.color = state.buyer && proj < 0 ? 'var(--danger)' : '';
-  document.querySelectorAll('[data-discount]').forEach(function (b) { b.classList.toggle('selected', Number(b.dataset.discount) === state.discount); });
+  document.querySelectorAll('[data-discount]').forEach(function (b) { b.classList.toggle('sel', b.dataset.label === state.discountLabel); });
+  if (!state.cart.length) { state.confirm = null; state.awaitingTap = false; }
+  renderPay();
 }
 
 $('cartList').onclick = function (e) {
@@ -308,87 +330,151 @@ $('cartList').onclick = function (e) {
   else changeQty(id, Number(b.dataset.q));
 };
 
-// ----- Buyer -----
-function setBuyer(b) {
-  state.buyer = b;
-  $('bName').textContent = b ? b.name || '-' : '-';
-  $('bUid').textContent = b ? b.uid : '-';
-  $('bSid').textContent = b ? b.sid || '-' : '-';
-  $('bAge').textContent = b ? (b.age == null ? '-' : b.age) : '-';
-  renderCart();
-}
-// Card UID first (USB RFID readers type the UID + Enter), then an exact Student ID / UID match.
-async function lookupBuyer(v) {
-  var b = await API.personByUid(v);
-  if (b) return b;
-  var list = await API.searchPeople(v);
-  var lv = v.toLowerCase();
-  return list.find(function (x) { return x.sid && x.sid.toLowerCase() === lv; }) ||
-         list.find(function (x) { return x.uid && x.uid.toLowerCase() === lv; }) || null;
-}
-function scanBuyer() {
-  var v = $('buyerInput').value.trim();
-  if (!v) return toast('Tap a card or type a UID / Student ID', true);
-  busy($('scanBtn'), async function () {
-    var b = await lookupBuyer(v);
-    if (!b) { setBuyer(null); return toast('Buyer not found', true); }
-    setBuyer(b);
-    $('buyerInput').value = '';
-    toast('Buyer: ' + (b.name || b.uid));
-  });
-}
-$('scanBtn').onclick = scanBuyer;
-$('buyerInput').onkeydown = function (e) { if (e.key === 'Enter') scanBuyer(); }; // RFID readers send Enter
-
 document.querySelectorAll('[data-discount]').forEach(function (btn) {
   btn.onclick = function () {
-    var d = Number(btn.dataset.discount);
-    state.discount = state.discount === d ? 0 : d; // click again to remove
+    state.discount = Number(btn.dataset.discount);
+    state.discountLabel = btn.dataset.label;
     renderCart();
   };
 });
 
 function resetSale() {
-  state.cart = []; state.discount = 0; setBuyer(null); $('buyerInput').value = '';
+  state.cart = []; state.discount = 0; state.discountLabel = 'No Discount';
+  state.confirm = null; state.awaitingTap = false; state.error = '';
+  renderCart();
 }
-$('resetBtn').onclick = resetSale;
 
-// ----- Checkout -----
-$('checkoutBtn').onclick = function () {
-  if (!state.cart.length) return toast('Cart is empty', true);
-  if (!state.buyer) return toast('Scan a buyer card first', true);
-  var t = totals();
-  if (state.buyer.balance < t.total) return toast('Insufficient balance', true);
+// ----- Card tap → student info → Pay (PUSAN Mart flow) -----
+function isPhone() { return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''); }
 
-  busy($('checkoutBtn'), async function () {
-    var campus = sellCampus();
-    var items = state.cart.map(function (l) {
-      var p = findProduct(l.id);
-      return { productId: p.id, name: p.name, category: p.category, price: p.price, qty: l.qty };
-    });
-    var label = state.discount ? state.discount + '% Discount' : 'No Discount';
-    var res = await API.checkout({
-      uid: state.buyer.uid, store: 'cafe', campus: campus,
-      cart: items.map(function (i) { return { productId: i.productId, quantity: i.qty }; }),
-      discountLabel: label, discountRate: state.discount / 100,
-    });
-    var sale = {
-      no: receiptNo(res.orderId, null),
-      date: new Date().toISOString(),
-      buyerName: res.buyerName || state.buyer.name || state.buyer.uid,
-      seller: manager().name || manager().login_id,
-      items: items,
-      subtotal: t.subtotal, discountPct: state.discount,
-      discount: round2(t.subtotal - res.finalTotal), total: res.finalTotal,
-      balanceAfter: res.remainingBalance,
-    };
-    showReceipt(sale);
-    resetSale();
-    salesCache.key = ''; // history / report must reload
-    await loadProducts().catch(fail); // fresh stock numbers
-    refreshFilters(); renderProducts();
+function buyerChip() {
+  var c = state.confirm; if (!c) return '';
+  var x = '<button type="button" class="bx" data-pay="clear" title="Clear">✕</button>';
+  if (c.loading) return '<div class="buyerchip"><div class="bi"><b>Looking up card...</b></div>' + x + '</div>';
+  if (c.error) return '<div class="buyerchip err"><div class="bi"><b>' + esc(c.error) + '</b><span>' + esc(c.uid) + '</span></div>' + x + '</div>';
+  var p = c.person;
+  return '<div class="buyerchip"><div class="bi"><b>' + esc(p.name || '-') + '</b><span>' + esc(p.sid || '-') + '</span></div>' +
+    '<div class="bm">₱' + money(p.balance) + '</div>' + x + '</div>';
+}
+
+function renderPay() {
+  var row = $('buyerRow');
+  row.innerHTML = buyerChip();
+  row.hidden = !state.confirm;
+  var c = state.confirm, total = totals().total, h;
+  if (c && !c.loading && c.person && !state.paying) {
+    // Card tapped: the student's info is under "Sales"; the staff checks it and confirms here.
+    var after = round2(c.person.balance - total), short = after < 0;
+    h = '<div class="paybox">' +
+      '<div class="sum-row"><span>' + esc(c.person.name || '-') + ' · ' + esc(c.person.sid || '-') + '</span><span>Balance ₱' + money(c.person.balance) + '</span></div>' +
+      '<div class="sum-row"><span>After payment</span><b' + (short ? ' class="neg"' : '') + '>₱' + money(after) + '</b></div>' +
+      (short ? '<div class="pay-error">Insufficient balance.</div>' : '') +
+      '<div class="payacts"><button type="button" class="btn" data-pay="cancel">Cancel</button>' +
+      '<button type="button" class="btn btn-green" data-pay="pay"' + (short ? ' disabled' : '') + '>Pay ₱' + money(total) + '</button></div></div>';
+  } else {
+    var enabled = state.cart.length > 0 && !state.paying, wait = state.awaitingTap || state.paying;
+    var where = isPhone() ? 'on the back of the phone' : 'on the card reader';
+    h = '<div class="nfcbox' + (wait ? ' wait' : '') + (enabled ? ' enabled' : '') + '"' + (enabled ? ' data-pay="wait"' : '') + '>' +
+      '<div class="ic">📶</div>' +
+      '<div class="nfc-main">' + (state.paying ? 'Processing payment...' : state.awaitingTap ? 'Please tap your NFC card...' : 'Tap your NFC card ' + where) + '</div>' +
+      '<div class="nfc-sub">' + (state.cart.length ? 'Check the student info, then confirm payment' : 'Add products to the cart first') + '</div></div>';
+  }
+  $('payArea').innerHTML = h;
+  $('checkoutError').textContent = state.error || '';
+}
+
+function onPayClick(e) {
+  var b = e.target.closest('[data-pay]');
+  if (!b || b.disabled) return;
+  var a = b.dataset.pay;
+  if (a === 'clear' || a === 'cancel') { state.confirm = null; renderPay(); }
+  else if (a === 'wait') { state.error = ''; state.awaitingTap = true; renderPay(); }
+  else if (a === 'pay' && state.confirm && state.confirm.person) {
+    var uid = state.confirm.uid; state.confirm = null; payWithCard(uid);
+  }
+}
+$('payArea').onclick = onPayClick;
+$('buyerRow').onclick = onPayClick;
+
+// Every NFC tap (phone NFC, USB keyboard reader, ACR122U bridge) lands here.
+function onCardTap(uid) {
+  uid = String(uid || '').trim();
+  if (!uid || !session()) return;
+  if ($('dialog').open) return;
+  var tab = activeTab();
+  if (tab === 'buyers') { $('bySearch').value = uid; renderBuyers(); return; }
+  if (tab !== 'sales') return toast('Card read (' + uid + '). Open Sales or Buyer Info to use this card.');
+  if (state.paying) return toast('Processing payment... please wait.');
+  if (!state.cart.length) { beep('error'); return toast('Card read (' + uid + '). Add items to the cart first.', true); }
+  state.awaitingTap = false;
+  showPayConfirm(uid);
+}
+
+async function showPayConfirm(uid) {
+  var c = { uid: uid, loading: true, person: null, error: null };
+  state.confirm = c; state.error = ''; beep('ok'); renderPay();
+  try {
+    c.person = await API.personByUid(uid);
+    if (!c.person) c.error = 'This NFC card is not registered.';
+  } catch (e) {
+    c.error = 'An error occurred during lookup: ' + e.message;
+  }
+  c.loading = false;
+  if (c.error) beep('error');
+  if (state.confirm !== c) return; // cleared or replaced by a newer tap
+  renderPay();
+  if (!c.error) $('payArea').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // bring Pay / Cancel into view
+}
+
+async function payWithCard(uid) {
+  if (!state.cart.length || state.paying) return;
+  var t = totals(), campus = sellCampus();
+  var items = state.cart.map(function (l) {
+    var p = findProduct(l.id);
+    return { productId: p.id, name: p.name, category: p.category, price: p.price, qty: l.qty };
   });
-};
+  var label = state.discountLabel, pct = state.discount;
+  state.paying = true; state.error = ''; renderPay();
+  var res;
+  try {
+    res = await API.checkout({
+      uid: uid, store: 'cafe', campus: campus,
+      cart: items.map(function (i) { return { productId: i.productId, quantity: i.qty }; }),
+      discountLabel: label, discountRate: pct / 100,
+    });
+  } catch (e) {
+    state.paying = false;
+    var msg = e.message;
+    if (!e.status || e.status >= 500) msg = 'An error occurred during checkout: ' + e.message;
+    else if (/insufficient balance/i.test(e.message)) {
+      try {
+        var p = await API.personByUid(uid);
+        if (p) msg = 'Insufficient balance. (Current balance: ₱' + money(p.balance) + ', required: ₱' + money(t.total) + ')';
+      } catch (e2) { /* keep the server message */ }
+    } else if (/^Insufficient stock/i.test(e.message)) {
+      await loadProducts().catch(function () {});
+      refreshFilters(); renderProducts();
+    }
+    beep('error');
+    state.error = msg; renderCart();
+    return;
+  }
+  state.paying = false;
+  showReceipt({
+    no: receiptNo(res.orderId, null),
+    date: new Date().toISOString(),
+    buyerName: res.buyerName || uid,
+    seller: manager().name || manager().login_id,
+    items: items,
+    subtotal: t.subtotal, discountPct: pct,
+    discount: round2(t.subtotal - res.finalTotal), total: res.finalTotal,
+    balanceAfter: res.remainingBalance,
+  });
+  resetSale();
+  salesCache.key = ''; // history / report must reload
+  await loadProducts().catch(fail); // fresh stock numbers
+  refreshFilters(); renderProducts();
+}
 
 function receiptNo(order, id) {
   if (order) return 'R' + String(order).replace(/-/g, '').slice(0, 8).toUpperCase();
@@ -397,7 +483,7 @@ function receiptNo(order, id) {
 function showReceipt(s) {
   var when = /^\d{4}-\d{2}-\d{2} /.test(s.date) ? fmtDate(s.date) : new Date(s.date).toLocaleString();
   showDialog('<div class="receipt">' +
-    '<div style="text-align:center;font-weight:bold">SMEAG MART</div>' +
+    '<div style="text-align:center;font-weight:bold">SMEAG CAFE</div>' +
     '<div style="text-align:center">' + esc(s.no) + ' — ' + esc(when) + '</div><hr/>' +
     '<div>Buyer: ' + esc(s.buyerName) + '</div><div>Seller: ' + esc(s.seller) + '</div><hr/>' +
     s.items.map(function (i) { return '<div class="line"><span>' + esc(i.name) + ' ×' + i.qty + '</span><span>' + money(i.amount != null ? i.amount : i.price * i.qty) + '</span></div>'; }).join('') +
@@ -653,7 +739,6 @@ $('buyerForm').onsubmit = function (e) {
       age: $('byAge').value === '' ? null : Number($('byAge').value),
     });
     db.buyers = db.buyers.map(function (b) { return b.id === id ? updated : b; });
-    if (state.buyer && state.buyer.id === id) setBuyer(updated);
     toast('Buyer updated');
     clearBuyerForm(); drawBuyers();
   });
@@ -698,4 +783,26 @@ $('byBalance').readOnly = true;
 $('byBalance').title = 'The balance changes only through sales and top-ups.';
 $('pSub').readOnly = true;
 $('pBarcode').disabled = true;
+// NFC: phone NFC (Android app bridge / Web NFC), USB keyboard-mode reader and the ACR122U PC bridge,
+// all through ../src/nfcService.js — the same reader code as the PUSAN Mart screen.
+(function wireNfc() {
+  var N = window.PusanNfc;
+  if (!N) return;
+  N.listenForNfc(function (d) { onCardTap(d.uid); });
+  N.enableKeyboardReader(function () { return !!session() && !$('dialog').open; });
+  window.addEventListener('nfc-error', function (e) { if (session()) toast((e.detail && e.detail.message) || 'NFC read error', true); });
+  if (N.keepPhoneNfc) N.keepPhoneNfc(function () { return !!session(); });
+  if (N.connectPcReader && !isPhone()) {
+    var status = document.createElement('span');
+    status.className = 'reader-status';
+    document.querySelector('.header-actions').prepend(status);
+    var setStatus = function (on) {
+      status.classList.toggle('on', on);
+      status.textContent = on ? '● Card reader' : '○ Card reader';
+      status.title = on ? 'ACR122U bridge connected (127.0.0.1:47321)' : 'USB keyboard readers work without the bridge; start desktop-bridge for an ACR122U';
+    };
+    setStatus(false);
+    N.connectPcReader(setStatus);
+  }
+})();
 if (session() && session().token) startApp(); else showLogin('');

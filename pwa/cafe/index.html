@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SMEAG MART - Management System</title>
+  <title>SMEAG CAFE - Management System</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="logged-out">
@@ -18,7 +18,7 @@
         </div>
       </div>
       <div class="store">
-        <h1>SMEAG MART</h1>
+        <h1>SMEAG CAFE</h1>
         <p id="sellerInfo">Seller: - | Position: - | Campus: -</p>
       </div>
     </div>
@@ -49,60 +49,47 @@
     </div>
 
     <!-- ===== SALES ===== -->
+    <!-- Same flow as PUSAN Mart: search + pick products, tap the NFC card, check the student info, press Pay. -->
     <section id="tab-sales" class="tab-page active">
       <div class="sales-grid">
-        <!-- Buyer panel -->
-        <div class="panel buyer-panel">
-          <div class="label">Buyer info</div>
-          <div class="row">
-            <input id="buyerInput" class="input" placeholder="Tap card or type UID / Student ID" autocomplete="off" />
-            <button id="scanBtn" class="btn">Scan</button>
-          </div>
-          <div class="row two">
-            <button class="btn btn-orange" data-discount="10">10% Discount</button>
-            <button class="btn btn-pink" data-discount="30">30% Discount</button>
-          </div>
-          <button id="resetBtn" class="btn btn-salmon full">Reset</button>
-
-          <dl class="buyer-fields">
-            <dt>Name</dt><dd id="bName">-</dd>
-            <dt>Card UID</dt><dd id="bUid">-</dd>
-            <dt>Student ID</dt><dd id="bSid">-</dd>
-            <dt>Age</dt><dd id="bAge">-</dd>
-          </dl>
-          <hr />
-          <div class="label">Current balance (PHP)</div>
-          <div id="bBalance" class="big">0.00</div>
-          <div class="label mt">Projected balance (after purchase)</div>
-          <div id="bProjected" class="big muted">0.00</div>
-        </div>
-
         <!-- Products panel -->
         <div class="panel products-panel">
-          <div class="label">Products <span class="count">— <span id="productCount">0</span> items</span></div>
+          <div class="sales-head">
+            <div class="sales-title">Sales</div>
+            <input id="fName" class="input search" type="search" placeholder="🔍 Search product" autocomplete="off" spellcheck="false" />
+          </div>
+          <!-- Tapped card's student info: its own row under "Sales" so product search stays available. -->
+          <div id="buyerRow" class="buyer-row" hidden></div>
           <div class="filters">
             <label>Campus<select id="fCampus" class="input"></select></label>
             <label>Category<select id="fCategory" class="input"></select></label>
             <label>Sub-category<select id="fSub" class="input"></select></label>
           </div>
-          <label class="full-label">Product name<input id="fName" class="input" autocomplete="off" /></label>
+          <div class="label">Products <span class="count">— <span id="productCount">0</span> items</span></div>
           <div id="productGrid" class="product-grid"></div>
         </div>
 
         <!-- Cart column -->
-        <div class="cart-col">
+        <div class="cart-col" id="cartCol">
           <div class="panel cart-panel">
             <div class="label">Cart</div>
             <div id="cartList" class="cart-list"></div>
           </div>
           <div class="panel summary">
+            <div class="chips">
+              <button type="button" class="chip" data-discount="0" data-label="No Discount">No Discount</button>
+              <button type="button" class="chip" data-discount="15" data-label="Manager 15%">Manager 15%</button>
+              <button type="button" class="chip" data-discount="10" data-label="Teacher 10%">Teacher 10%</button>
+            </div>
             <div class="sum-row"><span>Subtotal</span><span id="sSubtotal">0.00</span></div>
             <div class="sum-row" id="discountRow" hidden><span id="sDiscLabel">Discount</span><span id="sDiscount">0.00</span></div>
             <div class="sum-row"><span>Items</span><span id="sItems">0</span></div>
             <hr />
             <div class="sum-total"><span>Total</span><span id="sTotal">0.00 PHP</span></div>
+            <div id="checkoutError" class="pay-error"></div>
           </div>
-          <button id="checkoutBtn" class="btn btn-green checkout">Checkout / pay</button>
+          <!-- NFC tap guide, or the Pay / Cancel box once a card was tapped -->
+          <div id="payArea"></div>
         </div>
       </div>
     </section>
@@ -225,6 +212,7 @@
   <dialog id="dialog"><div id="dialogBody"></div><form method="dialog"><button class="btn full">Close</button></form></dialog>
   <div id="toast" class="toast"></div>
 
+  <script src="../src/nfcService.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>

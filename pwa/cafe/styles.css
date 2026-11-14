@@ -15,6 +15,9 @@
   --badge-bg: #1f4a33;
   --badge-text: #9fe0b9;
   --danger: #e05555;
+  --ok-bg: #16331f;
+  --ok-border: #2f6b43;
+  --err-bg: #3a1a1a;
 }
 [data-theme="light"] {
   --bg: #f1f1f1;
@@ -26,6 +29,9 @@
   --muted: #6f6f6f;
   --badge-bg: #d8f2e2;
   --badge-text: #1b6b3e;
+  --ok-bg: #e8f5e9;
+  --ok-border: #a5d6a7;
+  --err-bg: #fdecea;
 }
 
 * { box-sizing: border-box; }
@@ -112,13 +118,28 @@ label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color:
 
 /* ===== Sales layout ===== */
 .sales-grid {
-  display: grid; grid-template-columns: 320px 1fr 410px; gap: 14px; height: 100%; min-height: 520px;
+  display: grid; grid-template-columns: 1fr 400px; gap: 14px; height: 100%; min-height: 520px;
 }
-.buyer-panel .row { margin-bottom: 8px; }
-.buyer-panel .input { height: 40px; }
-.buyer-fields { margin: 14px 0 0; }
-.buyer-fields dt { font-size: 11px; color: var(--muted); margin-top: 10px; }
-.buyer-fields dd { margin: 4px 0 0; }
+/* "Sales" + product search on one line; the tapped card's student info gets its own row below. */
+.sales-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.sales-title { font-size: 20px; font-weight: 700; flex: none; }
+.input.search { flex: 1 1 auto; min-width: 0; height: 40px; border-radius: 20px; padding: 0 16px; }
+.buyer-row { display: flex; margin-bottom: 10px; }
+.buyerchip {
+  flex: 1 1 auto; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 4px 6px 4px 14px;
+  border-radius: 22px; background: var(--ok-bg); border: 1px solid var(--ok-border); animation: tin .18s ease-out;
+}
+.buyerchip.err { background: var(--err-bg); border-color: var(--danger); color: var(--danger); }
+.buyerchip .bi { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.buyerchip .bi b, .buyerchip .bi span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.buyerchip .bi span { font-size: 11px; color: var(--muted); }
+.buyerchip .bm { flex: none; font-weight: 800; font-size: 16px; }
+.buyerchip .bx {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; border: none; background: transparent;
+  color: var(--muted); cursor: pointer; font: inherit;
+}
+.buyerchip .bx:hover { background: var(--panel-2); }
+@keyframes tin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 .products-panel { display: flex; flex-direction: column; min-height: 0; }
 .filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 10px; }
@@ -159,7 +180,33 @@ label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color:
 .summary .sum-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .summary .sum-row span:first-child { color: var(--text); }
 .sum-total { display: flex; justify-content: space-between; font-size: 20px; font-weight: 700; }
-.checkout { height: 52px; font-size: 16px; border-radius: 10px; }
+.badge.out { background: #5a1f1f; color: #ffb0b0; }
+.cart-empty { font-size: 12px; padding: 6px 0; }
+.chips { display: flex; gap: 6px; margin-bottom: 12px; }
+.chip {
+  flex: 1; padding: 8px 4px; border-radius: 18px; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--text); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.chip.sel { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.pay-error { color: var(--danger); font-size: 12px; padding-top: 8px; }
+.pay-error:empty { display: none; }
+/* NFC tap guide (same as PUSAN Mart) and the Pay / Cancel box after a tap */
+.nfcbox {
+  border: 2px dashed var(--border); border-radius: 14px; padding: 16px 12px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted);
+}
+.nfcbox.enabled { cursor: pointer; color: var(--text); border-color: var(--accent); }
+.nfcbox.wait { background: var(--ok-bg); border-color: var(--green); border-style: solid; }
+.nfcbox .ic { font-size: 28px; line-height: 1.1; }
+.nfcbox .nfc-main { font-size: 14px; font-weight: 700; }
+.nfcbox .nfc-sub { font-size: 11px; color: var(--muted); }
+.paybox { padding: 14px; border-radius: 14px; background: var(--ok-bg); border: 1px solid var(--ok-border); font-size: 13px; }
+.paybox .sum-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+.paybox .neg { color: var(--danger); }
+.payacts { display: flex; gap: 8px; padding-top: 10px; }
+.payacts .btn { flex: 1; height: 46px; font-size: 15px; border-radius: 10px; }
+.reader-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.reader-status.on { color: var(--green); }
 
 /* ===== Forms & tables ===== */
 .two-col { display: grid; grid-template-columns: 340px 1fr; gap: 14px; align-items: start; margin-bottom: 14px; }
@@ -200,19 +247,12 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 
 /* ===== Responsive: desktop → tablet → phone ===== */
 @media (max-width: 1280px) {
-  .sales-grid { grid-template-columns: 280px 1fr 340px; }
+  .sales-grid { grid-template-columns: 1fr 340px; }
 }
 /* Tablet: buyer + cart side by side, products full width below. */
 @media (max-width: 1024px) {
   main { padding: 18px 14px 14px; }
-  .sales-grid {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas: "buyer cart" "products products";
-    height: auto; min-height: 0;
-  }
-  .buyer-panel { grid-area: buyer; }
-  .cart-col { grid-area: cart; }
-  .products-panel { grid-area: products; }
+  .sales-grid { grid-template-columns: 1fr; height: auto; min-height: 0; }
   .cart-panel { max-height: 320px; }
   .product-grid { max-height: 60vh; }
   .two-col, .two-col.even { grid-template-columns: 1fr; }
@@ -235,7 +275,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .btn-ghost { min-width: 0; }
   .tabs { padding: 0 6px; gap: 0; }
   .tab { padding: 10px 12px; }
-  .sales-grid { grid-template-columns: 1fr; grid-template-areas: "buyer" "products" "cart"; }
+  .sales-title { font-size: 17px; }
+  .reader-status { display: none; }
   .filters { grid-template-columns: 1fr 1fr; }
   .product-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; max-height: none; overflow: visible; }
   .product-card { height: 130px; padding: 10px; }
