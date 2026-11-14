@@ -1,0 +1,3 @@
+[{"id":1,"m_menu":"Store","s_menu":"Payment store","payment":0.00,"register_date":"2025-04-07T06:39:11+00:00","Campus":"CAPITAL","image_path":"ProductImg/Product.jpg","stock":0,"sales_number":0,"min_stock":5,"manager":null}, 
+ {"id":773,"m_menu":"","s_menu":"","payment":0.00,"register_date":"2026-01-05T09:44:24+00:00","Campus":"CAPITAL","image_path":"ProductImg/Product.jpg","stock":995,"sales_number":5,"min_stock":5,"manager":"tcafe"}, 
+ {"id":987,"m_menu":"Pusan Mart(Cookie)","s_menu":"Ppangiyo 100g (Peanut Butter Ring Snack)","payment":99.00,"register_date":"2026-07-20T01:18:25+00:00","Campus":"CAPITAL","image_path":"null","stock":1010,"sales_number":0,"min_stock":5,"manager":"tcafe"}]

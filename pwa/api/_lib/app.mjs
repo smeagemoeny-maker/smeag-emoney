@@ -93,14 +93,18 @@ const routes = [
     return adminPurchases(query(url, "from", "to", "campus", "store", "search"), purchaseCampuses(access));
   }],
   ["GET", /^\/api\/products$/, async ({ req, url }) => {
-    verifyRequest(req);
+    const { access } = verifyRequest(req);
     const campus = url.searchParams.get("campus");
     const store = url.searchParams.get("store");
+    if (store) {
+      if (store !== "cafe" && store !== "mart") throw httpError(400, "Store must be 'cafe' or 'mart'.");
+      if (!campus) throw httpError(400, "Campus is required with store.");
+      // A sales screen only gets the products of a store this account may sell at (no other campus).
+      assertCanSell(access, store, campus);
+    }
     const rows = await repo.listProducts({ campus });
     // ?store=cafe|mart: only this campus, this store + unclassified products (stores.mjs).
     if (!store) return rows;
-    if (store !== "cafe" && store !== "mart") throw httpError(400, "Store must be 'cafe' or 'mart'.");
-    if (!campus) throw httpError(400, "Campus is required with store.");
     return filterProductsForStore(rows, { campus, store });
   }],
   ["GET", /^\/api\/people\/by-nfc\/([^/]+)$/, async ({ req, match }) => {

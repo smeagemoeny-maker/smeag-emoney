@@ -4,7 +4,7 @@
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
 import { httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
-import { checkoutCategory } from "./stores.mjs";
+import { checkoutCategory, filterProductsForStore, productStore } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
 
@@ -81,13 +81,34 @@ export async function findPersonByUid(uid) {
 
 export async function createCheckout({ uid, store, campus, cart, discountLabel, discountRate }) {
   validateCheckoutInput({ uid, store, campus, cart, discountRate });
+  const sellStore = store || "mart";
+
+  // Campuses are never mixed: every product must be one this campus store lists (stores.mjs).
+  // Each line is booked to the product's own store, so a mart item sold at the cafe counter
+  // counts as mart sales ("Capital Mart"); unclassified products ("ENCANTO MINI CAKES", "WATER") are mart sales too.
+  const ids = [...new Set(cart.map((item) => Number(item.productId)))];
+  const rows = await rest(`store_menus?select=id,Campus,m_menu,s_menu&id=in.(${ids.join(",")})`);
+  const byId = new Map(rows.map((row) => [Number(row.id), mapProduct(row)]));
+  const lines = cart.map((item) => {
+    const product = byId.get(Number(item.productId));
+    if (!product) throw httpError(404, `Product not found: ${item.productId}`);
+    if (!filterProductsForStore([product], { campus, store: sellStore }).length) {
+      throw httpError(403, `${product.sMenu || product.id} is not sold at the ${campus} ${sellStore}.`);
+    }
+    return {
+      productId: Number(item.productId),
+      quantity: Number(item.quantity),
+      category: checkoutCategory(productStore(product) || "mart", campus),
+    };
+  });
+
   return rest("rpc/pos_checkout", {
     method: "POST",
     body: {
       p_uid: normalizeUid(uid),
       p_store: store ?? null,
       p_campus: campus,
-      p_cart: cart.map((item) => ({ productId: Number(item.productId), quantity: Number(item.quantity) })),
+      p_cart: lines,
       p_discount_label: discountLabel || "No Discount",
       p_discount_rate: Number(discountRate || 0),
       p_category: checkoutCategory(store || "mart", campus),

@@ -37,6 +37,7 @@ declare
     v_total    numeric(14, 2) := 0;
     v_order    text := gen_random_uuid()::text;
     v_category text;
+    v_line_category text;
 begin
     if coalesce(p_discount_rate, 0) not in (0, 0.1, 0.15) then
         raise sqlstate 'PT400' using message = 'Invalid discount rate.';
@@ -75,6 +76,9 @@ begin
             raise sqlstate 'PT409' using message = 'Insufficient stock: ' || coalesce(v_product.s_menu, '');
         end if;
 
+        -- bank.category of this line: the product's own store (set by the API), else the selling store.
+        v_line_category := coalesce(nullif(trim(v_item ->> 'category'), ''), v_category);
+
         v_line := round(coalesce(v_product.payment, 0) * v_qty * (1 - coalesce(p_discount_rate, 0)), 2);
         v_total := v_total + v_line;
         if v_balance < v_line then
@@ -93,7 +97,7 @@ begin
                                  transaction_type, payment, totalmoney, quantity,
                                  transaction_source, remark, "order")
         values (v_person.uid, coalesce(v_person.studentid, ''), coalesce(v_person.name, ''), p_campus,
-                v_before, v_category, v_product.s_menu, 'decrease', v_line, v_balance, v_qty,
+                v_before, v_line_category, v_product.s_menu, 'decrease', v_line, v_balance, v_qty,
                 'PWA POS', coalesce(p_discount_label, 'No Discount'), v_order);
     end loop;
 

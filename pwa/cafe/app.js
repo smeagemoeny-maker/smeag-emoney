@@ -114,6 +114,7 @@ $('loginForm').onsubmit = function (e) {
 $('logoutBtn').onclick = function () {
   if (state.cart.length && !confirm('The cart is not empty. Log out anyway?')) return;
   API.saveSession(null);
+  $('fCampus').innerHTML = ''; $('fCategory').value = ''; $('fSub').value = '';
   resetSale();
   db.products = []; db.campusIds = {}; db.buyers = []; db.sales = []; salesCache.key = '';
   renderProducts(); renderProductTab(); drawBuyers();
@@ -185,10 +186,12 @@ function startApp() {
   document.body.classList.remove('logged-out');
   // The store is fixed by the login ID: the account's own campus, or the store picked when the
   // ID was entered in the store dialog (session.campus). The (hidden) fCampus select keeps it.
-  var list = storeCampuses();
-  $('fCampus').innerHTML = list.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
+  // Never reuse the previous login's fCampus value (logout -> login with another store's ID).
+  var allowed = campuses();
   var mine = normCampus(session().campus || m.campus);
-  $('fCampus').value = list.includes(mine) ? mine : list[0];
+  var store = allowed.includes(mine) ? mine : allowed[0];
+  $('fCampus').innerHTML = store ? '<option>' + esc(store) + '</option>' : '';
+  $('fCampus').value = store || '';
   $('fCampus').dataset.prev = $('fCampus').value;
   renderDiscountChips();
   // History / report default range: last 30 days.
