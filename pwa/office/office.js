@@ -358,6 +358,7 @@
     }
     page.root.hidden = false;
     if (impl.show) impl.show();
+    if (isMobile()) flowPage(page.root);
   }
 
   /* ================= OFFICE MENU page (OfficeMenuPage.cs) ================= */
@@ -670,9 +671,106 @@
     return { loadStudent: loadStudent, loadMenus: loadMenus, focusUid: function () { txtUid.focus(); } };
   }
 
+  /* ================= mobile layout (office-mobile.css) ================= */
+  // Phones get a stacked layout instead of the scaled 1706px window. Auto below 900px wide;
+  // the title-bar button forces PC / Mobile and is remembered per device.
+  var MOBILE_MAX = 900;
+  function viewPref() { try { return window.localStorage.getItem('officeView') || ''; } catch (e) { return ''; } }
+  function isMobile() {
+    var p = viewPref();
+    if (p === 'pc') return false;
+    if (p === 'mobile') return true;
+    return (document.documentElement.clientWidth || window.innerWidth) < MOBILE_MAX;
+  }
+
+  // Generic reflow for the tab pages: their controls are absolutely placed at design coordinates.
+  // Measure those coordinates (desktop layout), then lay the controls out as wrapped rows in the same reading order.
+  var BG_CLASS = /(^|\s)(g1-pnl|g2-panel|g3-top|g3-body|g3-bar|g3-white)(\s|$)/;
+  function flowContainer(root) {
+    var kids = root.children;
+    return kids.length === 1 && kids[0].children.length > 3 ? kids[0] : root;   // g3 tabs wrap everything in .g3-page
+  }
+  function unflowPage(root) {
+    var box = flowContainer(root);
+    root.classList.remove('m-flowroot');
+    box.classList.remove('m-flow');
+    Array.prototype.slice.call(box.querySelectorAll(':scope > .m-br')).forEach(function (b) { box.removeChild(b); });
+    Array.prototype.forEach.call(box.children, function (c) {
+      c.classList.remove('m-hide', 'm-grow', 'm-full', 'm-big');
+      c.style.order = '';
+    });
+  }
+  function flowPage(root) {
+    unflowPage(root);
+    var box = flowContainer(root);
+    var items = Array.prototype.map.call(box.children, function (c) {
+      return { el: c, l: c.offsetLeft, t: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight };
+    }).filter(function (it) { return it.w > 0 || it.h > 0; });
+    items.sort(function (a, b) { return a.t - b.t || a.l - b.l; });
+    var rows = [];
+    items.forEach(function (it) {
+      var c = it.el;
+      var empty = !c.children.length && !c.textContent.trim() && !c.hasAttribute('data-k');
+      if (empty && BG_CLASS.test(c.className)) { c.classList.add('m-hide'); return; }
+      if (it.w >= 900 && it.h > 150) c.classList.add('m-big');
+      else if (it.w >= 900) c.classList.add('m-full');
+      else if (it.w >= 400) c.classList.add('m-grow');
+      var row = rows[rows.length - 1];
+      // same row when this control's vertical middle is above the row's bottom (big blocks capped so they don't swallow rows)
+      var ch = Math.min(it.h, 40);
+      if (!row || it.t + ch / 2 >= row.b) rows.push(row = { b: 0, items: [] });
+      row.b = Math.max(row.b, it.t + ch);
+      row.items.push(it);
+    });
+    var order = 0;
+    rows.forEach(function (row) {
+      row.items.sort(function (a, b) { return a.l - b.l; });
+      var br = document.createElement('i');
+      br.className = 'm-br';
+      br.style.order = order++;
+      box.appendChild(br);
+      row.items.forEach(function (it) { it.el.style.order = order++; });
+    });
+    box.classList.add('m-flow');
+    root.classList.add('m-flowroot');
+  }
+
+  var mobileOn = null;
+  function applyViewMode() {
+    var on = isMobile();
+    var btn = document.querySelector('.tb-view');
+    if (btn) btn.textContent = on ? 'PC view' : 'Mobile view';
+    if (on === mobileOn) return;
+    mobileOn = on;
+    document.body.classList.toggle('m', on);
+    Object.keys(tabPages).forEach(function (k) {
+      var r = tabPages[k].root;
+      if (on && !r.hidden) flowPage(r); else unflowPage(r);
+    });
+    if (!on) document.querySelectorAll('.modal-layer > .dlg').forEach(function (d) {   // re-center open dialogs
+      d.style.left = Math.round((1706 - d.offsetWidth) / 2) + 'px';
+      d.style.top = Math.round((998 - d.offsetHeight) / 2) + 'px';
+    });
+  }
+  function addViewToggle() {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'tb-view'; b.tabIndex = -1;
+    b.addEventListener('click', function () {
+      try { window.localStorage.setItem('officeView', isMobile() ? 'pc' : 'mobile'); } catch (e) { /* ignore */ }
+      applyViewMode(); fit();
+    });
+    document.querySelector('.titlebar').appendChild(b);
+  }
+
   /* ================= fit-to-width scaling ================= */
   function fit() {
+    applyViewMode();
     var win = el('win'), stage = el('stage');
+    if (mobileOn) {
+      win.style.transform = ''; win.style.left = '';
+      stage.style.width = ''; stage.style.height = '';
+      return;
+    }
     var vw = document.documentElement.clientWidth || window.innerWidth;
     var vh = window.innerHeight || document.documentElement.clientHeight;
     // Desktop: fit the width; on big monitors grow past 1:1 only while the whole window still fits the height.
@@ -744,6 +842,7 @@
     buildTabs(showPage);
     var page = createOfficeMenu(api);
     wireNfc(api, page);
+    addViewToggle();
     showPage(OFFICE_MENU_INDEX);
     fit();
     window.addEventListener('resize', fit);
