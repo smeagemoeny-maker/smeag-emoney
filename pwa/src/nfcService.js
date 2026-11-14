@@ -362,8 +362,8 @@
   // ---------- one-step install hint ----------
   // When the bridge does not answer a few seconds after the page opens on a Windows PC or a Mac, show a small
   // card with the one line that installs it (bridge/install.ps1, bridge/install.sh): it then starts by itself at
-  // every sign-in, so staff never copy files or keep a window open. "이 PC에는 리더 없음" hides it for good.
-  const BRIDGE_HINT_OFF = "pusanBridgeHintOff";
+  // every sign-in, so staff never copy files or keep a window open. It cannot be dismissed: it stays until the
+  // bridge connects, and comes back if the bridge stops for more than a few seconds.
   let bridgeHint = null;
   let bridgeHintTimer = null;
 
@@ -398,12 +398,8 @@
   }
 
   function showBridgeHint() {
-    let off = false;
-    try {
-      off = localStorage.getItem(BRIDGE_HINT_OFF) === "1";
-    } catch {}
     const info = bridgeInstall();
-    if (off || !info || bridgeHint || !document.body) return;
+    if (!info || bridgeHint || !document.body) return;
 
     const el = (tag, css, text) => {
       const n = document.createElement(tag);
@@ -456,21 +452,10 @@
       if (navigator.clipboard?.writeText) navigator.clipboard.writeText(info.cmd).then(done, fallback);
       else fallback();
     });
-    const later = btn("나중에", false);
-    later.type = "button";
-    later.addEventListener("click", hideBridgeHint);
-    const never = btn("이 PC에는 리더 없음", false);
-    never.type = "button";
-    never.addEventListener("click", () => {
-      try {
-        localStorage.setItem(BRIDGE_HINT_OFF, "1");
-      } catch {}
-      hideBridgeHint();
-    });
-    row.append(copy, later, never);
+    row.append(copy);
     box.appendChild(row);
     box.appendChild(
-      el("div", "color:#5a6762;font-size:12px;margin-top:8px", "설치가 끝나면 이 안내는 저절로 사라집니다. 브라우저가 기기 접근을 물으면 [허용]을 누르세요."),
+      el("div", "color:#5a6762;font-size:12px;margin-top:8px", "카드 리더를 쓰려면 설치가 필요합니다. 설치가 끝나면 이 안내는 저절로 사라집니다. 브라우저가 기기 접근을 물으면 [허용]을 누르세요."),
     );
     bridgeHint = box;
     document.body.appendChild(box);
@@ -481,6 +466,7 @@
     pcBridge = new EventSource(PC_BRIDGE_URL);
     let bridgeUp = false;
     bridgeHintTimer = setTimeout(() => {
+      bridgeHintTimer = null;
       if (!bridgeUp) showBridgeHint();
     }, 6000);
     pcBridge.addEventListener("open", () => {
@@ -490,6 +476,12 @@
     });
     pcBridge.addEventListener("error", () => {
       bridgeUp = false;
+      if (!bridgeHintTimer && !bridgeHint) {
+        bridgeHintTimer = setTimeout(() => {
+          bridgeHintTimer = null;
+          if (!bridgeUp) showBridgeHint();
+        }, 6000);
+      }
       onStatus?.(false);
     });
     pcBridge.addEventListener("card", (event) => {
