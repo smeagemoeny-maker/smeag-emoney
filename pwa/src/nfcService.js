@@ -317,7 +317,8 @@
       if (now - lastKeyAt > MAX_KEY_GAP_MS) buffer = "";
       lastKeyAt = now;
 
-      if (event.key === "Enter" || event.key === "Tab") {
+      const isEnd = event.key === "Enter" || event.key === "Tab" || event.code === "Enter" || event.code === "NumpadEnter";
+      if (isEnd) {
         const raw = buffer;
         buffer = "";
         if (raw.length >= MIN_UID_LENGTH) {
@@ -334,7 +335,11 @@
         }
         return;
       }
-      if (/^[0-9a-fA-F]$/.test(event.key)) buffer += event.key;
+      // With the Korean (or another) IME on, a-f arrive as Hangul ('ㅁ', 'ㅠ' ...) or "Process":
+      // fall back to the physical key (event.code) so the UID is still read.
+      const code = /^(?:Key([A-Fa-f])|Digit(\d)|Numpad(\d))$/.exec(event.code || "");
+      const ch = /^[0-9a-fA-F]$/.test(event.key) ? event.key : code ? code[1] || code[2] || code[3] : null;
+      if (ch) buffer += ch;
       else if (event.key.length === 1 && !/[\s:-]/.test(event.key)) buffer = "";
     },
     true,
