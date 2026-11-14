@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PUSAN MART 카드 리더기 설치</title>
+<style>
+  :root{
+    --bg:#eef1f6; --card:#fff; --ink:#1d2330; --sub:#5b6475; --line:#dfe3ea;
+    --blue:#0b57d0; --blue-d:#0a4ec0; --green:#13804a; --green-bg:#e7f5ec;
+    --red:#b4342d; --red-bg:#fdeceb; --amber:#8a6400; --amber-bg:#fff6e0; --amber-line:#e7cf8a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.6 system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink)}
+  main{max-width:880px;margin:0 auto;padding:24px 16px 56px}
+
+  .hero{background:linear-gradient(135deg,#0b57d0,#1b73e8);color:#fff;border-radius:16px;padding:24px;margin-bottom:16px}
+  .hero h1{font-size:22px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  .hero p{margin:0;opacity:.92;font-size:14.5px}
+  .chip{display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;padding:3px 11px;font-size:12.5px;margin-top:12px}
+
+  .statusbar{border-radius:14px;padding:14px 16px;margin-bottom:16px;border:1px solid var(--line);background:var(--card);display:flex;gap:12px;align-items:flex-start}
+  .statusbar .dot{width:13px;height:13px;border-radius:50%;background:#c7cdd8;margin-top:5px;flex:none}
+  .statusbar.ok{background:var(--green-bg);border-color:#bfe3cd}
+  .statusbar.ok .dot{background:var(--green)}
+  .statusbar.bad{background:var(--red-bg);border-color:#f3c7c4}
+  .statusbar.bad .dot{background:var(--red)}
+  #status{font-weight:700;font-size:15.5px}
+  #action{margin:3px 0 0;color:var(--sub);font-size:13.5px}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px;-webkit-overflow-scrolling:touch}
+  .tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--sub);border-radius:999px;padding:9px 15px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .tabs button:hover{background:#eef4fe}
+  .tabs button[aria-selected="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+  .card h3{margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:8px}
+  .badge{font-size:12px;background:#eef1f6;border:1px solid var(--line);border-radius:6px;padding:1px 8px;color:var(--sub);font-weight:600}
+  .best{background:var(--green-bg);border-color:#bfe3cd;color:var(--green)}
+
+  .steps{list-style:none;counter-reset:s;margin:0 0 12px;padding:0}
+  .steps li{counter-increment:s;position:relative;padding:5px 0 5px 34px}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:4px;width:22px;height:22px;border-radius:50%;background:#e6edfb;color:var(--blue);font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center}
+
+  .dlrow{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 2px}
+  .dl{display:inline-flex;align-items:center;gap:7px;height:44px;padding:0 18px;border-radius:9px;text-decoration:none;font-weight:700;font-size:14.5px;border:1px solid var(--blue);color:var(--blue);background:#fff}
+  .dl.primary{background:var(--blue);color:#fff}
+  .dl.primary:hover{background:var(--blue-d)}
+  .dl:hover{background:#eef4fe}
+
+  .cmd{display:flex;gap:8px;align-items:stretch;margin:8px 0}
+  code{flex:1;display:block;background:#10141c;color:#e6edf3;padding:11px 13px;border-radius:8px;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre}
+  .copy{border:1px solid #c7cdd8;background:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font:inherit;font-weight:600}
+  .copy:hover{background:#eef1f5}
+  .muted{color:var(--sub);font-size:13px}
+
+  .flow{background:#fff8ec;border:1px solid var(--amber-line);border-radius:10px;padding:12px 14px;margin:10px 0}
+  .flow b{color:var(--ink)}
+  .ok-txt{color:var(--green);font-weight:700}
+  .warn-txt{color:var(--red);font-weight:700}
+  .tbq{font-weight:700;margin:16px 0 4px;font-size:14.5px}
+  .note{background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:10px;padding:10px 13px;color:#6b5400;font-size:13.5px;margin-top:12px}
+  .final{text-align:center;color:var(--sub);font-size:13px;margin-top:22px}
+</style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <h1>💳 PUSAN MART 카드 리더기 설치</h1>
+    <p>Mart · Office · Cafe 화면에서 USB 카드 리더기(ACR122U)로 학생 카드를 읽게 해주는 작은 프로그램입니다.</p>
+    <span class="chip">PC 한 대당 한 번만 설치 · 이후 로그인할 때마다 자동 실행</span>
+  </div>
+
+  <div class="statusbar" id="statusbox">
+    <span class="dot"></span>
+    <div>
+      <div id="status">이 PC 상태 확인 중…</div>
+      <p id="action" hidden></p>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="intro" aria-selected="true">📋 개요</button>
+    <button role="tab" data-tab="win" aria-selected="false">🪟 Windows 설치</button>
+    <button role="tab" data-tab="mac" aria-selected="false">🍎 Mac 설치</button>
+    <button role="tab" data-tab="connect" aria-selected="false">🔌 연결·확인</button>
+    <button role="tab" data-tab="trouble" aria-selected="false">⚠ 문제 해결</button>
+  </div>
+
+  <!-- 개요 -->
+  <section data-panel="intro">
+    <div class="card">
+      <h3>📋 무엇을, 왜 설치하나요?</h3>
+      <ul style="margin:0;padding-left:18px">
+        <li>USB 카드 리더기(ACR122U)를 PC에서 쓰려면 이 작은 연결 프로그램이 필요합니다.</li>
+        <li>브라우저만으로는 USB 리더기를 직접 잡을 수 없어서(보안), 이 프로그램이 리더기와 화면을 이어줍니다.</li>
+        <li><b>PC 한 대당 한 번만</b> 설치하면 됩니다. 이후 로그인할 때마다 자동으로 켜지고, 꺼지면 다시 켜집니다.</li>
+      </ul>
+      <div class="note">📱 <b>핸드폰·태블릿은 설치가 필요 없습니다.</b> Android 기기는 카드를 댈 때 “NFC 사용 허용” 한 번만 수락하면 바로 됩니다. 설치가 필요한 건 PC + USB 리더기뿐입니다.</div>
+      <p class="muted" style="margin-top:14px">위쪽 탭에서 사용하는 기기(Windows / Mac)를 고르세요.</p>
+    </div>
+  </section>
+
+  <!-- Windows -->
+  <section data-panel="win" hidden>
+    <div class="card">
+      <h3>🪟 방법 A <span class="badge best">가장 확실함 · 추천</span></h3>
+      <p class="muted" style="margin-top:0">긴 명령을 붙여넣지 않고, 열려 있는 PowerShell 창에 한 줄만 붙여넣는 방법입니다.</p>
+      <ol class="steps">
+        <li>시작 메뉴에서 <b>PowerShell</b> 검색 → 마우스 오른쪽 → <b>관리자 권한으로 실행</b>.</li>
+        <li>아래 <b>복사</b>를 누르고, 열린 창에 <b>마우스 오른쪽 클릭(붙여넣기)</b> 후 <b>Enter</b>.</li>
+      </ol>
+      <div class="cmd"><code id="win">[Net.ServicePointManager]::SecurityProtocol='Tls12';$b='https://smeag-estore.vercel.app/bridge';irm $b/install.ps1|iex</code><button class="copy" data-copy="win">복사</button></div>
+      <div class="note">“관리자 권한으로 실행”이 다른 계정 로그인을 요구하거나 같은 오류가 나면 → <b>문제 해결</b> 탭을 보세요. 그 PC는 관리자만 풀 수 있습니다.</div>
+    </div>
+    <div class="card">
+      <h3>🪟 방법 B <span class="badge">설치 파일 받기</span></h3>
+      <p class="muted" style="margin-top:0">파일을 받아 더블클릭하는 방법입니다. 일부 PC는 브라우저·백신이 <code style="all:unset;font-weight:700">.cmd</code> 받기를 막습니다. 그럴 땐 <b>ZIP</b>으로 받으세요.</p>
+      <ol class="steps">
+        <li>아래 버튼으로 설치 파일을 받습니다. (막히면 ZIP → 압축 풀기)</li>
+        <li>받은 <b>install.cmd</b> 를 더블클릭합니다.</li>
+        <li>Windows 경고가 뜨면 <b>추가 정보 → 실행</b> 을 누릅니다.</li>
+      </ol>
+      <div class="dlrow">
+        <a class="dl primary" id="dlZip" href="install.zip" download="PUSAN-MART-install.zip">⬇ ZIP으로 받기 (권장)</a>
+        <a class="dl" id="dlCmd" href="install.cmd" download="PUSAN-MART-install.cmd">install.cmd 직접 받기</a>
+        <a class="dl" href="uninstall.cmd" download="PUSAN-MART-uninstall.cmd">제거 파일</a>
+      </div>
+    </div>
+    <div class="card">
+      <h3>🪟 방법 C <span class="badge">Win+R 한 줄</span></h3>
+      <ol class="steps">
+        <li>키보드에서 <b>Win 키 + R</b></li>
+        <li>아래 줄을 붙여넣고 <b>Enter</b></li>
+      </ol>
+      <div class="cmd"><code id="winR">powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';$b='https://smeag-estore.vercel.app/bridge';irm $b/install.ps1|iex"</code><button class="copy" data-copy="winR">복사</button></div>
+      <p class="muted">제거: Win+R 에 아래를 붙여넣기 →</p>
+      <div class="cmd"><code id="winrm">powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://smeag-estore.vercel.app/bridge/uninstall.ps1|iex"</code><button class="copy" data-copy="winrm">복사</button></div>
+      <div class="note">“액세스할 수 없습니다” 오류가 나면 Win+R이 막힌 것입니다. 방법 A(관리자 PowerShell)를 쓰세요.</div>
+    </div>
+  </section>
+
+  <!-- Mac -->
+  <section data-panel="mac" hidden>
+    <div class="card">
+      <h3>🍎 macOS 설치</h3>
+      <ol class="steps">
+        <li><b>터미널</b> 앱을 엽니다 (Cmd + Space → “터미널”).</li>
+        <li>아래 줄을 붙여넣고 <b>Return</b>.</li>
+      </ol>
+      <div class="cmd"><code id="mac">curl -fsSL https://smeag-estore.vercel.app/bridge/install.sh | sh</code><button class="copy" data-copy="mac">복사</button></div>
+      <p class="muted">제거:</p>
+      <div class="cmd"><code id="macrm">curl -fsSL https://smeag-estore.vercel.app/bridge/install.sh | sh -s -- --remove</code><button class="copy" data-copy="macrm">복사</button></div>
+    </div>
+  </section>
+
+  <!-- 연결·확인 -->
+  <section data-panel="connect" hidden>
+    <div class="card">
+      <h3>🔌 리더기 연결 · 동작 확인</h3>
+      <ol class="steps">
+        <li>USB 카드 리더기를 PC에 <b>직접</b> 꽂습니다. (허브 말고 본체에)</li>
+        <li>리더기에 불이 들어오면 Mart / Office 화면을 <b>새로고침</b> 합니다.</li>
+        <li>화면 위쪽에 <span class="ok-txt">● Card reader connected</span> 가 보이면 정상입니다.</li>
+        <li>카드를 리더기에 대면 학생이 조회됩니다.</li>
+      </ol>
+      <p class="muted">이 페이지를 새로고침했을 때 맨 위 상태가 <span class="ok-txt">“설정 완료”</span> 로 바뀌어도 확인됩니다.</p>
+    </div>
+  </section>
+
+  <!-- 문제 해결 -->
+  <section data-panel="trouble" hidden>
+    <div class="card">
+      <h3>⚠ 문제 해결</h3>
+
+      <div class="tbq">① “이 장치, 경로 또는 파일에 액세스할 수 없습니다” 오류</div>
+      <p class="muted">그 PC에서 PowerShell 실행이 막혀 있는 것입니다. 다음 순서로 확인하세요.</p>
+      <div class="flow">
+        시작 메뉴에서 <b>PowerShell</b> 검색 → 마우스 오른쪽 → <b>관리자 권한으로 실행</b>
+        <br>· <span class="ok-txt">바로 열림</span> → 그 창에 <b>Windows 탭 방법 B의 한 줄</b>을 붙여넣고 Enter. 설치됩니다.
+        <br>· <span class="warn-txt">다른 계정 로그인 요구</span> → 평소 쓰는 계정은 일반 사용자입니다. 관리자에게 그 계정 기준 설치를 요청하세요.
+        <br>· <span class="warn-txt">똑같은 오류</span> → 관리자가 정책/백신으로 PowerShell을 막은 PC입니다. 그 PC 관리자만 풀 수 있습니다.
+      </div>
+
+      <div class="tbq">② 설치는 됐는데 카드가 안 읽힌다</div>
+      <p class="muted">리더기가 빠졌거나 연결이 헐거운 경우가 대부분입니다. USB를 다시 꽂고(허브 말고 본체에) 화면을 새로고침하세요. 리더기 불이 들어오는지 먼저 확인합니다.</p>
+
+      <div class="tbq">③ 카드가 두 번 입력된다</div>
+      <p class="muted">예전 키보드 방식 프로그램이 함께 떠 있는 경우입니다. 관리자에게 문의하세요.</p>
+
+      <div class="note">웹페이지가 클릭 없이 PC에 프로그램을 자동으로 까는 것은 보안상 불가능합니다. 파일을 받아 여는 과정은 생략할 수 없습니다.</div>
+    </div>
+  </section>
+
+  <p class="final">PUSAN MART · smeag-estore.vercel.app/bridge</p>
+</main>
+
+<script>
+  // ---- 탭 ----
+  var tabs=document.querySelectorAll('.tabs [role="tab"]');
+  var panels=document.querySelectorAll('[data-panel]');
+  function show(name){
+    tabs.forEach(function(b){b.setAttribute('aria-selected', b.dataset.tab===name ? 'true':'false');});
+    panels.forEach(function(p){p.hidden = p.dataset.panel!==name;});
+    try{history.replaceState(null,'','#'+name);}catch(e){}
+  }
+  tabs.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.tab);});});
+
+  // ---- 복사 ----
+  document.querySelectorAll('[data-copy]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var t=document.getElementById(b.dataset.copy).textContent;
+      navigator.clipboard.writeText(t).then(function(){b.textContent='복사됨';setTimeout(function(){b.textContent='복사';},1500);});
+    });
+  });
+
+  // ---- 상태 확인 + 기기에 맞는 탭 자동 선택 ----
+  var box=document.getElementById('statusbox');
+  var s=document.getElementById('status');
+  var action=document.getElementById('action');
+  var ua=navigator.userAgent||'';
+  var isWin=/Windows/i.test(ua);
+  var isMac=/Macintosh|Mac OS X/i.test(ua) && !(navigator.maxTouchPoints>1);
+
+  // 처음 탭: URL 해시 > 기기 추정 > 개요
+  var hash=(location.hash||'').replace('#','');
+  var valid={intro:1,win:1,mac:1,connect:1,trouble:1};
+  var start = valid[hash] ? hash : (isWin ? 'win' : isMac ? 'mac' : 'intro');
+  show(start);
+
+  function off(){
+    box.className='statusbar bad';
+    s.textContent='이 PC에 카드 리더기 프로그램이 아직 설치되지 않았습니다.';
+    action.hidden=false;
+    action.innerHTML=isWin
+      ? '<b>Windows 설치</b> 탭의 방법 A(관리자 PowerShell)가 가장 확실합니다.'
+      : 'Windows / Mac 탭에서 기기에 맞는 순서를 따라 하세요.';
+    // 자동 다운로드는 하지 않습니다. 브라우저가 클릭 없는 .cmd 받기를 차단하기 때문입니다.
+    // 다운로드는 사용자가 버튼을 직접 눌렀을 때만 일어납니다(OS 보안).
+  }
+  var t=setTimeout(off,4000);
+  try{
+    var es=new EventSource('http://127.0.0.1:47321/events');
+    es.onopen=function(){clearTimeout(t);box.className='statusbar ok';s.textContent='설정 완료 — 카드 리더기 프로그램이 실행 중입니다.';action.hidden=true;};
+    es.onerror=function(){if(box.className.indexOf('ok')<0){clearTimeout(t);off();}};
+  }catch(e){off();}
+</script>
+</body>
+</html>
