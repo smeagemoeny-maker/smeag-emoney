@@ -547,9 +547,10 @@
     // Campus / category / subcategory sit in one compact menu row so the products, cart and total stay visible.
     var h = '<div class="screen">' +
       '<div class="sb salesHead"><div class="title" style="padding:0">Sales</div>' +
-      (S.confirm ? buyerChip() :
-      '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="🔍 Search product" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">') +
+      '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="🔍 Search product" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">' +
       '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
+      // Tapped card's student info gets its own row under "Sales" so product search stays available.
+      (S.confirm ? '<div class="buyerrow">' + buyerChip() + '</div>' : '') +
       '<div class="filterbar">' +
       pillDropdown('s_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; session.selectedCampus = v; saveSession(); vm.cart = []; loadProducts(v); S.category = 'All'; S.subcategory = 'All'; }, '📍') +
       pillDropdown('s_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = allLabel; S.category = v; }, 'Cat') +
@@ -560,8 +561,9 @@
     else if (!filtered.length) h += loadingOr('No products match the selected filters.', 'font-size:12px;color:var(--ink3);padding:12px 0');
     h += '<div class="grid">';
     filtered.forEach(function (p) {
-      h += '<div class="pcell" data-act="' + act(function () { addToCart(p); }) + '">' + thumb(p) + spacer(6) +
-        '<div class="pname">' + esc(p.sMenu || '-') + '</div><div class="pprice">₱' + money(p.payment) + '</div></div>';
+      var out = p.stock <= 0;
+      h += '<div class="pcell' + (out ? ' soldout' : '') + '" data-act="' + act(function () { addToCart(p); }) + '">' + thumb(p) + spacer(6) +
+        '<div class="pname">' + esc(p.sMenu || '-') + '</div><div class="pprice">₱' + money(p.payment) + (out ? ' · <span style="color:var(--out)">품절</span>' : '') + '</div></div>';
     });
     h += '</div>';
     h += '<div class="divider" style="margin:14px 0"></div>' + eyebrow('CART') + spacer(8);
@@ -584,7 +586,7 @@
     if (!vm.cart.length) S.confirm = null;
     var c = S.confirm, total = cartTotalAfterDiscount();
     if (c && !c.loading && c.person && !S.paying) {
-      // Card tapped: the student's info is next to "Sales"; the staff checks it and confirms here.
+      // Card tapped: the student's info is under "Sales"; the staff checks it and confirms here.
       var after = c.person.totalMoney - total, short = after < 0;
       h += '<div class="paybox">' +
         '<div class="sb"><span>' + esc(c.person.name || '-') + ' · ' + esc(c.person.studentId || '-') + '</span><span>Balance ₱' + money(c.person.totalMoney) + '</span></div>' +
@@ -633,7 +635,7 @@
     var q = (idx >= 0 ? vm.cart[idx].quantity : 0) + 1;
     if (q > p.stock) {
       beep('error');
-      toast(p.stock <= 0 ? 'Out of stock: ' + (p.sMenu || '-') : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
+      toast(p.stock <= 0 ? '재고가 없습니다' : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
       return;
     }
     if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q };

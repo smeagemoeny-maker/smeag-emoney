@@ -531,7 +531,7 @@ function productCard(storeKey, product) {
   const soldOut = Number(product.stock) <= 0;
   const low = !soldOut && Number(product.stock) <= Number(product.minStock || 0);
   return `
-    <button class="product ${soldOut ? "soldout" : ""}" data-product="${product.id}" ${soldOut ? "disabled" : ""}>
+    <button class="product ${soldOut ? "soldout" : ""}" data-product="${product.id}">
       <span class="product-img">${initial(product.sMenu)}${inCart ? `<span class="badge">${inCart}</span>` : ""}</span>
       <strong>${escapeHtml(product.sMenu || "-")}</strong>
       <small>${escapeHtml(product.mMenu || "-")}</small>
@@ -909,6 +909,11 @@ function addToCart(productId) {
   if (!product) return;
   const existing = store.cart.find((line) => line.product.id === productId);
   const qty = (existing?.quantity || 0) + 1;
+  if (Number(product.stock) <= 0) {
+    state.status = "재고가 없습니다";
+    render();
+    return;
+  }
   if (qty > Number(product.stock)) {
     state.status = `재고 부족: ${product.sMenu} (재고 ${product.stock})`;
     render();
