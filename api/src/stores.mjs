@@ -62,8 +62,8 @@ export function isCafeItem(product) {
 }
 
 // Campuses whose cafe counter also sells the whole mart (the old SMEAG Mobile Mart terminal sold
-// Capital Cafe and Capital Mart items together): their cafe shows every mart product, ice cream included.
-const CAFE_SELLS_WHOLE_MART = new Set(["CAPITAL"]);
+// Capital Cafe and Capital Mart items together; Encanto and Tarlac too): their cafe shows every mart product, ice cream included.
+const CAFE_SELLS_WHOLE_MART = new Set(["CAPITAL", "ENCANTO", "TARLAC"]);
 
 export function filterProductsForStore(products, { campus, store }) {
   const wholeMart = store === "cafe" && CAFE_SELLS_WHOLE_MART.has(upper(campus));
