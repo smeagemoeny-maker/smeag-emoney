@@ -96,7 +96,7 @@ var API = (function () {
     };
   }
 
-  api.login = function (loginId, password) { return request('POST', '/api/auth/login', { loginId: loginId, password: password }); };
+  api.login = function (loginId) { return request('POST', '/api/auth/login', { loginId: loginId }); };
   // Cafe screen: only this campus's cafe products + unclassified ones (api/src/stores.mjs).
   api.products = async function (campus) {
     var rows = await request('GET', '/api/products' + qs({ campus: campus, store: 'cafe' }));

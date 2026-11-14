@@ -67,7 +67,7 @@
       setSession: setSession,
       lastLoginId: function () { return ssGet('officeLastLogin') || ''; },
       setUnauthorizedHandler: function (fn) { onUnauthorized = fn; },
-      login: function (loginId, password) { return request('POST', '/api/auth/login', { loginId: loginId, password: password }); },
+      login: function (loginId) { return request('POST', '/api/auth/login', { loginId: loginId }); },
       personByUid: function (uid) { return request('GET', '/api/people/by-nfc/' + encodeURIComponent(uid)); },
       menus: function (campus) { return request('GET', '/api/office/menus?campus=' + encodeURIComponent(campus || '')); },
       saveTransaction: function (uid, lines) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines }); },
@@ -229,30 +229,27 @@
       '<div class="ldlg-body">' +
       '<label style="left:16px;top:20px">ID:</label>' +
       '<input type="text" data-id maxlength="50" spellcheck="false" autocomplete="username" data-autofocus style="left:100px;top:16px">' +
-      '<label style="left:16px;top:56px">PASSWORD:</label>' +
-      '<input type="password" data-pw maxlength="100" autocomplete="current-password" style="left:100px;top:52px">' +
       '</div>' +
       '<div class="mb-foot"><button class="w10btn def" data-ok>OK</button></div>';
     return openDialog(html, function (dlg, close) {
-      var id = dlg.querySelector('[data-id]'), pw = dlg.querySelector('[data-pw]'), okBtn = dlg.querySelector('[data-ok]');
+      var id = dlg.querySelector('[data-id]'), okBtn = dlg.querySelector('[data-ok]');
       var busy = false;
       id.value = api.lastLoginId();
-      if (id.value) setTimeout(function () { pw.focus(); }, 0);
+      if (id.value) setTimeout(function () { id.select(); }, 0);
       function fail(msg, focusEl) {
         return messageBox(msg, 'SMEAG', 'OK', 'warning').then(function () { busy = false; okBtn.disabled = false; focusEl.focus(); focusEl.select(); });
       }
       function ok() {
         if (busy) return;
-        var loginId = id.value.trim(), password = pw.value;
+        var loginId = id.value.trim();
         if (!loginId) { busy = true; fail('Please enter ID.', id); return; }
-        if (!password) { busy = true; fail('Please enter password.', pw); return; }
         busy = true; okBtn.disabled = true;
-        api.login(loginId, password).then(function (res) {
-          if (!res || !res.manager || !res.token) { pw.value = ''; return fail('Invalid ID or password.', pw); }
-          if (!res.access || !res.access.office) { pw.value = ''; return fail('This account has no access to SMEAG OFFICE.', id); }
+        api.login(loginId).then(function (res) {
+          if (!res || !res.manager || !res.token) { return fail('Unknown ID.', id); }
+          if (!res.access || !res.access.office) { return fail('This account has no access to SMEAG OFFICE.', id); }
           close(res);
         }, function (err) {
-          return fail(err.message || 'Login failed.', err.status === 403 ? id : pw);
+          return fail(err.message || 'Login failed.', id);
         });
       }
       okBtn.addEventListener('click', ok);

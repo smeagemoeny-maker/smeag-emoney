@@ -22,10 +22,10 @@
     }
   }
 
-  async function apiLogin(loginId, password) {
+  async function apiLogin(loginId) {
     return request("/api/auth/login", {
       method: "POST",
-      body: { loginId, password },
+      body: { loginId },
     });
   }
 

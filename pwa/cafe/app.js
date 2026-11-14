@@ -82,7 +82,6 @@ document.querySelectorAll('.tab').forEach(function (btn) {
 function showLogin(message) {
   document.body.classList.add('logged-out');
   $('sellerInfo').textContent = 'Seller: - | Position: - | Campus: -';
-  $('loginPassword').value = '';
   $('loginError').textContent = message || '';
   $('loginId').focus();
 }
@@ -94,12 +93,12 @@ $('loginForm').onsubmit = function (e) {
     $('loginError').textContent = '';
     var res;
     try {
-      res = await API.login($('loginId').value.trim(), $('loginPassword').value);
+      res = await API.login($('loginId').value.trim());
     } catch (err) {
       $('loginError').textContent = err.message;
       return;
     }
-    if (!res || !res.manager) { $('loginError').textContent = 'Wrong login ID or password.'; return; }
+    if (!res || !res.manager) { $('loginError').textContent = 'Unknown login ID.'; return; }
     var acc = res.access || {};
     if (!(acc.stores || []).includes('cafe') || !(acc.cafeCampuses || []).length) {
       $('loginError').textContent = 'This account cannot use the cafe POS. Use the Pusan Mart program instead.';

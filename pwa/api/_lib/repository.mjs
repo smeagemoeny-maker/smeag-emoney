@@ -1,10 +1,13 @@
 import { getPool, normalizeUid } from "./db.mjs";
 
-export async function login({ loginId, password }) {
+// Login is by ID only (no password).
+export async function login({ loginId }) {
+  const id = String(loginId || "").trim();
+  if (!id) return null;
   const pool = await getPool();
   const [rows] = await pool.execute(
-    "SELECT id, login_id, name, position, campus FROM mgperson WHERE login_id = ? AND password = ? LIMIT 1",
-    [loginId, password],
+    "SELECT id, login_id, name, position, campus FROM mgperson WHERE login_id = ? ORDER BY id LIMIT 1",
+    [id],
   );
   return rows[0] || null;
 }

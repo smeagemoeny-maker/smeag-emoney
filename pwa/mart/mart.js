@@ -118,7 +118,7 @@
   function martMenuFor(campus) { return MART_MENU[String(campus).toUpperCase()] || campus; }
 
   var repo = {
-    login: function (loginId, password) { return apiCall('POST', '/api/auth/login', { loginId: loginId, password: password }); },
+    login: function (loginId) { return apiCall('POST', '/api/auth/login', { loginId: loginId }); },
     fetchProducts: function (campus) {
       return apiCall('GET', '/api/products' + q({ campus: campus, store: 'mart' })).then(function (rows) { return (rows || []).map(normProduct); });
     },
@@ -349,7 +349,7 @@
     var campus = campuses.indexOf(session.selectedCampus) >= 0 ? session.selectedCampus : (campuses[0] || MART_CAMPUS);
     switch (r) {
       case 'sales':
-        S = { campus: campus, awaitingTap: false, paying: false, category: 'All', subcategory: 'All' };
+        S = { campus: campus, awaitingTap: false, paying: false, confirm: null, category: 'All', subcategory: 'All' };
         loadProducts(S.campus); break;
       case 'register':
         S = { campus: campus, photo: null, name: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false };
@@ -401,7 +401,7 @@
       if (S.paying) { toast('Processing payment... please wait.'); return; }
       if (!vm.cart.length) { toast('Card read (' + uidStr + '). Add items to the cart first.', 3000); return; }
       S.awaitingTap = false;
-      checkoutWithUid(uidStr, S.campus);
+      showPayConfirm(uidStr);
     } else if (route === 'buyer') {
       lookupBuyer(uidStr);
     } else if (route === 'pusanpay') {
@@ -472,6 +472,35 @@
     });
   }
 
+  // Sales: a card tap first shows the student's info; the staff checks it and presses Pay.
+  function showPayConfirm(uidStr) {
+    var s = S, c = { uid: uidStr, loading: true, person: null, error: null };
+    s.confirm = c; vm.checkoutError = null; beep('ok'); render();
+    repo.findPersonByUid(uidStr).then(function (p) {
+      c.person = p;
+      if (!p) c.error = 'This NFC card is not registered.';
+    }, function (e) {
+      c.error = 'An error occurred during lookup: ' + e.message;
+    }).then(function () {
+      c.loading = false;
+      if (c.error) beep('error');
+      if (S === s && s.confirm === c) {
+        render();
+        var el = document.getElementById('sales-scroll'); // bring the Pay / Cancel box into view
+        if (el && !c.error) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }
+    });
+  }
+  function buyerChip() {
+    var c = S.confirm; if (!c) return '';
+    var x = '<span class="bx" data-act="' + act(function () { S.confirm = null; }) + '">✕</span>';
+    if (c.loading) return '<div class="buyerchip">Looking up card...' + x + '</div>';
+    if (c.error) return '<div class="buyerchip err">' + esc(c.error) + x + '</div>';
+    var p = c.person;
+    return '<div class="buyerchip"><div class="bi"><b>' + esc(p.name || '-') + '</b><span>' + esc(p.studentId || '-') + '</span></div>' +
+      '<div class="bm">₱' + money(p.totalMoney) + '</div>' + x + '</div>';
+  }
+
   function lookupBuyer(uidStr) {
     vm.buyerLookupError = null; vm.buyerLoading = true; render();
     repo.findPersonByUid(uidStr).then(function (p) {
@@ -507,14 +536,19 @@
     var catOpts = [allLabel].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
     var base = S.category === allLabel ? vm.products : vm.products.filter(function (p) { return p.mMenu === S.category; });
     var subOpts = [allLabel].concat(uniqSorted(base.map(function (p) { return p.sMenu; })));
+    var q = (S.search || '').trim().toLowerCase();
     var filtered = vm.products.filter(function (p) {
-      return (S.category === allLabel || p.mMenu === S.category) && (S.subcategory === allLabel || p.sMenu === S.subcategory);
+      return (S.category === allLabel || p.mMenu === S.category) && (S.subcategory === allLabel || p.sMenu === S.subcategory) &&
+        (!q || String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || String(p.mMenu || '').toLowerCase().indexOf(q) >= 0);
     });
     if (!vm.cart.length) S.awaitingTap = false;
+    actions.in_s_search = function (v) { S.search = v; };
 
     // Campus / category / subcategory sit in one compact menu row so the products, cart and total stay visible.
     var h = '<div class="screen">' +
-      '<div class="sb" style="padding-bottom:8px"><div class="title" style="padding:0">Sales</div>' +
+      '<div class="sb salesHead"><div class="title" style="padding:0">Sales</div>' +
+      (S.confirm ? buyerChip() :
+      '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="🔍 Search product" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">') +
       '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
       '<div class="filterbar">' +
       pillDropdown('s_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; session.selectedCampus = v; saveSession(); vm.cart = []; loadProducts(v); S.category = 'All'; S.subcategory = 'All'; }, '📍') +
@@ -547,30 +581,72 @@
       '<span style="font-size:13px;font-weight:700">₱' + money(cartTotalAfterDiscount()) + '</span></div>';
     if (vm.checkoutError) h += txt(vm.checkoutError, 'color:var(--out);font-size:12px;padding-top:8px');
     h += '</div>';
+    if (!vm.cart.length) S.confirm = null;
+    var c = S.confirm, total = cartTotalAfterDiscount();
+    if (c && !c.loading && c.person && !S.paying) {
+      // Card tapped: the student's info is next to "Sales"; the staff checks it and confirms here.
+      var after = c.person.totalMoney - total, short = after < 0;
+      h += '<div class="paybox">' +
+        '<div class="sb"><span>' + esc(c.person.name || '-') + ' · ' + esc(c.person.studentId || '-') + '</span><span>Balance ₱' + money(c.person.totalMoney) + '</span></div>' +
+        '<div class="sb"><span>After payment</span><span style="font-weight:700' + (short ? ';color:var(--out)' : '') + '">₱' + money(after) + '</span></div>' +
+        (short ? '<div style="color:var(--out);font-size:12px;padding-top:6px">Insufficient balance.</div>' : '') +
+        '<div class="payacts"><button class="btn btn-secondary" data-act="' + act(function () { S.confirm = null; }) + '">Cancel</button>' +
+        '<button class="btn btn-primary"' + (short ? ' disabled' : ' data-act="' + act(function () {
+          var uid = c.uid; S.confirm = null; checkoutWithUid(uid, S.campus);
+        }) + '"') + '>Pay ₱' + money(total) + '</button></div></div>';
+    } else {
     var enabled = vm.cart.length > 0 && !S.paying;
     var wait = S.awaitingTap || S.paying;
     h += '<div class="nfcbox' + (wait ? ' wait' : '') + (enabled ? ' enabled' : '') + '"' +
       (enabled ? ' data-act="' + act(function () { vm.checkoutError = null; S.awaitingTap = true; }) + '"' : '') + '>' +
       '<div class="ic">📶</div>' +
       '<div style="font-size:12px;font-weight:700">' + (S.paying ? 'Processing payment...' : S.awaitingTap ? 'Please tap your NFC card...' : 'Tap your NFC card on the back of the phone') + '</div>' +
-      '<div style="font-size:10.5px;color:var(--ink2)">Payment completes as soon as you tap</div></div>';
+      '<div style="font-size:10.5px;color:var(--ink2)">Check the student info, then confirm payment</div></div>';
+    }
     h += '</div>';
     h += '<button class="fab" data-act="' + act(function () {
       var el = document.getElementById('sales-scroll'); if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }) + '" data-norender="1">⬇</button>';
     return h;
   }
+  // Short UI sounds (Web Audio, no files). ok = two rising notes, error = one low buzz.
+  var audioCtx = null;
+  function beep(kind) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      audioCtx = audioCtx || new AC();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      var notes = kind === 'error' ? [[220, 0, 0.22, 'square']] : [[880, 0, 0.08, 'sine'], [1320, 0.07, 0.1, 'sine']];
+      notes.forEach(function (n) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + n[1];
+        o.type = n[3]; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + n[2]);
+        o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + n[2] + 0.02);
+      });
+    } catch (e) { /* sound is optional */ }
+  }
   function addToCart(p) {
     var idx = -1;
     vm.cart.forEach(function (c, i) { if (c.product.id === p.id) idx = i; });
-    if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: vm.cart[idx].quantity + 1 };
+    var q = (idx >= 0 ? vm.cart[idx].quantity : 0) + 1;
+    if (q > p.stock) {
+      beep('error');
+      toast(p.stock <= 0 ? 'Out of stock: ' + (p.sMenu || '-') : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
+      return;
+    }
+    if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q };
     else vm.cart.push({ product: p, quantity: 1 });
+    beep('ok');
+    toast('Added: ' + (p.sMenu || '-') + (q > 1 ? ' ×' + q : ''), 1200);
   }
   function changeQty(p, d) {
     var idx = -1;
     vm.cart.forEach(function (c, i) { if (c.product.id === p.id) idx = i; });
     if (idx < 0) return;
     var q2 = vm.cart[idx].quantity + d;
+    if (d > 0 && q2 > p.stock) { beep('error'); toast('Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600); return; }
     if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = { product: vm.cart[idx].product, quantity: q2 };
   }
 
@@ -912,11 +988,7 @@
   function loginScreen() {
     if (!S.login) {
       var savedId = lsGet('pusanMartLoginId');
-      var savedCampus = lsGet('pusanMartLoginCampus');
-      S.login = {
-        campus: CAMPUS_OPTIONS.indexOf(savedCampus) >= 0 ? savedCampus : CAMPUS_OPTIONS[0],
-        id: savedId || '', pw: '', remember: !!savedId, error: ui.loginNotice, loading: false
-      };
+      S.login = { id: savedId || '', remember: !!savedId, error: ui.loginNotice, loading: false };
       ui.loginNotice = null;
     }
     var L = S.login;
@@ -925,9 +997,8 @@
       '<span style="color:#fff;font-size:26px;font-weight:800">S</span></div>' + spacer(16) +
       '<div style="font-size:19px;font-weight:800">SMEAG Mobile Mart</div>' +
       '<div style="font-size:12.5px;color:var(--ink2);padding-top:2px">Admin (Manager) Login Only</div>' + spacer(22) +
-      dropdown('l_campus', L.campus, CAMPUS_OPTIONS, function (v) { L.campus = v; }) +
+      // ID only: the campus comes from the account (only that campus is shown after login).
       labeledField('l_id', 'ID', L.id, function (v) { L.id = v; }, 'Manager account (staff ID / email)') +
-      labeledField('l_pw', 'Password', L.pw, function (v) { L.pw = v; }, '••••••••', 'password', true) +
       '<div style="display:flex;align-items:center;width:100%;padding-bottom:4px">' +
       '<div class="cbx' + (L.remember ? ' on' : '') + '" data-act="' + act(function () { L.remember = !L.remember; }) + '"><div class="box">' +
       (L.remember ? '<svg viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"/></svg>' : '') + '</div></div>' +
@@ -939,22 +1010,24 @@
     return h;
   }
   function doLogin(L) {
-    var id = L.id.trim(), pw = L.pw.trim();
+    var id = L.id.trim();
     L.error = null;
-    if (!id || !pw) { L.error = 'Incorrect ID or password.'; return; }
+    if (!id) { L.error = 'Please enter your ID.'; return; }
     L.loading = true;
-    repo.login(id, pw).then(function (r) {
-      if (!r || !r.manager) { L.error = 'Incorrect ID or password.'; return; }
+    repo.login(id).then(function (r) {
+      if (!r || !r.manager) { L.error = 'Unknown ID.'; return; }
       if (!r.access || (r.access.stores || []).indexOf('mart') < 0) {
         L.error = 'This account cannot use the mart. (' + (r.manager.position || '') + ' @ ' + (r.manager.campus || '') + ')';
         return;
       }
-      // "Remember me" keeps only the login ID (and campus); the password is never stored.
+      // "Remember me" keeps only the login ID.
       lsSet('pusanMartLoginId', L.remember ? id : null);
-      lsSet('pusanMartLoginCampus', L.remember ? L.campus : null);
+      lsSet('pusanMartLoginCampus', null);
       session.manager = r.manager; session.access = r.access; session.token = r.token;
+      // Start on the account's own campus (a campus account only gets that one).
       var campuses = allowedCampuses();
-      session.selectedCampus = campuses.indexOf(L.campus) >= 0 ? L.campus : (campuses[0] || MART_CAMPUS);
+      var own = String(r.manager.campus || '').toUpperCase().replace('TALRAC', 'TARLAC');
+      session.selectedCampus = campuses.filter(function (c) { return c.toUpperCase() === own; })[0] || campuses[0] || MART_CAMPUS;
       saveSession();
       setDefaultDiscount();
       navigate('sales', true);

@@ -9,9 +9,10 @@ const dbsql = path.join(root, "DBSQL");
 
 let cache;
 
-export async function mockLogin({ loginId, password }) {
+export async function mockLogin({ loginId }) {
   const data = loadMockData();
-  const manager = data.managers.find((item) => item.login_id === loginId && item.password === password);
+  const id = String(loginId || "").trim();
+  const manager = id ? data.managers.find((item) => item.login_id === id) : null;
   if (!manager) return null;
   const { password: _password, ...safeManager } = manager;
   return safeManager;

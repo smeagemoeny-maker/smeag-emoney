@@ -9,8 +9,9 @@ export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
 
 // What a manager account may do in the POS.
 //   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
-//   Admin @ any other campus          -> everything (incl. the office program)
-//   Manager @ Capital/Encanto/Talrac  -> own campus cafe AND mart sales, buyer lookup, office program
+//   Admin/Manager @ Capital/Encanto/Talrac -> ONLY the own campus: cafe AND mart sales, buyer lookup, office program
+//                                        (Admin also keeps PusanMart pay)
+//   Admin @ a campus that is none of the above -> every campus (incl. the office program)
 //   martCampuses = campuses whose mart the account may sell at (each campus has its own mart).
 //   E-money is charged ONLY in the office program (OFFICE MENU -> + INCREASE), never at a POS: canCharge is false for all.
 //   anything else (Baydream Manager, Security, StoreOrder) -> no POS access
@@ -21,12 +22,12 @@ export function accessFor(manager) {
   if ((position === "Admin" || position === "Manager") && campus === "PUSAN MART") {
     return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART], canCharge: false, canPusanPay: true, office: false };
   }
+  if ((position === "Admin" || position === "Manager") && CAFE_CAMPUS_BY_ACCOUNT[campus]) {
+    const own = CAFE_CAMPUS_BY_ACCOUNT[campus];
+    return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: position === "Admin", office: true };
+  }
   if (position === "Admin") {
     return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, martCampuses: [...ALL_CAFE_CAMPUSES, PUSAN_MART], canCharge: false, canPusanPay: true, office: true };
-  }
-  if (position === "Manager" && CAFE_CAMPUS_BY_ACCOUNT[campus]) {
-    const own = CAFE_CAMPUS_BY_ACCOUNT[campus];
-    return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: false, office: true };
   }
   return null;
 }

@@ -386,7 +386,6 @@ function loginView() {
       <p class="eyebrow">SMEAG CAFE · PUSAN MART</p>
       <h1>POS 로그인</h1>
       <label>매니저 ID<input name="loginId" autocomplete="username" required /></label>
-      <label>비밀번호<input name="password" type="password" autocomplete="current-password" required /></label>
       <button class="primary" type="submit" ${state.busy ? "disabled" : ""}>로그인</button>
       <button class="secondary wide" type="button" data-demo-login>데모 화면 보기</button>
     </form>
@@ -670,8 +669,8 @@ function bindEvents() {
     state.status = "로그인 중...";
     render();
     try {
-      const result = await apiLogin(String(form.get("loginId")), String(form.get("password")));
-      if (!result.manager) throw new Error("아이디 또는 비밀번호가 올바르지 않습니다.");
+      const result = await apiLogin(String(form.get("loginId")).trim());
+      if (!result.manager) throw new Error("등록되지 않은 아이디입니다.");
       setAuthToken(result.token);
       state.manager = result.manager;
       state.access = result.access;

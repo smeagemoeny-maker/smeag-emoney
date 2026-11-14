@@ -1,7 +1,6 @@
 // Supabase (PostgREST) data access. Same exports/return shapes as repository.mjs (MySQL).
 // Checkout and charge run inside the pos_checkout / pos_charge RPCs
 // (migrations/supabase_pos_functions.sql) so balance + stock changes stay in one transaction.
-import crypto from "node:crypto";
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
 import { httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
@@ -43,12 +42,12 @@ export function q(value) {
   return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-export async function login({ loginId, password }) {
-  if (!loginId || !password) return null;
-  // Legacy plain-text passwords were migrated as SHA-256 hex (same as the Emoney backend).
-  const hash = crypto.createHash("sha256").update(String(password), "utf8").digest("hex");
+// Login is by ID only (no password); the account's position/campus decides what it may use (access.mjs).
+export async function login({ loginId }) {
+  const id = String(loginId || "").trim();
+  if (!id) return null;
   const rows = await rest(
-    `mgperson?select=id,login_id,name,position,campus&login_id=eq.${encodeURIComponent(loginId)}&password=eq.${hash}&limit=1`,
+    `mgperson?select=id,login_id,name,position,campus&login_id=eq.${encodeURIComponent(id)}&order=id.asc&limit=1`,
   );
   return rows[0] || null;
 }
