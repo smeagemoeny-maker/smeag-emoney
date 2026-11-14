@@ -61,11 +61,16 @@ export function isCafeItem(product) {
   return (CAKE.test(name) && !NOT_CAKE.test(name)) || (DRINK.test(name) && !NOT_DRINK.test(name));
 }
 
+// Campuses whose cafe counter also sells the whole mart (the old SMEAG Mobile Mart terminal sold
+// Capital Cafe and Capital Mart items together): their cafe shows every mart product, ice cream included.
+const CAFE_SELLS_WHOLE_MART = new Set(["CAPITAL"]);
+
 export function filterProductsForStore(products, { campus, store }) {
+  const wholeMart = store === "cafe" && CAFE_SELLS_WHOLE_MART.has(upper(campus));
   return products.filter((p) => {
     if (!productCampusMatches(p, campus)) return false;
     const own = productStore(p);
     if (own === null || own === store) return true;
-    return store === "cafe" && isCafeItem(p);
+    return store === "cafe" && (wholeMart || isCafeItem(p));
   });
 }
