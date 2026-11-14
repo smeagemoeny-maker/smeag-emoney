@@ -399,9 +399,8 @@
     // the screen is ready (the box says "Payment completes as soon as you tap"), otherwise say why not.
     if (route === 'sales') {
       if (S.paying) { toast('Processing payment... please wait.'); return; }
-      if (!vm.cart.length) { toast('Card read (' + uidStr + '). Add items to the cart first.', 3000); return; }
       S.awaitingTap = false;
-      showPayConfirm(uidStr);
+      showPayConfirm(uidStr, !vm.cart.length); // empty cart: only show the student's info and balance
     } else if (route === 'buyer') {
       lookupBuyer(uidStr);
     } else if (route === 'pusanpay') {
@@ -473,8 +472,9 @@
   }
 
   // Sales: a card tap first shows the student's info; the staff checks it and presses Pay.
-  function showPayConfirm(uidStr) {
-    var s = S, c = { uid: uidStr, loading: true, person: null, error: null };
+  // lookupOnly (tap with an empty cart): just show name / student ID / balance; it cannot be paid with.
+  function showPayConfirm(uidStr, lookupOnly) {
+    var s = S, c = { uid: uidStr, loading: true, person: null, error: null, lookupOnly: !!lookupOnly };
     s.confirm = c; vm.checkoutError = null; beep('ok'); render();
     repo.findPersonByUid(uidStr).then(function (p) {
       c.person = p;
@@ -541,7 +541,6 @@
       return (S.category === allLabel || p.mMenu === S.category) && (S.subcategory === allLabel || p.sMenu === S.subcategory) &&
         (!q || String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || String(p.mMenu || '').toLowerCase().indexOf(q) >= 0);
     });
-    if (!vm.cart.length) S.awaitingTap = false;
     actions.in_s_search = function (v) { S.search = v; };
 
     // Campus / category / subcategory sit in one compact menu row so the products, cart and total stay visible.
@@ -583,9 +582,11 @@
       '<span style="font-size:13px;font-weight:700">₱' + money(cartTotalAfterDiscount()) + '</span></div>';
     if (vm.checkoutError) h += txt(vm.checkoutError, 'color:var(--out);font-size:12px;padding-top:8px');
     h += '</div>';
-    if (!vm.cart.length) S.confirm = null;
+    // A balance lookup (tap with an empty cart) stays shown but is never payable: tap again to pay,
+    // so a payment never goes to a previously looked-up card by mistake.
+    if (S.confirm && !S.confirm.lookupOnly && !vm.cart.length) S.confirm = null;
     var c = S.confirm, total = cartTotalAfterDiscount();
-    if (c && !c.loading && c.person && !S.paying) {
+    if (c && !c.loading && c.person && !c.lookupOnly && !S.paying) {
       // Card tapped: the student's info is under "Sales"; the staff checks it and confirms here.
       var after = c.person.totalMoney - total, short = after < 0;
       h += '<div class="paybox">' +
@@ -597,13 +598,13 @@
           var uid = c.uid; S.confirm = null; checkoutWithUid(uid, S.campus);
         }) + '"') + '>Pay ₱' + money(total) + '</button></div></div>';
     } else {
-    var enabled = vm.cart.length > 0 && !S.paying;
+    var enabled = !S.paying;
     var wait = S.awaitingTap || S.paying;
     h += '<div class="nfcbox' + (wait ? ' wait' : '') + (enabled ? ' enabled' : '') + '"' +
       (enabled ? ' data-act="' + act(function () { vm.checkoutError = null; S.awaitingTap = true; }) + '"' : '') + '>' +
       '<div class="ic">📶</div>' +
       '<div style="font-size:12px;font-weight:700">' + (S.paying ? 'Processing payment...' : S.awaitingTap ? 'Please tap your NFC card...' : 'Tap your NFC card on the back of the phone') + '</div>' +
-      '<div style="font-size:10.5px;color:var(--ink2)">Check the student info, then confirm payment</div></div>';
+      '<div style="font-size:10.5px;color:var(--ink2)">' + (vm.cart.length ? 'Check the student info, then confirm payment' : 'Empty cart: tap to check student info and balance') + '</div></div>';
     }
     h += '</div>';
     h += '<button class="fab" data-act="' + act(function () {

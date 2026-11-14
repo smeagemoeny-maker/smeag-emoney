@@ -376,7 +376,9 @@ function renderCart() {
   $('sDiscount').textContent = '-' + money(t.discount);
   $('sTotal').textContent = money(t.total) + ' PHP';
   document.querySelectorAll('[data-discount]').forEach(function (b) { b.classList.toggle('sel', b.dataset.label === state.discountLabel); });
-  if (!state.cart.length) { state.confirm = null; state.awaitingTap = false; }
+  // A balance lookup (tap with an empty cart) stays shown but is never payable: tap again to pay,
+  // so a payment never goes to a previously looked-up card by mistake.
+  if (state.confirm && !state.confirm.lookupOnly && !state.cart.length) state.confirm = null;
   renderPay();
 }
 
@@ -420,7 +422,7 @@ function renderPay() {
   row.innerHTML = buyerChip();
   row.hidden = !state.confirm;
   var c = state.confirm, total = totals().total, h;
-  if (c && !c.loading && c.person && !state.paying) {
+  if (c && !c.loading && c.person && !c.lookupOnly && !state.paying) {
     // Card tapped: the student's info is under "Sales"; the staff checks it and confirms here.
     var after = round2(c.person.balance - total), short = after < 0;
     h = '<div class="paybox">' +
@@ -430,12 +432,12 @@ function renderPay() {
       '<div class="payacts"><button type="button" class="btn" data-pay="cancel">Cancel</button>' +
       '<button type="button" class="btn btn-green" data-pay="pay"' + (short ? ' disabled' : '') + '>Pay ₱' + money(total) + '</button></div></div>';
   } else {
-    var enabled = state.cart.length > 0 && !state.paying, wait = state.awaitingTap || state.paying;
+    var enabled = !state.paying, wait = state.awaitingTap || state.paying;
     var where = isPhone() ? 'on the back of the phone' : 'on the card reader';
     h = '<div class="nfcbox' + (wait ? ' wait' : '') + (enabled ? ' enabled' : '') + '"' + (enabled ? ' data-pay="wait"' : '') + '>' +
       '<div class="ic">📶</div>' +
       '<div class="nfc-main">' + (state.paying ? 'Processing payment...' : state.awaitingTap ? 'Please tap your NFC card...' : 'Tap your NFC card ' + where) + '</div>' +
-      '<div class="nfc-sub">' + (state.cart.length ? 'Check the student info, then confirm payment' : 'Add products to the cart first') + '</div></div>';
+      '<div class="nfc-sub">' + (state.cart.length ? 'Check the student info, then confirm payment' : 'Empty cart: tap to check student info and balance') + '</div></div>';
   }
   $('payArea').innerHTML = h;
   $('checkoutError').textContent = state.error || '';
@@ -463,13 +465,13 @@ function onCardTap(uid) {
   if (tab === 'buyers') { $('bySearch').value = uid; renderBuyers(); return; }
   if (tab !== 'sales') return toast('Card read (' + uid + '). Open Sales or Buyer Info to use this card.');
   if (state.paying) return toast('Processing payment... please wait.');
-  if (!state.cart.length) { beep('error'); return toast('Card read (' + uid + '). Add items to the cart first.', true); }
   state.awaitingTap = false;
-  showPayConfirm(uid);
+  showPayConfirm(uid, !state.cart.length); // empty cart: only show the student's info and balance
 }
 
-async function showPayConfirm(uid) {
-  var c = { uid: uid, loading: true, person: null, error: null };
+// lookupOnly (tap with an empty cart): just show name / student ID / balance; it cannot be paid with.
+async function showPayConfirm(uid, lookupOnly) {
+  var c = { uid: uid, loading: true, person: null, error: null, lookupOnly: !!lookupOnly };
   state.confirm = c; state.error = ''; beep('ok'); renderPay();
   try {
     c.person = await API.personByUid(uid);

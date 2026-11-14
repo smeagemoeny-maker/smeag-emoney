@@ -86,6 +86,7 @@ function newStoreState(store) {
     discountLabel: "No Discount",
     discountRate: 0,
     lastReceipt: null,
+    lastLookup: null, // person shown after a tap with an empty cart
     panel: "sale", // cafe only: "sale" | "charge"
     chargeAmount: "",
     lastCharge: null,
@@ -253,7 +254,8 @@ function filterStoreProducts(storeKey, campus, products) {
 
 async function handleCheckout(storeKey, uid) {
   const store = state.stores[storeKey];
-  if (!store.cart.length) throw new Error("장바구니가 비어 있습니다.");
+  // Empty cart: the tap only looks up the student's info and balance.
+  if (!store.cart.length) return handleLookup(storeKey, uid);
   const payload = {
     uid,
     store: storeKey,
@@ -285,9 +287,27 @@ async function handleCheckout(storeKey, uid) {
     at: new Date(),
   };
   store.cart = [];
+  store.lastLookup = null; // its balance is stale after a payment
   state.status = `결제 완료: ${checkout.buyerName || uid} · ${money(checkout.finalTotal)} · 잔액 ${money(checkout.remainingBalance)}`;
   // Refresh stock without replacing the payment result message.
   if (!state.demoMode) await loadProducts(storeKey, { quiet: true });
+}
+
+async function handleLookup(storeKey, uid) {
+  const store = state.stores[storeKey];
+  store.lastLookup = null;
+  if (state.demoMode) {
+    store.lastLookup = { name: "Demo Buyer", uid, campus: store.campus, totalMoney: 1000 };
+    state.status = `조회: Demo Buyer · 잔액 ${money(1000)}`;
+    return;
+  }
+  const person = (await apiPersonByNfc(uid)).person;
+  if (!person) {
+    state.status = `등록되지 않은 카드입니다. (${uid})`;
+    return;
+  }
+  store.lastLookup = person;
+  state.status = `조회: ${person.name || uid} · 잔액 ${money(person.totalMoney)}`;
 }
 
 async function handleBuyer(uid) {
@@ -494,9 +514,10 @@ function salePanel(storeKey, store, waiting) {
         <div class="total"><span>합계</span><strong>${money(cartTotal(store))}</strong></div>
         ${waiting
           ? `<button class="secondary wide" data-cancel-nfc>NFC 대기 취소</button>`
-          : `<button class="primary" data-nfc="${storeKey}" ${store.cart.length && !state.busy ? "" : "disabled"}>${storeKey === "mart" ? "폰 NFC로 이머니 결제" : "카드 태그로 결제"}</button>`}
+          : `<button class="primary" data-nfc="${storeKey}" ${state.busy ? "disabled" : ""}>${!store.cart.length ? "카드 태그로 잔액 조회" : storeKey === "mart" ? "폰 NFC로 이머니 결제" : "카드 태그로 결제"}</button>`}
         ${nfcHint()}
-        ${manualNfcPanel(storeKey, !store.cart.length)}
+        ${manualNfcPanel(storeKey)}
+        ${store.lastLookup ? buyerCard(store.lastLookup) : ""}
         ${store.lastReceipt ? receiptCard(store.lastReceipt) : ""}
   `;
 }
