@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1d1d1b" />
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml" />
+<title>SMEAG Campus Office</title>
+<link rel="stylesheet" href="../campus/campus.css" />
+<style>
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 60px max(16px, env(safe-area-inset-left, 0px)); }
+  .bar { display: flex; align-items: center; gap: 12px; padding: 14px 0; flex-wrap: wrap; }
+  .bar h1 { font-size: 19px; margin: 0; flex: 1; min-width: 0; }
+  .tabsA { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabsA button { border: 0; background: none; padding: 10px 12px; font-weight: 600; color: var(--ink2); border-bottom: 2px solid transparent; cursor: pointer; }
+  .tabsA button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters .input { width: auto; min-height: 38px; padding: 7px 10px; }
+  .qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .act { display: grid; gap: 8px; margin-top: 10px; }
+  .act textarea { min-height: 52px; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th, .tbl td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl th { color: var(--ink2); font-weight: 600; font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  .formgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .codebox { font-family: var(--mono); font-size: 28px; letter-spacing: .25em; background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 10px 14px; display: inline-block; }
+  .count { font-size: 12px; color: var(--ink2); }
+  pre.sample { background: var(--soft); border-radius: 10px; padding: 10px; font-size: 12px; overflow-x: auto; margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><div class="boot">SMEAG Campus Office…</div></div>
+<script>
+(function () {
+  'use strict';
+  var IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
+  var API = (function () { try { var o = localStorage.getItem('campusApiOrigin'); if (o) return o; } catch (e) {} return IS_LOCAL ? 'http://localhost:8787' : location.origin; })();
+  var KEY = 'smeagCampusOffice';
+  var root = document.getElementById('root');
+  var session = null;
+  try { session = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { session = null; }
+  function saveSession(s) { session = s; try { s ? sessionStorage.setItem(KEY, JSON.stringify(s)) : sessionStorage.removeItem(KEY); } catch (e) {} }
+
+  var config = null, tab = 'requests', state = { status: 'open', type: '', search: '' };
+  var TYPES = {};
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function peso(n) { return '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function api(method, path, body) {
+    var h = { Accept: 'application/json' };
+    if (body !== undefined) h['Content-Type'] = 'application/json';
+    if (session) h.Authorization = 'Bearer ' + session.token;
+    return fetch(API + path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) {
+        if (res.status === 401 && path !== '/api/auth/login') { saveSession(null); renderLogin('Your login expired. Please log in again.'); throw new Error('Login expired'); }
+        if (!res.ok) throw new Error(d.error || ('Error ' + res.status));
+        return d;
+      });
+    }, function () { throw new Error('Cannot reach the server.'); });
+  }
+  function flash(msg, ok) {
+    var el = document.getElementById('flash'); if (!el) return;
+    el.className = ok ? 'okmsg' : 'err'; el.textContent = msg;
+    clearTimeout(flash.t); flash.t = setTimeout(function () { el.textContent = ''; }, 5000);
+  }
+
+  // ---------- login ----------
+  function renderLogin(msg) {
+    root.innerHTML = '<div class="signin"><div class="brand"><div class="logo">S</div><div><b>SMEAG Campus Office</b><span class="muted small">Student requests, notices, scores and SMEAG Bot</span></div></div>' +
+      '<form id="loginForm" class="card stack"><div class="field"><label for="lid">Staff ID</label><input class="input" id="lid" autocomplete="username" required></div>' +
+      '<div class="err">' + esc(msg || '') + '</div><button class="btn block" type="submit">Log in</button>' +
+      '<p class="small muted" style="margin:0">Office accounts only (Admin, campus Managers). Managers see their own campus.</p></form></div>';
+  }
+
+  // ---------- frame ----------
+  var TABS = [['requests', 'Requests'], ['students', 'Students'], ['notices', 'Notices'], ['catalog', 'Prices & options'], ['scores', 'Scores'], ['faq', 'SMEAG Bot FAQ']];
+  function frame(body) {
+    root.innerHTML = '<div class="bar"><h1>SMEAG Campus Office</h1><span class="small muted">' + esc(session.name || session.loginId) + ' · ' + esc(session.position) + ' @ ' + esc(session.campus) + '</span>' +
+      '<a class="btn ghost small" href="../campus/" target="_blank" rel="noopener">Student app</a><button class="btn ghost small" id="logout">Log out</button></div>' +
+      '<div class="tabsA" role="tablist">' + TABS.map(function (x) { return '<button type="button" data-tab="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + esc(x[1]) + '</button>'; }).join('') + '</div>' +
+      '<div id="flash" class="err" role="status"></div><div id="body">' + body + '</div>';
+  }
+
+  // ---------- requests ----------
+  function fieldText(type, key, v) {
+    var d = TYPES[type]; var f = d && d.fields.filter(function (x) { return x.name === key; })[0];
+    if (f && f.options) { var o = f.options.filter(function (x) { return x.value === v; })[0]; if (o) return o.en; }
+    return v;
+  }
+  function fieldName(type, key) { var d = TYPES[type]; var f = d && d.fields.filter(function (x) { return x.name === key; })[0]; return f ? f.en : key; }
+  function showRequests() {
+    frame('<div class="filters">' +
+      '<select class="input" id="fStatus">' + [['open', 'Open (sent, reviewing, approved)'], ['submitted', 'Sent'], ['reviewing', 'Reviewing'], ['approved', 'Approved'], ['done', 'Done'], ['rejected', 'Rejected'], ['cancelled', 'Cancelled'], ['all', 'All']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (state.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+      '<select class="input" id="fType"><option value="">All types</option>' + config.types.map(function (x) { return '<option value="' + x.key + '"' + (state.type === x.key ? ' selected' : '') + '>' + esc(x.en) + '</option>'; }).join('') + '</select>' +
+      '<input class="input" id="fSearch" placeholder="Name or student ID" value="' + esc(state.search) + '">' +
+      '<button class="btn small" id="reload">Refresh</button><span class="count" id="count"></span></div><div class="qgrid" id="queue"><div class="muted">Loading…</div></div>');
+    loadRequests();
+  }
+  function loadRequests() {
+    var q = '?status=' + encodeURIComponent(state.status) + (state.type ? '&type=' + state.type : '') + (state.search ? '&search=' + encodeURIComponent(state.search) : '');
+    api('GET', '/api/campus-admin/requests' + q).then(function (d) {
+      var el = document.getElementById('queue'); if (!el) return;
+      document.getElementById('count').textContent = d.requests.length + ' request' + (d.requests.length === 1 ? '' : 's');
+      el.innerHTML = d.requests.length ? d.requests.map(reqCard).join('') : '<div class="card empty">No requests.</div>';
+    }).catch(function (e) { flash(e.message); });
+  }
+  function reqCard(r) {
+    var d = TYPES[r.type] || { en: r.type };
+    var p = r.payload || {};
+    var order = ((TYPES[r.type] || {}).fields || []).map(function (f) { return f.name; });
+    var rows = Object.keys(p).filter(function (k) { return k !== 'item'; }).sort(function (x, y) { return order.indexOf(x) - order.indexOf(y); }).map(function (k) { return '<dt>' + esc(fieldName(r.type, k)) + '</dt><dd>' + esc(fieldText(r.type, k, p[k])) + '</dd>'; });
+    if (p.item) rows.unshift('<dt>Option</dt><dd>' + esc(p.item.title_en) + (p.item.startsAt ? ' (' + esc(p.item.startsAt) + ')' : '') + '</dd>');
+    var next = { submitted: ['reviewing', 'approved', 'rejected'], reviewing: ['approved', 'rejected'], approved: ['done'] }[r.status] || [];
+    var label = { reviewing: 'Mark reviewing', approved: r.fee ? 'Approve & charge ' + peso(r.fee) : 'Approve', rejected: 'Reject', done: 'Mark done' };
+    return '<article class="card reqcard"><div class="head"><b>' + esc(d.en) + '</b><span class="pill ' + esc(r.status) + '">' + esc(config.statuses[r.status].en) + '</span></div>' +
+      '<div class="small"><b>' + esc(r.name) + '</b> · ' + esc(r.studentId) + ' · ' + esc(r.campus) + '</div>' +
+      '<div class="small muted">#' + r.id + ' · sent ' + esc(r.created) + (r.fee ? ' · <span class="fee">' + esc(peso(r.fee)) + '</span>' + (r.charged ? ' charged' : ' not charged yet') : ' · free') + '</div>' +
+      '<dl>' + rows.join('') + '</dl>' +
+      (r.staffNote ? '<div class="note"><b>Note to student:</b> ' + esc(r.staffNote) + (r.handledBy ? ' — ' + esc(r.handledBy) + ' ' + esc(r.handled) : '') + '</div>' : (r.handledBy ? '<div class="small muted" style="margin-top:6px">Last change by ' + esc(r.handledBy) + ' ' + esc(r.handled) + '</div>' : '')) +
+      (next.length ? '<div class="act"><textarea class="input" id="note' + r.id + '" maxlength="500" placeholder="Note for the student (required to reject)"></textarea><div class="row">' +
+        next.map(function (s) { return '<button type="button" class="btn small' + (s === 'rejected' ? ' danger' : s === 'reviewing' ? ' ghost' : '') + '" data-decide="' + r.id + '" data-status="' + s + '">' + esc(label[s]) + '</button>'; }).join('') +
+      '</div></div>' : '') + '</article>';
+  }
+
+  // ---------- students ----------
+  function showStudents() {
+    frame('<form id="stuForm" class="filters"><input class="input" id="stuSearch" placeholder="Name or student ID (2+ letters)" style="min-width:260px"><button class="btn small" type="submit">Search</button></form>' +
+      '<p class="small muted">A student signs in with their student ID + PIN. First time: they tap their card in the app (Android), or you give them a one-time code here (iPhone, or a forgotten PIN). A new code clears the old PIN and signs the student out everywhere.</p>' +
+      '<div id="stuOut"></div>');
+  }
+  function searchStudents(s) {
+    api('GET', '/api/campus-admin/students?search=' + encodeURIComponent(s)).then(function (d) {
+      document.getElementById('stuOut').innerHTML = d.students.length ? '<div class="card scroll"><table class="tbl"><thead><tr><th>Name</th><th>Student ID</th><th>Campus</th><th>Course end</th><th>Balance</th><th>App account</th><th></th></tr></thead><tbody>' +
+        d.students.map(function (s) {
+          var a = s.account;
+          var st = s.released ? 'Released card' : !a ? 'Not signed up' : a.codePending ? 'Code issued, waiting' : !a.hasPin ? 'No PIN' : 'Active' + (a.lastLogin ? ' (last ' + a.lastLogin + ')' : '');
+          var flags = a ? [a.frozen ? '<span class="pill rejected">Card frozen</span>' : '', a.locked ? '<span class="pill reviewing">Locked</span>' : ''].join(' ') : '';
+          return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.studentId) + '</td><td>' + esc(s.campus) + '</td><td>' + esc(s.endDate) + '</td><td class="num">' + esc(peso(s.balance)) + '</td><td>' + esc(st) + ' ' + flags + '</td><td><div class="row">' +
+            (s.released ? '' : '<button class="btn small ghost" data-code="' + s.personId + '">Issue sign-in code</button>') +
+            (a && (a.frozen || a.locked) ? '<button class="btn small ghost" data-unfreeze="' + s.personId + '">Unfreeze / unlock</button>' : '') + '</div><div id="code' + s.personId + '"></div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="card empty">No students found.</div>';
+    }).catch(function (e) { flash(e.message); });
+  }
+
+  // ---------- generic CRUD (notices, catalog, faq) ----------
+  var CRUD = {
+    notices: {
+      title: 'Notices', hint: 'Shown on the student Home screen and the Notices list. Leave campus empty for every campus.',
+      fields: [['title_en', 'Title (English)', 'text', true], ['title_ko', 'Title (Korean)', 'text'], ['body_en', 'Text (English)', 'textarea', true], ['body_ko', 'Text (Korean)', 'textarea'],
+        ['campus', 'Campus (empty = all)', 'campus'], ['pinned', 'Pinned to top', 'bool'], ['published_at', 'Publish from', 'datetime'], ['expires_at', 'Hide after', 'datetime']],
+      line: function (r) { return '<b>' + (r.pinned ? '📌 ' : '') + esc(r.title_en) + '</b><div class="small muted">' + esc(r.campus || 'All campuses') + ' · ' + esc(String(r.published_at || '').slice(0, 16).replace('T', ' ')) + (r.expires_at ? ' → ' + esc(String(r.expires_at).slice(0, 10)) : '') + '</div>'; }
+    },
+    catalog: {
+      title: 'Prices & options', hint: 'Activities, pickup routes, rental cars and courses that students choose from. The fee here is what gets charged on approval: once, per day (car rental) or per week (course).',
+      fields: [['kind', 'Kind', 'kind', true], ['title_en', 'Name (English)', 'text', true], ['title_ko', 'Name (Korean)', 'text'], ['detail_en', 'Details (English)', 'text'], ['detail_ko', 'Details (Korean)', 'text'],
+        ['fee', 'Fee (₱)', 'number'], ['fee_unit', 'Charged', 'unit'], ['starts_at', 'Activity date & time', 'datetime'], ['capacity', 'Seats (activities)', 'number'], ['campus', 'Campus (empty = all)', 'campus'], ['active', 'Open for requests', 'bool'], ['sort', 'Order', 'number']],
+      line: function (r) { return '<b>' + esc(r.title_en) + '</b> <span class="fee">' + esc(peso(r.fee)) + (r.fee_unit !== 'once' ? ' / ' + esc(r.fee_unit) : '') + '</span>' + (r.active ? '' : ' <span class="pill cancelled">Closed</span>') + '<div class="small muted">' + esc(r.kind) + ' · ' + esc(r.campus || 'All campuses') + (r.starts_at ? ' · ' + esc(String(r.starts_at).slice(0, 16).replace('T', ' ')) : '') + (r.capacity ? ' · ' + r.capacity + ' seats' : '') + '</div>'; }
+    },
+    faq: {
+      title: 'SMEAG Bot FAQ', hint: 'SMEAG Bot answers only from these entries, current notices and the student\'s own data. Keep answers short and exact; add Korean words to Keywords so Korean questions match too.',
+      fields: [['question', 'Question', 'text', true], ['answer', 'Answer', 'textarea', true], ['keywords', 'Keywords (any language)', 'text'], ['campus', 'Campus (empty = all)', 'campus'], ['active', 'Active', 'bool'], ['sort', 'Order', 'number']],
+      line: function (r) { return '<b>' + esc(r.question) + '</b>' + (r.active ? '' : ' <span class="pill cancelled">Off</span>') + '<div class="small muted">' + esc(r.answer.slice(0, 160)) + '</div>'; }
+    }
+  };
+  var editing = null;
+  function input(f, v) {
+    var id = 'c_' + f[0];
+    if (f[2] === 'textarea') return '<textarea class="input" id="' + id + '">' + esc(v || '') + '</textarea>';
+    if (f[2] === 'bool') return '<select class="input" id="' + id + '"><option value="true"' + (v !== false ? ' selected' : '') + '>Yes</option><option value="false"' + (v === false ? ' selected' : '') + '>No</option></select>';
+    if (f[2] === 'kind') return '<select class="input" id="' + id + '">' + ['activity', 'pickup', 'car', 'course'].map(function (k) { return '<option' + (v === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'unit') return '<select class="input" id="' + id + '">' + [['once', 'Once'], ['day', 'Per day'], ['week', 'Per week']].map(function (k) { return '<option value="' + k[0] + '"' + (v === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'campus') return '<select class="input" id="' + id + '"><option value="">All campuses</option>' + ['Capital', 'Encanto', 'Tarlac'].map(function (k) { return '<option' + (String(v || '').toUpperCase() === k.toUpperCase() ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'datetime') { var local = v ? new Date(new Date(v).getTime() + 8 * 3600e3).toISOString().slice(0, 16) : ''; return '<input class="input" type="datetime-local" id="' + id + '" value="' + local + '"><span class="hint">Philippine time</span>'; }
+    return '<input class="input" id="' + id + '" type="' + (f[2] === 'number' ? 'number' : 'text') + '" value="' + esc(v == null ? '' : v) + '"' + (f[2] === 'number' ? ' step="any" min="0"' : '') + '>';
+  }
+  function showCrud(name) {
+    var c = CRUD[name];
+    frame('<p class="small muted">' + esc(c.hint) + '</p><div class="row" style="margin-bottom:10px"><button class="btn small" data-add="' + name + '">+ Add</button></div><div id="crudForm"></div><div class="card"><div class="list" id="crudList"><div class="muted">Loading…</div></div></div>');
+    loadCrud(name);
+  }
+  var crudRows = [];
+  function loadCrud(name) {
+    api('GET', '/api/campus-admin/' + name).then(function (d) {
+      crudRows = d.rows;
+      document.getElementById('crudList').innerHTML = d.rows.length ? d.rows.map(function (r) {
+        return '<div class="li"><span>' + CRUD[name].line(r) + '</span><span class="v"><button class="btn ghost small" data-edit="' + r.id + '">Edit</button></span></div>';
+      }).join('') : '<div class="empty">Nothing yet.</div>';
+    }).catch(function (e) { flash(e.message); });
+  }
+  function crudForm(name, row) {
+    editing = { name: name, id: row ? row.id : null };
+    var c = CRUD[name];
+    document.getElementById('crudForm').innerHTML = '<form class="card stack" id="crudSave" style="margin-bottom:12px"><b>' + (row ? 'Edit' : 'Add') + '</b><div class="formgrid">' +
+      c.fields.map(function (f) { return '<div class="field"' + (f[2] === 'textarea' ? ' style="grid-column:1/-1"' : '') + '><label for="c_' + f[0] + '">' + esc(f[1]) + (f[3] ? ' *' : '') + '</label>' + input(f, row ? row[f[0]] : (f[0] === 'active' ? true : f[0] === 'fee_unit' ? 'once' : undefined)) + '</div>'; }).join('') +
+      '</div><div class="row"><button class="btn small" type="submit">Save</button><button class="btn ghost small" type="button" data-cancelform>Cancel</button>' + (row ? '<button class="btn danger small" type="button" data-delete="' + row.id + '" style="margin-left:auto">Delete</button>' : '') + '</div></form>';
+    document.getElementById('crudForm').scrollIntoView({ block: 'nearest' });
+  }
+  function crudValues(name) {
+    var out = {};
+    CRUD[name].fields.forEach(function (f) {
+      var el = document.getElementById('c_' + f[0]); var v = el.value;
+      if (f[2] === 'bool') out[f[0]] = v === 'true';
+      else if (f[2] === 'number') out[f[0]] = v === '' ? null : Number(v);
+      else if (f[2] === 'datetime') out[f[0]] = v ? new Date(v + ':00+08:00').toISOString() : (f[0] === 'published_at' ? undefined : null);
+      else out[f[0]] = v;
+    });
+    if (out.published_at === undefined) delete out.published_at;
+    return out;
+  }
+
+  // ---------- scores ----------
+  function showScores() {
+    frame('<div class="card stack"><b>Import mock test scores</b><p class="small muted" style="margin:0">Paste rows from Excel or a CSV. First line = column names. Columns: studentId, test (IELTS or TOEFL), date (YYYY-MM-DD), listening, reading, writing, speaking, overall, comment. A row with the same student, test and date replaces the old one.</p>' +
+      '<pre class="sample">studentId,test,date,listening,reading,writing,speaking,overall,comment\nP510M5TYS,IELTS,2026-11-14,6.5,7,6,6.5,6.5,Good progress in reading</pre>' +
+      '<textarea class="input" id="csv" style="min-height:160px;font-family:var(--mono);font-size:12px" placeholder="Paste here"></textarea><div class="row"><button class="btn small" id="previewCsv">Check rows</button><button class="btn small" id="importCsv" disabled>Import</button><span class="count" id="csvInfo"></span></div></div>' +
+      '<div class="card" style="margin-top:12px"><form id="scoreFind" class="filters" style="margin:0 0 8px"><input class="input" id="scoreSid" placeholder="Student ID (empty = latest 300)"><button class="btn small" type="submit">Show scores</button></form><div class="scroll" id="scoreList"></div></div>');
+  }
+  var csvRows = [];
+  function parseCsv(text) {
+    var lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
+    if (lines.length < 2) return [];
+    var sep = lines[0].indexOf('\t') >= 0 ? '\t' : ',';
+    var head = lines[0].split(sep).map(function (h) { return h.trim().replace(/^"|"$/g, ''); });
+    var norm = function (h) { var k = h.toLowerCase().replace(/[^a-z]/g, ''); return { studentid: 'studentId', sid: 'studentId', test: 'test', date: 'date', testdate: 'date', listening: 'listening', reading: 'reading', writing: 'writing', speaking: 'speaking', overall: 'overall', total: 'overall', comment: 'comment' }[k]; };
+    var keys = head.map(norm);
+    return lines.slice(1).map(function (l) {
+      var cells = l.split(sep).map(function (c) { return c.trim().replace(/^"|"$/g, ''); });
+      var o = {}; keys.forEach(function (k, i) { if (k) o[k] = cells[i]; }); return o;
+    });
+  }
+  function scoreTable(rows) {
+    return rows.length ? '<table class="tbl"><thead><tr><th>Student ID</th><th>Test</th><th>Date</th><th>L</th><th>R</th><th>W</th><th>S</th><th>Overall</th><th>Comment</th></tr></thead><tbody>' + rows.map(function (r) {
+      return '<tr><td>' + esc(r.studentid || r.studentId) + '</td><td>' + esc(r.test) + '</td><td>' + esc(r.test_date || r.date) + '</td><td>' + esc(r.listening) + '</td><td>' + esc(r.reading) + '</td><td>' + esc(r.writing) + '</td><td>' + esc(r.speaking) + '</td><td><b>' + esc(r.overall) + '</b></td><td>' + esc(r.comment || '') + '</td></tr>';
+    }).join('') + '</tbody></table>' : '<div class="empty">No scores.</div>';
+  }
+
+  function show() {
+    if (!session) return renderLogin();
+    if (tab === 'requests') return showRequests();
+    if (tab === 'students') return showStudents();
+    if (tab === 'scores') return showScores();
+    return showCrud(tab);
+  }
+
+  // ---------- events ----------
+  document.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var id = e.target.id;
+    if (id === 'loginForm') {
+      api('POST', '/api/auth/login', { loginId: document.getElementById('lid').value.trim() }).then(function (d) {
+        if (!d.manager) throw new Error('Unknown staff ID.');
+        if (!d.access || !d.access.office) throw new Error('This account cannot use the office program.');
+        saveSession({ token: d.token, loginId: d.manager.login_id, name: d.manager.name, position: d.manager.position, campus: d.manager.campus });
+        return start();
+      }).catch(function (err) { renderLogin(err.message); });
+    }
+    if (id === 'stuForm') searchStudents(document.getElementById('stuSearch').value.trim());
+    if (id === 'crudSave') {
+      var body = crudValues(editing.name);
+      var p = editing.id ? api('PATCH', '/api/campus-admin/' + editing.name + '/' + editing.id, body) : api('POST', '/api/campus-admin/' + editing.name, body);
+      p.then(function () { flash('Saved.', true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
+    }
+    if (id === 'scoreFind') {
+      api('GET', '/api/campus-admin/scores?studentId=' + encodeURIComponent(document.getElementById('scoreSid').value.trim())).then(function (d) { document.getElementById('scoreList').innerHTML = scoreTable(d.scores); }).catch(function (err) { flash(err.message); });
+    }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'fStatus') { state.status = e.target.value; loadRequests(); }
+    if (e.target.id === 'fType') { state.type = e.target.value; loadRequests(); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.target.id === 'fSearch' && e.key === 'Enter') { state.search = e.target.value.trim(); loadRequests(); } });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'logout') { saveSession(null); return renderLogin(); }
+    if (b.hasAttribute('data-tab')) { tab = b.getAttribute('data-tab'); return show(); }
+    if (b.id === 'reload') { state.search = document.getElementById('fSearch').value.trim(); return loadRequests(); }
+    if (b.hasAttribute('data-decide')) {
+      var rid = b.getAttribute('data-decide'), st = b.getAttribute('data-status');
+      var note = (document.getElementById('note' + rid) || {}).value || '';
+      if (st === 'rejected' && !note.trim()) return flash('Write the reason for the student before rejecting.');
+      b.disabled = true;
+      return api('POST', '/api/campus-admin/requests/' + rid, { status: st, note: note }).then(function (d) {
+        flash('Request #' + rid + ' → ' + d.request.status + (d.request.charged && st === 'approved' ? ' (charged ' + peso(d.request.fee) + ')' : '') + '.', true); loadRequests();
+      }).catch(function (err) { b.disabled = false; flash(err.message); });
+    }
+    if (b.hasAttribute('data-code')) {
+      var pid = b.getAttribute('data-code');
+      b.disabled = true;
+      return api('POST', '/api/campus-admin/students/' + pid + '/activation', {}).then(function (d) {
+        document.getElementById('code' + pid).innerHTML = '<div style="margin-top:8px"><span class="codebox">' + esc(d.code) + '</span><div class="small muted">Give this to ' + esc(d.name) + ' (' + esc(d.studentId) + '). Valid until ' + esc(d.expires) + '. In the app: First time here → Use an office code.</div></div>';
+      }).catch(function (err) { b.disabled = false; flash(err.message); });
+    }
+    if (b.hasAttribute('data-unfreeze')) {
+      return api('POST', '/api/campus-admin/students/' + b.getAttribute('data-unfreeze') + '/unfreeze', {}).then(function () { flash('Card unfrozen and sign-in unlocked.', true); searchStudents(document.getElementById('stuSearch').value.trim()); }).catch(function (err) { flash(err.message); });
+    }
+    if (b.hasAttribute('data-add')) return crudForm(b.getAttribute('data-add'), null);
+    if (b.hasAttribute('data-edit')) { var row = crudRows.filter(function (r) { return String(r.id) === b.getAttribute('data-edit'); })[0]; return crudForm(tab, row); }
+    if (b.hasAttribute('data-cancelform')) { document.getElementById('crudForm').innerHTML = ''; return; }
+    if (b.hasAttribute('data-delete')) {
+      if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = 'Click again to delete'; return; }
+      return api('DELETE', '/api/campus-admin/' + editing.name + '/' + b.getAttribute('data-delete')).then(function () { flash('Deleted.', true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
+    }
+    if (b.id === 'previewCsv') {
+      csvRows = parseCsv(document.getElementById('csv').value);
+      document.getElementById('csvInfo').textContent = csvRows.length ? csvRows.length + ' rows ready. Check the table below, then Import.' : 'No rows found. The first line must be the column names.';
+      document.getElementById('importCsv').disabled = !csvRows.length;
+      document.getElementById('scoreList').innerHTML = scoreTable(csvRows);
+    }
+    if (b.id === 'importCsv') {
+      b.disabled = true;
+      return api('POST', '/api/campus-admin/scores', { rows: csvRows }).then(function (d) {
+        flash('Imported ' + d.saved + ' rows.' + (d.unknownStudentIds.length ? ' Not found in e-money (check the ID): ' + d.unknownStudentIds.join(', ') : ''), !d.unknownStudentIds.length);
+        document.getElementById('csv').value = ''; csvRows = [];
+      }).catch(function (err) { b.disabled = false; flash(err.message); });
+    }
+  });
+
+  function start() {
+    return api('GET', '/api/campus/config').then(function (c) { config = c; c.types.forEach(function (x) { TYPES[x.key] = x; }); show(); });
+  }
+  if (session) start().catch(function (e) { renderLogin(e.message); }); else renderLogin();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "SMEAG Campus",
+  "short_name": "SMEAG",
+  "description": "SMEAG student app: e-money, requests, scores, notices and SMEAG Bot.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f1ea",
+  "theme_color": "#e85a24",
+  "icons": [
+    { "src": "../icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

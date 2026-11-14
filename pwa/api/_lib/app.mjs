@@ -35,6 +35,8 @@ import { httpError } from "./repository.mjs";
 import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
 import * as office from "./office.mjs";
 import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.mjs";
+import * as campus from "./campus.mjs";
+import * as campusBot from "./campusBot.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -114,6 +116,8 @@ const routes = [
   ["POST", /^\/api\/checkouts$/, async ({ req, body }) => {
     const { access } = verifyRequest(req);
     assertCanSell(access, body.store || "mart", body.campus);
+    // A card the student froze in the SMEAG Campus app (lost card) cannot pay.
+    if (dbBackend === "supabase") await campus.assertCardUsable(body.uid);
     return { checkout: await repo.createCheckout(body) };
   }],
   ["POST", /^\/api\/charges$/, async ({ req, body }) => {
@@ -242,7 +246,57 @@ const routes = [
     activityLogScope(session);
     return listActivity(activityFilter(url));
   }),
+
+  // ----- SMEAG Campus app: students (campus.mjs; student token, not a staff token) -----
+  ["GET", /^\/api\/campus\/config$/, async () => campus.config()],
+  ["POST", /^\/api\/campus\/activate$/, async ({ body }) => { supabaseOnly(); return campus.activate(body || {}); }],
+  ["POST", /^\/api\/campus\/login$/, async ({ body }) => { supabaseOnly(); return campus.login(body || {}); }],
+  studentRoute("GET", /^\/api\/campus\/me$/, ({ student }) => campus.me(student)),
+  studentRoute("POST", /^\/api\/campus\/pin$/, ({ student, body }) => campus.changePin(student, body)),
+  studentRoute("POST", /^\/api\/campus\/lang$/, ({ student, body }) => campus.setLang(student, body)),
+  studentRoute("GET", /^\/api\/campus\/wallet$/, ({ student, url }) => campus.wallet(student, query(url, "kind", "before"))),
+  studentRoute("POST", /^\/api\/campus\/card$/, ({ student, body }) => campus.setFrozen(student, body)),
+  studentRoute("GET", /^\/api\/campus\/notices$/, ({ student }) => campus.notices(student)),
+  studentRoute("GET", /^\/api\/campus\/catalog$/, ({ student, url }) => campus.catalog(student, query(url, "kind"))),
+  studentRoute("GET", /^\/api\/campus\/requests$/, ({ student }) => campus.listRequests(student)),
+  studentRoute("POST", /^\/api\/campus\/requests$/, ({ student, body }) => campus.submitRequest(student, body)),
+  studentRoute("POST", /^\/api\/campus\/requests\/(\d+)\/cancel$/, ({ student, match }) => campus.cancelRequest(student, match[1])),
+  studentRoute("GET", /^\/api\/campus\/scores$/, ({ student }) => campus.scores(student)),
+  studentRoute("POST", /^\/api\/campus\/bot$/, ({ student, body }) => campusBot.ask(student, body)),
+
+  // ----- SMEAG Campus app: staff (office login; campus managers see their own campus only) -----
+  campusStaffRoute("GET", /^\/api\/campus-admin\/requests$/, ({ campuses, url }) =>
+    campus.staffListRequests(campuses, query(url, "status", "type", "search", "from", "to"))),
+  campusStaffRoute("POST", /^\/api\/campus-admin\/requests\/(\d+)$/, ({ campuses, match, body, session }) =>
+    campus.staffDecide(campuses, match[1], body, session.loginId)),
+  campusStaffRoute("GET", /^\/api\/campus-admin\/(notices|catalog|faq)$/, ({ campuses, match }) => campus.staffList(match[1], campuses)),
+  campusStaffRoute("POST", /^\/api\/campus-admin\/(notices|catalog|faq)$/, ({ campuses, match, body, session }) =>
+    campus.staffCreate(match[1], campuses, body, session.loginId)),
+  campusStaffRoute("PATCH", /^\/api\/campus-admin\/(notices|catalog|faq)\/(\d+)$/, ({ campuses, match, body }) =>
+    campus.staffUpdate(match[1], campuses, match[2], body)),
+  campusStaffRoute("DELETE", /^\/api\/campus-admin\/(notices|catalog|faq)\/(\d+)$/, ({ campuses, match }) =>
+    campus.staffDelete(match[1], campuses, match[2])),
+  campusStaffRoute("GET", /^\/api\/campus-admin\/students$/, ({ campuses, url }) => campus.staffStudents(campuses, query(url, "search"))),
+  campusStaffRoute("POST", /^\/api\/campus-admin\/students\/(\d+)\/activation$/, ({ campuses, match }) =>
+    campus.staffActivationCode(campuses, match[1])),
+  campusStaffRoute("POST", /^\/api\/campus-admin\/students\/(\d+)\/unfreeze$/, ({ campuses, match }) => campus.staffUnfreeze(campuses, match[1])),
+  campusStaffRoute("GET", /^\/api\/campus-admin\/scores$/, ({ url }) => campus.staffScores(query(url, "studentId"))),
+  campusStaffRoute("POST", /^\/api\/campus-admin\/scores$/, ({ body, session }) => campus.staffImportScores(body.rows, session.loginId)),
 ];
+
+// Student route (SMEAG Campus app): student token only. Supabase backend only.
+function studentRoute(method, pattern, handler) {
+  return [method, pattern, async (ctx) => {
+    supabaseOnly();
+    const student = await campus.verifyStudent(ctx.req);
+    return handler({ ...ctx, student });
+  }];
+}
+
+// Campus app staff route: office login, scoped to the campuses the account may handle.
+function campusStaffRoute(method, pattern, handler) {
+  return officeRoute(method, pattern, (ctx) => handler({ ...ctx, campuses: campus.staffCampuses(ctx.session, ctx.access) }));
+}
 
 // Office-program route: login + office access, Supabase backend only.
 function officeRoute(method, pattern, handler) {

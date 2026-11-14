@@ -64,10 +64,20 @@ const ACTIONS = [
   ["GET", /^\/api\/admin\/activity-log$/, "Admin: view activity log"],
   ["GET", /^\/api\/purchases$/, "View store purchases"],
   ["POST", /^\/api\/student\/purchases$/, "Student: view own purchases"],
+  ["GET", /^\/api\/campus-admin\/requests$/, "Campus app: view requests"],
+  ["POST", /^\/api\/campus-admin\/requests\/\d+$/, "Campus app: decide request"],
+  ["POST", /^\/api\/campus-admin\/(notices|catalog|faq)$/, "Campus app: add item"],
+  ["PATCH", /^\/api\/campus-admin\/(notices|catalog|faq)\/\d+$/, "Campus app: edit item"],
+  ["DELETE", /^\/api\/campus-admin\/(notices|catalog|faq)\/\d+$/, "Campus app: delete item"],
+  ["GET", /^\/api\/campus-admin\/students$/, "Campus app: search students"],
+  ["POST", /^\/api\/campus-admin\/students\/\d+\/activation$/, "Campus app: issue sign-in code"],
+  ["POST", /^\/api\/campus-admin\/students\/\d+\/unfreeze$/, "Campus app: unfreeze card"],
+  ["POST", /^\/api\/campus-admin\/scores$/, "Campus app: import scores"],
 ];
 
 export function shouldLog(method, pathname) {
-  return method !== "OPTIONS" && method !== "HEAD" && pathname !== "/api/health";
+  // Student app calls (/api/campus/...) are not staff activity, and their bodies carry PINs: never logged here.
+  return method !== "OPTIONS" && method !== "HEAD" && pathname !== "/api/health" && !pathname.startsWith("/api/campus/");
 }
 
 function actionFor(method, pathname, result, status) {

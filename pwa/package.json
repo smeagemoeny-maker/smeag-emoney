@@ -11,7 +11,8 @@
     "deploy": "node scripts/sync-api.mjs && vercel deploy --prod"
   },
   "dependencies": {
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "@anthropic-ai/sdk": "^1.8.0"
   },
   "devDependencies": {},
   "engines": {

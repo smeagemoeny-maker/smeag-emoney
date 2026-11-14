@@ -125,3 +125,8 @@ Set `USE_MOCK_DB=false` in `api/.env`, then run the API server. If API requests 
 ## Important security note
 
 Do not put DB or SFTP credentials in the PWA or Android wrapper. All credentialed work belongs in `api/`.
+
+## SMEAG Campus (student app + staff requests + SMEAG Bot)
+
+`pwa/campus/` (students: e-money, requests, scores, notices, SMEAG Bot) and `pwa/campus-admin/` (staff queue).
+Setup, money rule and API: `docs/CAMPUS_APP.md`. Run `api/migrations/supabase_campus_app.sql` once in Supabase first.
