@@ -27,7 +27,9 @@ Nothing to install: Windows PowerShell 5.1 compiles the code on start (a few sec
 2. Double-click `start-bridge.cmd` and leave the window open (minimized).
    `Reader: ACS ACR122 ...` must appear; tapping a card shows `Card 04... -> sent to the web page`.
 3. Open the Office page; the title bar shows **● Card reader connected**. Tap a card.
-4. Start it automatically (optional): Win+R, `shell:startup`, put a shortcut to `start-bridge.cmd` there.
+4. Start it automatically at sign-in: double-click `windows/install-autostart.cmd` once (adds a minimized
+   `start-bridge.cmd` shortcut to the Startup folder and starts it now). Keep the folder where it is.
+   Undo: `windows/uninstall-autostart.cmd`.
 
 Options: `-DryRun` (log only), `-Keyboard` (also type UID + Enter into the focused window).
 
@@ -44,3 +46,7 @@ clang -O2 -o acr122u-bridge acr122u-bridge.c -framework PCSC -framework Applicat
 ```
 
 Options: `--dry-run` (log only), `--keyboard` (also type UID + Enter; needs Accessibility permission).
+
+Start it automatically at login (no terminal window): `sh macos/install-autostart.sh`. It builds the program into
+`~/Library/Application Support/PusanMartBridge`, adds the LaunchAgent `com.pusanmart.acr122u-bridge` (restarted
+by launchd if it stops) and logs to `~/Library/Logs/pusan-acr122u-bridge.log`. Undo: `sh macos/install-autostart.sh --remove`.
