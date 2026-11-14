@@ -32,7 +32,7 @@ export async function findPersonByUid(uid) {
   return rows[0] ? mapPerson(rows[0]) : null;
 }
 
-const ALLOWED_DISCOUNTS = new Set([0, 0.1, 0.15]);
+const ALLOWED_DISCOUNTS = new Set([0, 0.1, 0.15, 0.2, 0.3]);
 
 export function validateCheckoutInput({ uid, store, campus, cart, discountRate }) {
   if (!normalizeUid(uid)) throw httpError(400, "NFC UID is required.");

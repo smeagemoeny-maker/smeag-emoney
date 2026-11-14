@@ -190,6 +190,7 @@ function startApp() {
   var mine = normCampus(session().campus || m.campus);
   $('fCampus').value = list.includes(mine) ? mine : list[0];
   $('fCampus').dataset.prev = $('fCampus').value;
+  renderDiscountChips();
   // History / report default range: last 30 days.
   if (!$('hFrom').value) $('hFrom').value = todayStr(-30);
   if (!$('hTo').value) $('hTo').value = todayStr(0);
@@ -284,7 +285,8 @@ $('fCampus').onchange = function () {
   }
   $('fCampus').dataset.prev = $('fCampus').value;
   $('fCategory').value = ''; $('fSub').value = '';
-  refreshFilters(); renderProducts();
+  renderDiscountChips();
+  refreshFilters(); renderProducts(); renderCart();
 };
 ['fCategory', 'fSub'].forEach(function (id) { $(id).onchange = function () { refreshFilters(); renderProducts(); }; });
 $('fName').oninput = renderProducts;
@@ -390,13 +392,32 @@ $('cartList').onclick = function (e) {
   else changeQty(id, Number(b.dataset.q));
 };
 
-document.querySelectorAll('[data-discount]').forEach(function (btn) {
-  btn.onclick = function () {
-    state.discount = Number(btn.dataset.discount);
-    state.discountLabel = btn.dataset.label;
-    renderCart();
-  };
-});
+// Discount chips depend on the campus: Capital Cafe offers Student 10% / Staff 30%;
+// the other campuses offer plain 10 / 15 / 20 / 30 %. Rebuilt whenever the campus is set or changed.
+function discountOptions() {
+  if (upper(sellCampus()) === 'CAPITAL') {
+    return [{ pct: 0, label: 'No Discount' }, { pct: 10, label: 'Student 10%' }, { pct: 30, label: 'Staff 30%' }];
+  }
+  return [{ pct: 0, label: 'No Discount' }, { pct: 10, label: '10%' }, { pct: 15, label: '15%' },
+          { pct: 20, label: '20%' }, { pct: 30, label: '30%' }];
+}
+function renderDiscountChips() {
+  var opts = discountOptions();
+  // Keep the chosen discount only if it still exists for this campus; otherwise reset to No Discount.
+  if (!opts.some(function (o) { return o.label === state.discountLabel; })) {
+    state.discount = 0; state.discountLabel = 'No Discount';
+  }
+  $('discountChips').innerHTML = opts.map(function (o) {
+    return '<button type="button" class="chip" data-discount="' + o.pct + '" data-label="' + esc(o.label) + '">' + esc(o.label) + '</button>';
+  }).join('');
+}
+$('discountChips').onclick = function (e) {
+  var btn = e.target.closest('[data-discount]');
+  if (!btn) return;
+  state.discount = Number(btn.dataset.discount);
+  state.discountLabel = btn.dataset.label;
+  renderCart();
+};
 
 function resetSale() {
   state.cart = []; state.discount = 0; state.discountLabel = 'No Discount';

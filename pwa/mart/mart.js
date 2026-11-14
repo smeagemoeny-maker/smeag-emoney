@@ -358,8 +358,8 @@
         S = { campus: campus, awaitingTap: false, paying: false, confirm: null, category: 'All', subcategory: 'All' };
         loadProducts(S.campus); break;
       case 'register':
-        S = { campus: campus, photo: null, name: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false };
-        break;
+        S = { campus: campus, photo: null, name: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
+        vm.products = []; loadProducts(S.campus); break;
       case 'modify':
         S = { campus: campus, category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
         loadProducts(S.campus); break;
@@ -663,7 +663,8 @@
 
   function registerScreen() {
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Product Register') + title('Register Product') +
-      campusDropdown('r_campus', function (v) { S.campus = v; }) +
+      campusDropdown('r_campus', function (v) { S.campus = v; S.category = null; vm.products = []; loadProducts(v); }) +
+      registerCategoryDropdown() +
       '<div class="photobox">' + (S.photo ? '<img src="' + esc(S.photo) + '" alt="">' :
         '<div style="font-size:24px;line-height:normal;letter-spacing:0">📷</div>' + spacer(6) +
         '<div style="font-size:11.5px;color:var(--ink3)">Select a photo</div>') + '</div>' +
@@ -680,19 +681,47 @@
     h += primaryBtn(S.saving ? 'Registering...' : 'REGISTER', doRegister, S.saving) + spacer(24) + '</div></div>';
     return h;
   }
+  // Category (m_menu) for a new product: the categories this campus's mart already uses, e.g.
+  // "Pusan Mart(Drink)", "Pusan Mart(Cookie)", "Capital Mart". "+ New category" asks for a name.
+  var NEW_CATEGORY = '+ New category…';
+  function registerCategories() {
+    var cats = uniqSorted(vm.products.map(function (p) { return String(p.mMenu || '').trim(); }).filter(Boolean));
+    if (S.category && cats.indexOf(S.category) < 0) cats.push(S.category);
+    return cats;
+  }
+  function registerCategoryDropdown() {
+    var cats = registerCategories();
+    if (!S.category) {
+      var def = martMenuFor(S.campus);
+      S.category = cats.indexOf(def) >= 0 ? def : (cats[0] || null);
+    }
+    return dropdown('r_cat', S.category || (S.loading ? 'Loading…' : 'Select category'), cats.concat([NEW_CATEGORY]), function (v) {
+      if (v !== NEW_CATEGORY) { S.category = v; return; }
+      var name = window.prompt('New category name', S.category || '');
+      if (name && name.trim()) S.category = name.trim();
+    }, 'Category');
+  }
   function doRegister() {
     var price = parseNum(S.price), qty = parseIntStrict(S.qty), min = parseIntStrict(S.minStock);
     if (min == null) min = 5;
+    if (!S.category) { S.message = 'Please select a category.'; return; }
     if (!S.name.trim() || price == null || qty == null) { S.message = 'Please enter a valid product name, price, and quantity.'; return; }
+    var wanted = S.name.trim().replace(/\s+/g, ' ').toUpperCase();
+    var dup = vm.products.filter(function (p) { return String(p.sMenu || '').trim().replace(/\s+/g, ' ').toUpperCase() === wanted; })[0];
+    if (dup && !window.confirm('"' + dup.sMenu + '" is already registered (' + (dup.mMenu || '-') + ', stock ' + dup.stock + ').\n' +
+        'Use Edit Products to change its stock or price.\n\nRegister it again anyway?')) return;
     var s = S, hadPhoto = !!S.photo;
     s.saving = true; s.message = null;
-    // Same row as DbRepository.insertProduct: Campus upper-cased, m_menu = campus. The Android app
+    // Same row as DbRepository.insertProduct: Campus upper-cased, m_menu = the chosen category. The Android app
     // uploads the photo by SFTP first; a browser cannot, so the product is saved without an image.
-    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: martMenuFor(s.campus), sMenu: s.name.trim(), payment: price, stock: qty, minStock: min })
-      .then(function () {
-        s.message = 'Registered successfully.';
+    var regName = s.name.trim();
+    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.category, sMenu: regName, payment: price, stock: qty, minStock: min })
+      .then(function (product) {
+        s.message = 'Registered: ' + regName + ' (' + s.category + ')';
+        if (product) vm.products.push(normProduct(product));
+        toast('✅ Registered: ' + regName, 2500);
         s.name = ''; s.price = ''; s.qty = ''; s.desc = ''; s.photo = null;
-        if (hadPhoto && S === s) toast('Photo not uploaded: the browser cannot upload product photos. Product saved without an image.', 4000);
+        if (hadPhoto && S === s) toast('✅ Registered: ' + regName + ' — photo not uploaded (the browser cannot upload product photos).', 4000);
       }, function (e) { s.message = 'Registration failed: ' + e.message; })
       .then(function () { s.saving = false; render(); });
   }
