@@ -292,3 +292,25 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .row { flex-wrap: wrap; }
   .row > .input { flex: 1 1 160px; }
 }
+
+/* ===== Store button (header title) + store dialog ===== */
+[hidden] { display: none !important; }
+button.store { background: none; border: none; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.store:hover h1 { color: var(--accent); }
+.store-caret { font-size: .6em; color: var(--muted); vertical-align: middle; }
+.store-line { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 12px; }
+.store-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.store-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.store-row.current { border-color: var(--green); }
+.store-row.picked { border-color: var(--accent); outline: 1px solid var(--accent); }
+.store-tag { font-size: 12px; color: var(--muted); }
+.store-row.current .store-tag { color: var(--green); }
+.store-switch { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+/* Header title "Cafe" in script (cursive) */
+.store h1.store-title { font-family: 'Dancing Script', 'Brush Script MT', 'Segoe Script', cursive; font-size: 34px; font-weight: 700; letter-spacing: .5px; line-height: 1; }
+@media (max-width: 680px) { .store h1.store-title { font-size: 28px; } }
+.store-title .store-caret { font-family: system-ui, sans-serif; font-size: 14px; }

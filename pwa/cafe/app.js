@@ -56,6 +56,8 @@ function normCampus(c) { // 'CAPITAL' / 'Talrac' -> 'Capital' / 'Tarlac' when it
   return hit || c || '-';
 }
 function sellCampus() { return $('fCampus').value || campuses()[0]; }
+// Every tab (Sales, Product Registration, History, Report) shows only the logged-in store's data.
+function storeCampuses() { var c = sellCampus(); return c ? [c] : []; }
 
 // ===== Header / theme / tabs =====
 function applyTheme(theme) {
@@ -82,7 +84,6 @@ document.querySelectorAll('.tab').forEach(function (btn) {
 // ===================================================================
 function showLogin(message) {
   document.body.classList.add('logged-out');
-  $('sellerInfo').textContent = 'Seller: - | Position: - | Campus: -';
   $('loginError').textContent = message || '';
   $('loginId').focus();
 }
@@ -120,16 +121,73 @@ $('logoutBtn').onclick = function () {
   showLogin('');
 };
 
+// ===== Store info / switch store (opened by tapping "SMEAG CAFE") =====
+// Each login ID belongs to a store. To move to another store, pick it and enter that store's ID.
+var CAFE_STORES = ['Capital', 'Encanto', 'Tarlac'];
+function storeDialog(pick, error) {
+  var m = manager(), cur = sellCampus();
+  var rows = CAFE_STORES.map(function (c) {
+    var isCur = c === cur, isPick = c === pick;
+    return '<button type="button" class="store-row' + (isCur ? ' current' : '') + (isPick ? ' picked' : '') + '" data-store="' + esc(c) + '">' +
+      '<span class="store-name">' + esc(c) + ' Cafe</span>' +
+      '<span class="store-tag">' + (isCur ? '● Current' : isPick ? 'Selected' : 'Switch') + '</span></button>';
+  }).join('');
+  var switchForm = pick && pick !== cur
+    ? '<form id="storeSwitch" class="form store-switch">' +
+        '<label>Login ID for ' + esc(pick) + ' Cafe<input id="storeLoginId" class="input" autocomplete="username" required /></label>' +
+        '<div id="storeError" class="login-error">' + esc(error || '') + '</div>' +
+        '<button type="submit" class="btn btn-green full">Switch to ' + esc(pick) + ' Cafe</button>' +
+      '</form>'
+    : '';
+  showDialog(
+    '<div class="label">Store</div>' +
+    '<div class="store-line">' + esc(cur) + ' Cafe · ' + esc(m.name || m.login_id || '-') + ' · ' + esc(m.position || '-') + '</div>' +
+    '<div class="store-list">' + rows + '</div>' + switchForm
+  );
+  document.querySelectorAll('#dialogBody [data-store]').forEach(function (b) {
+    b.onclick = function () { storeDialog(b.dataset.store === cur ? null : b.dataset.store); };
+  });
+  var form = $('storeSwitch');
+  if (form) {
+    $('storeLoginId').focus();
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      busy(form.querySelector('button[type=submit]'), function () { return switchStore(pick, $('storeLoginId').value.trim()); });
+    };
+  }
+}
+
+async function switchStore(campus, loginId) {
+  var showErr = function (msg) { $('storeError').textContent = msg; };
+  var res;
+  try { res = await API.login(loginId); } catch (err) { showErr(err.message); return; }
+  if (!res || !res.manager) { showErr('Unknown login ID.'); return; }
+  var acc = res.access || {};
+  if (!(acc.stores || []).includes('cafe') || !(acc.cafeCampuses || []).includes(campus)) {
+    showErr('This ID is not registered for ' + campus + ' Cafe.');
+    return;
+  }
+  if (state.cart.length && !confirm('Switching store clears the cart. Continue?')) return;
+  API.saveSession({ token: res.token, manager: res.manager, access: acc, campus: campus });
+  resetSale();
+  db.products = []; db.campusIds = {}; db.buyers = []; db.sales = []; salesCache.key = '';
+  $('fCategory').value = ''; $('fSub').value = '';
+  $('dialog').close();
+  startApp();
+  toast('Switched to ' + campus + ' Cafe (' + (res.manager.name || res.manager.login_id) + ')');
+}
+$('storeBtn').onclick = function () { if (session()) storeDialog(null); };
+
 API.onUnauthorized = function (msg) { showLogin(msg || 'Please log in again.'); };
 
 function startApp() {
   var m = manager();
   document.body.classList.remove('logged-out');
-  $('sellerInfo').textContent = 'Seller: ' + (m.name || m.login_id || '-') + ' | Position: ' + (m.position || '-') + ' | Campus: ' + normCampus(m.campus);
-  // Campus selector: only campuses this account may sell at; default = the account's own campus.
-  var list = campuses();
+  // The store is fixed by the login ID: the account's own campus, or the store picked when the
+  // ID was entered in the store dialog (session.campus). The (hidden) fCampus select keeps it.
+  var list = storeCampuses();
   $('fCampus').innerHTML = list.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
-  var mine = normCampus(m.campus);
+  var mine = normCampus(session().campus || m.campus);
   $('fCampus').value = list.includes(mine) ? mine : list[0];
   $('fCampus').dataset.prev = $('fCampus').value;
   // History / report default range: last 30 days.
@@ -148,7 +206,7 @@ var productsLoading = null;
 function loadProducts() {
   if (productsLoading) return productsLoading;
   productsLoading = (async function () {
-    var list = campuses();
+    var list = storeCampuses();
     var results = await Promise.all(list.map(function (c) { return API.products(c); }));
     var byId = new Map();
     var ids = {};
@@ -499,7 +557,7 @@ function showReceipt(s) {
 // PRODUCT REGISTRATION
 // ===================================================================
 function campusOptions(extra) {
-  var list = campuses().map(function (c) { return { value: upper(c), label: c }; });
+  var list = storeCampuses().map(function (c) { return { value: upper(c), label: c }; });
   if (extra && !list.some(function (o) { return o.value === upper(extra); })) list.push({ value: extra, label: extra });
   return list.map(function (o) { return '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>'; }).join('');
 }
@@ -579,11 +637,11 @@ $('productTable').onclick = function (e) {
 // ===================================================================
 var salesCache = { key: '', promise: null, rows: [] };
 function loadSales(from, to) {
-  var key = from + '|' + to + '|' + campuses().join(',');
+  var key = from + '|' + to + '|' + storeCampuses().join(',');
   if (salesCache.key === key) return salesCache.promise;
   salesCache.key = key;
   salesCache.promise = (async function () {
-    var list = campuses();
+    var list = storeCampuses();
     var results = await Promise.all(list.map(function (c) { return API.sales({ from: from, to: to, campus: c, store: 'cafe' }); }));
     var byId = new Map();
     results.forEach(function (rows) {
@@ -632,7 +690,7 @@ var historyReceipts = [];
 async function renderHistory() {
   var from = $('hFrom').value, to = $('hTo').value, q = $('hSearch').value.trim().toLowerCase();
   if (!from || !to) { $('historyTable').innerHTML = '<tr><td colspan="8" class="muted">Choose a date range</td></tr>'; return; }
-  if (salesCache.key !== from + '|' + to + '|' + campuses().join(',')) $('historyTable').innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
+  if (salesCache.key !== from + '|' + to + '|' + storeCampuses().join(',')) $('historyTable').innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
   var rows;
   try { rows = await loadSales(from, to); } catch (e) { $('historyTable').innerHTML = '<tr><td colspan="8" class="muted">' + esc(e.message) + '</td></tr>'; return fail(e); }
   if ($('hFrom').value !== from || $('hTo').value !== to) return; // a newer render is on its way

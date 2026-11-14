@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SMEAG CAFE - Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="logged-out">
@@ -17,10 +19,10 @@
           <span class="logo-sub">GLOBAL EDUCATION</span>
         </div>
       </div>
-      <div class="store">
-        <h1>SMEAG CAFE</h1>
-        <p id="sellerInfo">Seller: - | Position: - | Campus: -</p>
-      </div>
+      <!-- Tap the title to see / switch the store (store info is not shown on the main screen). -->
+      <button type="button" id="storeBtn" class="store" title="Store info / switch store">
+        <h1 class="store-title">Cafe <span class="store-caret">▾</span></h1>
+      </button>
     </div>
     <div class="header-actions">
       <button id="logoutBtn" class="btn btn-ghost">Logout</button>
@@ -61,7 +63,7 @@
           <!-- Tapped card's student info: its own row under "Sales" so product search stays available. -->
           <div id="buyerRow" class="buyer-row" hidden></div>
           <div class="filters">
-            <label>Campus<select id="fCampus" class="input"></select></label>
+            <label hidden>Campus<select id="fCampus" class="input"></select></label>
             <label>Category<select id="fCategory" class="input"></select></label>
             <label>Sub-category<select id="fSub" class="input"></select></label>
           </div>
