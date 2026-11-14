@@ -294,13 +294,17 @@
 
   // ---------- USB / Bluetooth reader in keyboard (HID) mode ----------
   // Readers "type" the UID very fast and finish with Enter. Human typing is much slower,
-  // so a burst of >= 6 characters with < 60ms gaps ending in Enter is treated as a card.
+  // so a fast burst of >= 6 hex characters ending in Enter is treated as a card (limits below).
 
-  const MAX_KEY_GAP_MS = 60;
+  // Some readers (and Bluetooth ones) type slower than 60ms per key: allow gaps up to 250ms, but the
+  // whole burst must average <= 100ms per key, which people typing by hand do not reach.
+  const MAX_KEY_GAP_MS = 250;
+  const MAX_AVG_GAP_MS = 100;
   const MIN_UID_LENGTH = 6;
   let readerEnabled = () => false;
   let buffer = "";
   let lastKeyAt = 0;
+  let firstKeyAt = 0;
 
   function enableKeyboardReader(isActive) {
     readerEnabled = isActive;
@@ -315,13 +319,15 @@
       }
       const now = performance.now();
       if (now - lastKeyAt > MAX_KEY_GAP_MS) buffer = "";
+      if (!buffer) firstKeyAt = now;
       lastKeyAt = now;
 
       const isEnd = event.key === "Enter" || event.key === "Tab" || event.code === "Enter" || event.code === "NumpadEnter";
       if (isEnd) {
         const raw = buffer;
         buffer = "";
-        if (raw.length >= MIN_UID_LENGTH) {
+        const avgGap = raw.length > 1 ? (now - firstKeyAt) / raw.length : 0;
+        if (raw.length >= MIN_UID_LENGTH && avgGap <= MAX_AVG_GAP_MS) {
           event.preventDefault();
           event.stopPropagation();
           // Clear any characters the reader typed into a focused text field.
