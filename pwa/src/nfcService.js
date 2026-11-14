@@ -359,11 +359,139 @@
   const PC_BRIDGE_URL = "http://127.0.0.1:47321/events";
   let pcBridge = null;
 
+  // ---------- one-step install hint ----------
+  // When the bridge does not answer a few seconds after the page opens on a Windows PC or a Mac, show a small
+  // card with the one line that installs it (bridge/install.ps1, bridge/install.sh): it then starts by itself at
+  // every sign-in, so staff never copy files or keep a window open. "이 PC에는 리더 없음" hides it for good.
+  const BRIDGE_HINT_OFF = "pusanBridgeHintOff";
+  let bridgeHint = null;
+  let bridgeHintTimer = null;
+
+  function bridgeInstall() {
+    const site =
+      location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+        ? location.origin
+        : "https://smeag-estore.vercel.app";
+    const base = site + "/bridge";
+    const ua = navigator.userAgent || "";
+    if (/Windows/i.test(ua)) {
+      return {
+        cmd: `powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';$b='${base}';irm $b/install.ps1|iex"`,
+        steps: ["아래 [명령 복사]를 누릅니다", "키보드에서 Windows 키 + R", "Ctrl + V 붙여넣기 후 Enter"],
+      };
+    }
+    // iPadOS also says "Macintosh"; it has touch points, a real Mac does not.
+    if (/Macintosh|Mac OS X/i.test(ua) && !(navigator.maxTouchPoints > 1)) {
+      return {
+        cmd: `curl -fsSL ${base}/install.sh | B=${base} sh`,
+        steps: ["아래 [명령 복사]를 누릅니다", "터미널 앱을 엽니다 (Cmd + Space → 터미널)", "Cmd + V 붙여넣기 후 Enter"],
+      };
+    }
+    return null;
+  }
+
+  function hideBridgeHint() {
+    clearTimeout(bridgeHintTimer);
+    bridgeHintTimer = null;
+    bridgeHint?.remove();
+    bridgeHint = null;
+  }
+
+  function showBridgeHint() {
+    let off = false;
+    try {
+      off = localStorage.getItem(BRIDGE_HINT_OFF) === "1";
+    } catch {}
+    const info = bridgeInstall();
+    if (off || !info || bridgeHint || !document.body) return;
+
+    const el = (tag, css, text) => {
+      const n = document.createElement(tag);
+      if (css) n.style.cssText = css;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    const box = el(
+      "div",
+      "position:fixed;right:16px;bottom:16px;z-index:99999;width:min(380px,calc(100vw - 32px));background:#fff;color:#17201d;" +
+        "border:1px solid #cfd8d4;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:16px;" +
+        "font:14px/1.5 system-ui,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;",
+    );
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "카드 리더 프로그램 설치");
+    box.appendChild(el("div", "font-weight:700;font-size:15px;margin-bottom:4px", "카드 리더 프로그램이 꺼져 있습니다"));
+    box.appendChild(
+      el("div", "color:#5a6762;font-size:13px;margin-bottom:10px", "이 PC에서 한 번만 설치하면, 앞으로는 PC를 켤 때 자동으로 켜집니다."),
+    );
+    const ol = el("ol", "margin:0 0 10px;padding-left:20px");
+    info.steps.forEach((s) => ol.appendChild(el("li", "", s)));
+    box.appendChild(ol);
+    const code = el(
+      "textarea",
+      "width:100%;box-sizing:border-box;height:58px;resize:none;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;" +
+        "border:1px solid #cfd8d4;border-radius:6px;padding:6px;background:#f3f5f4;color:#17201d;",
+    );
+    code.readOnly = true;
+    code.value = info.cmd;
+    box.appendChild(code);
+    const row = el("div", "display:flex;gap:8px;margin-top:10px;flex-wrap:wrap");
+    const btn = (label, primary) =>
+      el(
+        "button",
+        "font:inherit;font-size:13px;padding:7px 12px;border-radius:8px;cursor:pointer;" +
+          (primary ? "background:#0f7a5c;color:#fff;border:1px solid #0f7a5c;" : "background:#fff;color:#17201d;border:1px solid #cfd8d4;"),
+        label,
+      );
+    const copy = btn("명령 복사", true);
+    copy.type = "button";
+    copy.addEventListener("click", () => {
+      const done = () => (copy.textContent = "복사됨 ✓");
+      const fallback = () => {
+        code.focus();
+        code.select();
+        try {
+          if (document.execCommand("copy")) done();
+        } catch {}
+      };
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(info.cmd).then(done, fallback);
+      else fallback();
+    });
+    const later = btn("나중에", false);
+    later.type = "button";
+    later.addEventListener("click", hideBridgeHint);
+    const never = btn("이 PC에는 리더 없음", false);
+    never.type = "button";
+    never.addEventListener("click", () => {
+      try {
+        localStorage.setItem(BRIDGE_HINT_OFF, "1");
+      } catch {}
+      hideBridgeHint();
+    });
+    row.append(copy, later, never);
+    box.appendChild(row);
+    box.appendChild(
+      el("div", "color:#5a6762;font-size:12px;margin-top:8px", "설치가 끝나면 이 안내는 저절로 사라집니다. 브라우저가 기기 접근을 물으면 [허용]을 누르세요."),
+    );
+    bridgeHint = box;
+    document.body.appendChild(box);
+  }
+
   function connectPcReader(onStatus) {
     if (pcBridge || typeof EventSource === "undefined") return;
     pcBridge = new EventSource(PC_BRIDGE_URL);
-    pcBridge.addEventListener("open", () => onStatus?.(true));
-    pcBridge.addEventListener("error", () => onStatus?.(false));
+    let bridgeUp = false;
+    bridgeHintTimer = setTimeout(() => {
+      if (!bridgeUp) showBridgeHint();
+    }, 6000);
+    pcBridge.addEventListener("open", () => {
+      bridgeUp = true;
+      hideBridgeHint();
+      onStatus?.(true);
+    });
+    pcBridge.addEventListener("error", () => {
+      bridgeUp = false;
+      onStatus?.(false);
+    });
     pcBridge.addEventListener("card", (event) => {
       let data = null;
       try {

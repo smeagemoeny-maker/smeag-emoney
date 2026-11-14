@@ -11,6 +11,10 @@ const dest = path.join(pwaRoot, "api/_lib");
 // server.mjs only starts the local listener; the mock repository needs the local DBSQL dumps.
 const skip = new Set(["server.mjs"]);
 
+// The Windows card reader bridge is served from /bridge/ for the one-step installer (bridge/install.ps1).
+const bridgeSrc = path.resolve(pwaRoot, "../desktop-bridge/windows/acr122u-bridge.ps1");
+if (fs.existsSync(bridgeSrc)) fs.copyFileSync(bridgeSrc, path.join(pwaRoot, "bridge/acr122u-bridge.ps1"));
+
 // On Vercel CLI uploads only pwa/ is sent, so ../api/src is missing: keep the committed copy.
 if (!fs.existsSync(src)) {
   console.log("api/src not found; using the committed api/_lib copy.");
