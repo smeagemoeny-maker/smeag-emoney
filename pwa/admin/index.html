@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#e85a24" />
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml" />
+<title>SMEAG Admin</title>
+<style>
+  :root { color-scheme: light; --bg:#f1efea; --card:#fff; --ink:#1d1d1b; --ink2:#6b655c; --line:#dedad1; --accent:#e85a24; --ok:#2e7d32; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1400px; margin: 0 auto; padding: 24px 16px 40px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  header h1 { font-size: 20px; margin: 0; }
+  header .who { margin-left: auto; color: var(--ink2); font-size: 13px; }
+  a.back { color: var(--ink2); text-decoration: none; font-size: 13px; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--accent); color: #fff; }
+  button.ghost { background: transparent; color: var(--ink2); border: 1px solid var(--line); }
+  button.green { background: var(--ok); }
+  button:disabled { opacity: .55; cursor: default; }
+  input, select { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  #login { max-width: 380px; margin: 60px auto; }
+  #login h2 { margin: 0 0 6px; font-size: 18px; }
+  #login p { margin: 0 0 14px; color: var(--ink2); font-size: 13px; }
+  #login form { display: flex; gap: 8px; }
+  #login input { flex: 1; }
+  .err { color: var(--bad); font-size: 13px; margin-top: 10px; min-height: 1em; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
+  .filters label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink2); }
+  .filters label.chk { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); padding-bottom: 8px; }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .quick button { padding: 4px 10px; font-size: 12px; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; min-width: 110px; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--ink2); font-size: 12px; }
+  .stat.bad b { color: var(--bad); }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #ece9e2; white-space: nowrap; vertical-align: top; }
+  th { position: sticky; top: 0; background: #faf9f6; font-weight: 600; color: var(--ink2); font-size: 12px; }
+  tr.fail td { background: #fdf1f0; }
+  td.res { font-weight: 600; }
+  tr.fail td.res { color: var(--bad); }
+  td.detail { white-space: normal; min-width: 260px; max-width: 420px; word-break: break-all; color: var(--ink2); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  td.dev { max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: var(--ink2); font-size: 12px; }
+  .empty { padding: 30px; text-align: center; color: var(--ink2); }
+  .note { color: var(--ink2); font-size: 12px; margin-top: 8px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .tabs button { background: transparent; color: var(--ink2); border-radius: 8px 8px 0 0; padding: 9px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin: 0 0 14px; }
+  .stores .st { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .stores .st b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .stores .st span { color: var(--ink2); font-size: 12px; }
+  .more { display: flex; justify-content: center; margin: 12px 0; }
+  :root { --pv-card:#fff; --pv-line:#dedad1; --pv-ink:#1d1d1b; --pv-ink2:#6b655c; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="back" href="../">← SMEAG 프로그램</a>
+    <h1>SMEAG Admin</h1>
+    <span class="who" id="who"></span>
+    <button class="ghost" id="logout" hidden>로그아웃</button>
+  </header>
+
+  <section class="card" id="login">
+    <h2>Admin 로그인</h2>
+    <p>Admin / 캠퍼스 Manager 계정 ID로 로그인하세요. 구매내역은 계정 캠퍼스 범위만, 직원 활동 로그는 Admin만 볼 수 있습니다.</p>
+    <form id="loginForm">
+      <input id="loginId" placeholder="계정 ID" autocomplete="username" autocapitalize="off" spellcheck="false" required />
+      <button type="submit">로그인</button>
+    </form>
+    <div class="err" id="loginErr"></div>
+  </section>
+
+  <nav class="tabs" id="tabs" role="tablist" hidden>
+    <button type="button" role="tab" data-tab="purchases" aria-selected="true">매장 구매내역</button>
+    <button type="button" role="tab" data-tab="log" aria-selected="false">직원 활동 로그</button>
+  </nav>
+
+  <section id="purchases" hidden>
+    <div class="card">
+      <form class="filters" id="pFilters">
+        <label>시작일<input type="date" id="pFrom" required /></label>
+        <label>종료일<input type="date" id="pTo" required /></label>
+        <label>캠퍼스<select id="pCampus"></select></label>
+        <label>매장
+          <select id="pStore"><option value="">전체</option><option value="cafe">카페</option><option value="mart">마트</option></select>
+        </label>
+        <label>학생<input id="pSearch" placeholder="이름 / 학번 / 카드 UID" /></label>
+        <button type="submit" id="pBtn">검색</button>
+        <button type="button" class="green" id="pCsv">CSV 다운로드</button>
+      </form>
+      <div class="quick" id="pQuick">
+        <button type="button" class="ghost" data-days="0">오늘</button>
+        <button type="button" class="ghost" data-days="1">어제</button>
+        <button type="button" class="ghost" data-days="7">최근 7일</button>
+        <button type="button" class="ghost" data-days="30">최근 30일</button>
+      </div>
+      <div class="note">한 번에 최대 3개월까지 조회합니다. 영수증을 누르면 품목·수량·단가·잔액이 표시됩니다. 카드 리더기로 카드를 대면 그 학생 내역만 조회합니다.</div>
+    </div>
+    <div class="stats" id="pStats"></div>
+    <div class="stores" id="pStores"></div>
+    <div id="pList"><div class="empty">검색을 누르면 구매내역이 표시됩니다.</div></div>
+    <div class="more" id="pMore" hidden><button type="button" class="ghost">더 보기</button></div>
+    <div class="note" id="pNote"></div>
+  </section>
+
+  <section id="app" hidden>
+    <div class="card">
+      <form class="filters" id="filters">
+        <label>시작일<input type="date" id="from" required /></label>
+        <label>종료일<input type="date" id="to" required /></label>
+        <label>직원 ID<input id="fLogin" placeholder="전체" /></label>
+        <label>캠퍼스
+          <select id="fCampus">
+            <option value="">전체</option><option>Capital</option><option>Encanto</option><option>Tarlac</option><option>Pusan Mart</option>
+          </select>
+        </label>
+        <label>작업<input id="fAction" placeholder="예: checkout, delete, login" /></label>
+        <label class="chk"><input type="checkbox" id="fWrites" />변경 작업만 (조회 제외)</label>
+        <button type="submit" id="btnSearch">검색</button>
+        <button type="button" class="green" id="btnCsv">CSV 다운로드</button>
+      </form>
+      <div class="quick">
+        <button type="button" class="ghost" data-days="0">오늘</button>
+        <button type="button" class="ghost" data-days="1">어제</button>
+        <button type="button" class="ghost" data-days="7">최근 7일</button>
+        <button type="button" class="ghost" data-days="30">최근 30일</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>시각 (PH)</th><th>직원 ID</th><th>이름</th><th>직급</th><th>캠퍼스</th><th>작업</th><th>결과</th><th>오류</th><th>상세</th><th>IP</th><th>기기</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="11" class="empty">검색을 누르면 로그가 표시됩니다.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="note" id="note"></div>
+  </section>
+</main>
+
+<script src="../src/nfcService.js"></script>
+<script src="../src/receipts.js"></script>
+<script>
+(function () {
+  'use strict';
+  var IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
+  var API = IS_LOCAL ? 'http://localhost:8787' : location.origin;
+  var KEY = 'adminSession';
+  var $ = function (id) { return document.getElementById(id); };
+  var session = null;
+  var rows = [];
+
+  try { session = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { session = null; }
+  function saveSession(s) { session = s; try { s ? sessionStorage.setItem(KEY, JSON.stringify(s)) : sessionStorage.removeItem(KEY); } catch (e) { /* private mode */ } }
+
+  function request(path, opts) {
+    opts = opts || {};
+    var headers = { 'Accept': 'application/json' };
+    if (opts.body) headers['Content-Type'] = 'application/json';
+    if (session && session.token) headers.Authorization = 'Bearer ' + session.token;
+    return fetch(API + path, { method: opts.method || 'GET', headers: headers, body: opts.body ? JSON.stringify(opts.body) : undefined })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (res.status === 401) { saveSession(null); show(); }
+          if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+          return data;
+        });
+      });
+  }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Philippine date (UTC+8) so "today" matches the log's PH times.
+  function phDay(offsetDays) { return new Date(Date.now() + 8 * 3600e3 - offsetDays * 86400e3).toISOString().slice(0, 10); }
+
+  var tab = 'purchases';
+  function isAdmin() { return !!(session && session.manager && session.manager.position === 'Admin'); }
+  function show() {
+    var on = !!(session && session.token);
+    if (on && !isAdmin()) tab = 'purchases';
+    $('login').hidden = on;
+    $('tabs').hidden = !on;
+    document.querySelector('#tabs [data-tab="log"]').hidden = !isAdmin();
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === tab)); });
+    $('purchases').hidden = !on || tab !== 'purchases';
+    $('app').hidden = !on || tab !== 'log';
+    $('logout').hidden = !on;
+    $('who').textContent = on ? (session.manager.name || session.manager.login_id) + ' · ' + session.manager.position + ' · ' + session.manager.campus : '';
+    if (!on) setTimeout(function () { $('loginId').focus(); }, 0);
+  }
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('loginErr').textContent = '';
+    var id = $('loginId').value.trim();
+    request('/api/auth/login', { method: 'POST', body: { loginId: id } }).then(function (res) {
+      if (!res.manager) throw new Error('등록되지 않은 ID입니다.');
+      saveSession({ token: res.token, manager: res.manager, access: res.access });
+      tab = 'purchases';
+      setupCampuses();
+      show();
+      pSearch();
+    }).catch(function (err) {
+      $('loginErr').textContent = /cannot use the POS/.test(err.message) ? 'Admin / 캠퍼스 Manager 계정만 로그인할 수 있습니다.' : err.message;
+    });
+  });
+  $('logout').addEventListener('click', function () { saveSession(null); rows = []; show(); });
+
+  function search() {
+    var qs = new URLSearchParams({ from: $('from').value, to: $('to').value });
+    if ($('fLogin').value.trim()) qs.set('loginId', $('fLogin').value.trim());
+    if ($('fCampus').value) qs.set('campus', $('fCampus').value);
+    if ($('fAction').value.trim()) qs.set('action', $('fAction').value.trim());
+    if ($('fWrites').checked) qs.set('writes', '1');
+    var btn = $('btnSearch');
+    btn.disabled = true;
+    $('rows').innerHTML = '<tr><td colspan="11" class="empty">불러오는 중…</td></tr>';
+    return request('/api/admin/activity-log?' + qs).then(function (res) {
+      rows = res.rows || [];
+      render(res.truncated);
+    }).catch(function (err) {
+      rows = [];
+      $('stats').innerHTML = '';
+      $('rows').innerHTML = '<tr><td colspan="11" class="empty">' + esc(err.message) + '</td></tr>';
+    }).then(function () { btn.disabled = false; });
+  }
+
+  function render(truncated) {
+    var fails = rows.filter(function (r) { return r.result !== 'OK'; }).length;
+    var staff = {};
+    rows.forEach(function (r) { if (r.loginId) staff[r.loginId] = 1; });
+    var logins = rows.filter(function (r) { return r.action === 'Login'; }).length;
+    $('stats').innerHTML =
+      '<div class="stat"><b>' + rows.length + '</b><span>기록</span></div>' +
+      '<div class="stat"><b>' + Object.keys(staff).length + '</b><span>직원 수</span></div>' +
+      '<div class="stat"><b>' + logins + '</b><span>로그인</span></div>' +
+      '<div class="stat' + (fails ? ' bad' : '') + '"><b>' + fails + '</b><span>실패</span></div>';
+    $('note').textContent = truncated ? '최근 ' + rows.length + '건만 표시합니다. 기간을 줄이면 나머지를 볼 수 있습니다.' : '';
+    if (!rows.length) {
+      $('rows').innerHTML = '<tr><td colspan="11" class="empty">이 조건에 맞는 기록이 없습니다.</td></tr>';
+      return;
+    }
+    $('rows').innerHTML = rows.map(function (r) {
+      return '<tr class="' + (r.result === 'OK' ? '' : 'fail') + '">' +
+        '<td>' + esc(r.time) + '</td><td>' + esc(r.loginId) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.position) + '</td>' +
+        '<td>' + esc(r.campus) + '</td><td>' + esc(r.action) + '</td><td class="res">' + esc(r.result) + '</td>' +
+        '<td>' + esc(r.error) + '</td><td class="detail">' + esc(r.detail) + '</td><td>' + esc(r.ip) + '</td>' +
+        '<td class="dev" title="' + esc(r.device) + '">' + esc(r.device) + '</td></tr>';
+    }).join('');
+  }
+
+  var CSV_COLS = [['time', 'TIME (PH)'], ['loginId', 'LOGIN ID'], ['name', 'NAME'], ['position', 'POSITION'], ['campus', 'CAMPUS'],
+    ['action', 'ACTION'], ['result', 'RESULT'], ['error', 'ERROR'], ['detail', 'DETAIL'], ['ip', 'IP'], ['device', 'DEVICE']];
+  $('btnCsv').addEventListener('click', function () {
+    if (!rows.length) { alert('먼저 검색하세요. 화면에 보이는 기록이 CSV로 저장됩니다.'); return; }
+    function cell(v) { var s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    var lines = [CSV_COLS.map(function (c) { return c[1]; }).join(',')];
+    rows.forEach(function (r) { lines.push(CSV_COLS.map(function (c) { return cell(r[c[0]]); }).join(',')); });
+    saveFile('activity-log_' + $('from').value + '_' + $('to').value + '.csv', lines);
+  });
+
+  function saveFile(name, lines) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+    a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function downloadCsv(name, cols, list) {
+    function cell(v) { var s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    var lines = [cols.map(function (c) { return c[1]; }).join(',')];
+    list.forEach(function (r) { lines.push(cols.map(function (c) { return cell(r[c[0]]); }).join(',')); });
+    saveFile(name, lines);
+  }
+
+  $('filters').addEventListener('submit', function (e) { e.preventDefault(); search(); });
+  document.querySelectorAll('.quick button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var d = +b.getAttribute('data-days');
+      $('from').value = phDay(d);
+      $('to').value = d === 1 ? phDay(1) : phDay(0);
+      search();
+    });
+  });
+
+  /* ---------------- 매장 구매내역 ---------------- */
+  var PV = window.PurchaseView;
+  PV.css();
+  var receipts = [];
+  var PAGE = 200, shown = 0;
+  var ALL_CAMPUSES = ['Capital', 'Encanto', 'Tarlac', 'Pusan Mart'];
+
+  // Campuses this account may see (mirrors purchaseCampuses() in the API; the API enforces it).
+  function allowedCampuses() {
+    var a = (session && session.access) || {};
+    var list = [];
+    (a.cafeCampuses || []).concat(a.martCampuses || []).forEach(function (c) { if (list.indexOf(c) < 0) list.push(c); });
+    return ALL_CAMPUSES.filter(function (c) { return list.indexOf(c) >= 0; });
+  }
+  function setupCampuses() {
+    var list = allowedCampuses();
+    var all = list.length === ALL_CAMPUSES.length || !list.length;
+    $('pCampus').innerHTML = (all ? '<option value="">전체</option>' : '') + (all ? ALL_CAMPUSES : list).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
+  }
+
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      tab = b.getAttribute('data-tab');
+      show();
+      if (tab === 'log' && !rows.length) search();
+    });
+  });
+
+  function pSearch() {
+    var qs = new URLSearchParams({ from: $('pFrom').value, to: $('pTo').value });
+    if ($('pCampus').value) qs.set('campus', $('pCampus').value);
+    if ($('pStore').value) qs.set('store', $('pStore').value);
+    if ($('pSearch').value.trim()) qs.set('search', $('pSearch').value.trim());
+    var btn = $('pBtn');
+    btn.disabled = true;
+    $('pList').innerHTML = '<div class="empty">불러오는 중…</div>';
+    $('pMore').hidden = true;
+    return request('/api/purchases?' + qs).then(function (res) {
+      receipts = res.receipts || [];
+      pRender(res.summary || {}, res.truncated);
+    }).catch(function (err) {
+      receipts = [];
+      $('pStats').innerHTML = ''; $('pStores').innerHTML = ''; $('pNote').textContent = '';
+      $('pList').innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+    }).then(function () { btn.disabled = false; });
+  }
+
+  function pRender(sum, truncated) {
+    var buyers = {};
+    var items = 0;
+    receipts.forEach(function (r) { buyers[(r.studentId || r.name || '') + ''] = 1; items += r.itemCount || 0; });
+    $('pStats').innerHTML =
+      '<div class="stat"><b>' + receipts.length + '</b><span>영수증</span></div>' +
+      '<div class="stat"><b>₱' + PV.money(sum.total || 0) + '</b><span>매출 합계</span></div>' +
+      '<div class="stat"><b>' + Object.keys(buyers).length + '</b><span>구매 학생</span></div>' +
+      '<div class="stat"><b>' + items + '</b><span>판매 품목 수량</span></div>';
+    $('pStores').innerHTML = (sum.byStore || []).map(function (s) {
+      return '<div class="st"><span>' + esc(PV.storeTitle({ campus: s.campus, storeName: s.store })) + '</span><b>₱' + PV.money(s.total) + '</b><span>' + s.receipts + '건</span></div>';
+    }).join('');
+    $('pNote').textContent = truncated ? '조회 범위가 너무 커서 일부만 불러왔습니다. 기간을 줄여 주세요.' : '';
+    shown = 0;
+    $('pList').innerHTML = receipts.length ? '' : '<div class="empty">이 조건에 맞는 구매내역이 없습니다.</div>';
+    pMore();
+  }
+  function pMore() {
+    var next = receipts.slice(shown, shown + PAGE);
+    if (next.length) $('pList').insertAdjacentHTML('beforeend', PV.list(next, { showBuyer: true }));
+    shown += next.length;
+    $('pMore').hidden = shown >= receipts.length;
+    if (!$('pMore').hidden) $('pMore').firstElementChild.textContent = '더 보기 (' + (receipts.length - shown) + '건 남음)';
+  }
+  $('pMore').addEventListener('click', pMore);
+
+  var P_CSV = [['date', 'DATE (PH)'], ['campus', 'CAMPUS'], ['storeName', 'STORE'], ['studentId', 'STUDENT ID'], ['name', 'NAME'],
+    ['item', 'ITEM'], ['quantity', 'QTY'], ['unitPrice', 'PRICE'], ['amount', 'AMOUNT'], ['total', 'RECEIPT TOTAL'],
+    ['balanceAfter', 'BALANCE AFTER'], ['discount', 'DISCOUNT'], ['source', 'SOURCE']];
+  $('pCsv').addEventListener('click', function () {
+    if (!receipts.length) { alert('먼저 검색하세요. 화면의 구매내역이 품목 한 줄씩 CSV로 저장됩니다.'); return; }
+    var out = [];
+    receipts.forEach(function (r) {
+      var lines = r.items.length ? r.items : [{ name: '(total only)', quantity: '', unitPrice: '', amount: r.total }];
+      lines.forEach(function (i) {
+        out.push({ date: r.date, campus: r.campus, storeName: r.storeName, studentId: r.studentId, name: r.name, item: i.name,
+          quantity: i.quantity, unitPrice: i.unitPrice, amount: i.amount, total: r.total, balanceAfter: r.balanceAfter, discount: r.discount, source: r.source });
+      });
+    });
+    downloadCsv('purchases_' + $('pFrom').value + '_' + $('pTo').value + '.csv', P_CSV, out);
+  });
+
+  $('pFilters').addEventListener('submit', function (e) { e.preventDefault(); pSearch(); });
+  document.querySelectorAll('#pQuick button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var d = +b.getAttribute('data-days');
+      $('pFrom').value = phDay(d);
+      $('pTo').value = d === 1 ? phDay(1) : phDay(0);
+      pSearch();
+    });
+  });
+
+  // A card tapped on a reader (USB keyboard-mode / ACR122U bridge) searches that student.
+  var nfc = window.PusanNfc;
+  nfc.listenForNfc(function (t) {
+    if (!(session && session.token) || tab !== 'purchases') return;
+    $('pSearch').value = t.uid;
+    pSearch();
+  });
+  nfc.enableKeyboardReader(function () { return !!(session && session.token) && tab === 'purchases'; });
+  nfc.connectPcReader();
+
+  $('from').value = phDay(0);
+  $('to').value = phDay(0);
+  $('pFrom').value = phDay(6);
+  $('pTo').value = phDay(0);
+  setupCampuses();
+  show();
+  if (session && session.token) pSearch();
+})();
+</script>
+</body>
+</html>

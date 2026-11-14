@@ -271,6 +271,110 @@ export async function listPusanmartPayments({ from, to }) {
   }));
 }
 
+// ---------- PusanMart daily sales / cost / net ----------
+// Sales = PusanmartPayments per Philippine day (matches the PusanMart POS "Net Sales").
+// Cost  = "Cost Exp." typed in from the POS Daily Sales Report (pusanmart_daily_cost).
+// Net   = sales - cost, only for days whose cost was entered.
+
+export async function pusanmartDaily({ from, to }) {
+  const [start, end] = range(from, to);
+  if (from > to) throw httpError(400, "Start date must be on or before the end date.");
+  const filter = `center=eq.PusanMart&register_days=gte.${encodeURIComponent(start)}&register_days=lte.${encodeURIComponent(end)}`;
+  const sales = new Map();
+  for (let offset = 0; offset < 50000; offset += PAGE_SIZE) {
+    const page = await rest(`PusanmartPayments?select=id,allpayments,register_days&${filter}&order=id.asc&offset=${offset}&limit=${PAGE_SIZE}`);
+    for (const r of page) {
+      const day = phDateTime(r.register_days).slice(0, 10);
+      const s = sales.get(day) || { count: 0, sales: 0 };
+      s.count += 1;
+      s.sales += Number(r.allpayments || 0);
+      sales.set(day, s);
+    }
+    if (page.length < PAGE_SIZE) break;
+  }
+  const costs = new Map();
+  let costTableMissing = false;
+  try {
+    const costRows = await rest(`pusanmart_daily_cost?select=day,cost,note,updated_by,updated_at&day=gte.${from}&day=lte.${to}&limit=${PAGE_SIZE}`);
+    for (const c of costRows) costs.set(c.day, c);
+  } catch (e) {
+    if (!isMissingCostTable(e)) throw e;
+    costTableMissing = true; // sales still show until the migration is run
+  }
+
+  const days = [];
+  for (let d = new Date(`${to}T00:00:00Z`); d >= new Date(`${from}T00:00:00Z`) && days.length < 400; d.setUTCDate(d.getUTCDate() - 1)) {
+    const key = d.toISOString().slice(0, 10);
+    const s = sales.get(key) || { count: 0, sales: 0 };
+    const c = costs.get(key);
+    const cost = c ? Number(c.cost) : null;
+    days.push({
+      date: key,
+      count: s.count,
+      sales: round(s.sales),
+      cost,
+      net: cost === null ? null : round(s.sales - cost),
+      note: c?.note || null,
+      updatedBy: c?.updated_by || null,
+      updatedAt: c ? phDateTime(c.updated_at) : null,
+    });
+  }
+  const withCost = days.filter((d) => d.cost !== null);
+  return {
+    days,
+    costTableMissing,
+    totals: {
+      count: days.reduce((a, d) => a + d.count, 0),
+      sales: round(days.reduce((a, d) => a + d.sales, 0)),
+      cost: round(withCost.reduce((a, d) => a + d.cost, 0)),
+      net: round(withCost.reduce((a, d) => a + d.net, 0)),
+      // sales of the days that have a cost, so the margin compares like with like
+      salesWithCost: round(withCost.reduce((a, d) => a + d.sales, 0)),
+      daysWithCost: withCost.length,
+      daysMissingCost: days.filter((d) => d.cost === null && d.count > 0).length,
+    },
+  };
+}
+
+function isMissingCostTable(e) {
+  return /pusanmart_daily_cost/.test(String(e?.message || "")) && /schema cache|does not exist/i.test(String(e?.message || ""));
+}
+
+const MISSING_COST_TABLE = "The pusanmart_daily_cost table is missing: run api/migrations/supabase_pusanmart_daily_cost.sql in the Supabase SQL Editor.";
+
+// cost "" / null removes the day's entry.
+export async function savePusanmartCost(date, input, staffLoginId) {
+  try {
+    return await writePusanmartCost(date, input, staffLoginId);
+  } catch (e) {
+    if (isMissingCostTable(e)) throw httpError(503, MISSING_COST_TABLE);
+    throw e;
+  }
+}
+
+async function writePusanmartCost(date, { cost, note } = {}, staffLoginId) {
+  const [day] = range(date, date);
+  const key = day.slice(0, 10);
+  if (cost === null || cost === undefined || String(cost).trim() === "") {
+    await rest(`pusanmart_daily_cost?day=eq.${key}`, { method: "DELETE" });
+    return { date: key, cost: null };
+  }
+  const value = Number(String(cost).replace(/,/g, ""));
+  if (!Number.isFinite(value) || value < 0) throw httpError(400, "Cost must be 0 or more.");
+  const [row] = await rest("pusanmart_daily_cost?on_conflict=day&select=day,cost,note,updated_by,updated_at", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=representation" },
+    body: {
+      day: key,
+      cost: round(value),
+      note: String(note || "").trim() || null,
+      updated_by: staffLoginId || null,
+      updated_at: new Date().toISOString(),
+    },
+  });
+  return { date: row.day, cost: Number(row.cost), note: row.note, updatedBy: row.updated_by, updatedAt: phDateTime(row.updated_at) };
+}
+
 // ---------- office program (office_menus + bank) ----------
 
 export async function listOfficeMenus({ campus }) {

@@ -10,8 +10,10 @@
   var TAB_NAMES = [
     'REGISTRATION', 'INFORMATION', 'MODIFY INFO', 'MENU LIST', 'OFFICE MENU',
     'LIST MENU', 'Graduate', 'Default', 'REPORT', 'RECHARGE/CASHOUT',
-    'IDCARD', 'PAYMENT INQUIRY', 'TransData'
+    'IDCARD', 'PAYMENT INQUIRY', 'PURCHASES', 'TransData', 'LOG'
   ];
+  // Tabs are 125px like the WinForms strip, narrowed when more of them have to fit the 1706px window.
+  var TAB_W = Math.min(125, Math.floor((1706 - 6) / TAB_NAMES.length));
   var COLORS = { INCREASE: '#2E7D32', DECREASE: '#C62828', EXCEPTION: '#1976D2' };
 
   /* ================= backend API client ================= */
@@ -299,7 +301,8 @@
     TAB_NAMES.forEach(function (name, i) {
       var t = document.createElement('div');
       t.className = 'tab' + (i === OFFICE_MENU_INDEX ? ' sel' : '');
-      t.style.left = (3 + i * 125) + 'px';
+      t.style.left = (3 + i * TAB_W) + 'px';
+      t.style.width = TAB_W + 'px';
       var label = document.createElement('span');
       label.className = 'tab-text';
       label.textContent = name;
@@ -312,10 +315,10 @@
       });
       strip.appendChild(t);
     });
-    // Fallback fonts (no Segoe UI on macOS/Linux) are wider: squeeze any label that would overflow its 125px tab.
+    // Fallback fonts (no Segoe UI on macOS/Linux) are wider: squeeze any label that would overflow its tab.
     strip.querySelectorAll('.tab-text').forEach(function (s) {
       var w = s.getBoundingClientRect().width / (currentScale() || 1);
-      if (w > 117) s.style.transform = 'scaleX(' + (117 / w).toFixed(3) + ')';
+      if (w > TAB_W - 8) s.style.transform = 'scaleX(' + ((TAB_W - 8) / w).toFixed(3) + ')';
     });
   }
 

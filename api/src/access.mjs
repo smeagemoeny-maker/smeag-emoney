@@ -48,6 +48,7 @@ export function issueToken(manager) {
   const payload = {
     id: manager.id,
     loginId: manager.login_id,
+    name: manager.name,
     position: manager.position,
     campus: manager.campus,
     exp: Date.now() + TOKEN_TTL_MS,
@@ -70,6 +71,27 @@ export function verifyRequest(req) {
   const access = accessFor(payload);
   if (!access) throw httpError(403, "This account cannot use the POS.");
   return { session: payload, access };
+}
+
+// Signed session payload for the activity log, or null. Expired tokens still name who sent them.
+export function peekSession(req) {
+  try {
+    const header = String(req.headers.authorization || "");
+    const [data, signature] = (header.startsWith("Bearer ") ? header.slice(7) : "").split(".");
+    if (!data || !signature) return null;
+    const expected = sign(data);
+    if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    return JSON.parse(Buffer.from(data, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// Activity log viewer (Admin page /admin/ and Office > LOG): every Admin account, all campuses
+// (every Admin row in mgperson has a campus, the CEO's included, so a campus limit would hide the whole log).
+export function activityLogScope(session) {
+  if (session.position !== "Admin") throw httpError(403, "Only Admin accounts can view the activity log.");
+  return {};
 }
 
 export function assertCanSell(access, store, campus) {

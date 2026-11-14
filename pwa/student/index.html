@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#e85a24" />
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml" />
+<title>SMEAG 내 구매내역</title>
+<style>
+  :root { color-scheme: light; --bg:#f1efea; --card:#fff; --ink:#1d1d1b; --ink2:#6b655c; --line:#dedad1; --accent:#e85a24; --bad:#c62828;
+          --pv-card:#fff; --pv-line:#dedad1; --pv-ink:#1d1d1b; --pv-ink2:#6b655c; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 18px 16px 80px; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header a { color: var(--ink2); text-decoration: none; font-size: 13px; margin-left: auto; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; background: var(--accent); color: #fff; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--ink2); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .55; }
+  input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; min-width: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+
+  #tap { text-align: center; padding: 36px 20px 24px; }
+  .tapicon { width: 112px; height: 112px; margin: 0 auto 18px; border-radius: 50%; background: #fdeee6; display: grid; place-items: center; position: relative; }
+  .tapicon::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid #f6c7ae; animation: pulse 2s ease-out infinite; }
+  @keyframes pulse { from { transform: scale(.9); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .tapicon::after { animation: none; } }
+  #tap h2 { margin: 0 0 6px; font-size: 20px; }
+  #tap p { margin: 0 auto; color: var(--ink2); font-size: 14px; max-width: 360px; }
+  #manual { margin-top: 22px; text-align: left; }
+  #manual summary { cursor: pointer; color: var(--ink2); font-size: 13px; text-align: center; }
+  #manualForm { display: flex; gap: 8px; margin-top: 10px; }
+  #manualForm input { flex: 1; font-family: ui-monospace, Menlo, monospace; letter-spacing: .03em; }
+  .err { color: var(--bad); font-size: 14px; margin-top: 14px; min-height: 1.2em; }
+  .busy { color: var(--ink2); font-size: 14px; margin-top: 14px; }
+
+  #who { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: end; }
+  #who .name { font-size: 19px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+  #who .sid { font-size: 13px; color: var(--ink2); }
+  #who .bal { text-align: right; }
+  #who .bal small { display: block; font-size: 12px; color: var(--ink2); }
+  #who .bal b { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 0; }
+  .chip { padding: 6px 12px; font-size: 13px; border-radius: 999px; background: #fff; color: var(--ink2); border: 1px solid var(--line); font-weight: 500; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .sum { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .stat span { display: block; font-size: 12px; color: var(--ink2); }
+  .stat b { font-size: 19px; font-variant-numeric: tabular-nums; }
+  .stores { margin-top: 8px; display: grid; gap: 6px; }
+  .srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 13px; }
+  .srow .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #ece9e2; overflow: hidden; }
+  .srow .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .srow b { font-variant-numeric: tabular-nums; }
+  .empty { text-align: center; color: var(--ink2); padding: 36px 10px; }
+  .note { color: var(--ink2); font-size: 12px; margin-top: 14px; text-align: center; }
+  .bottom { display: flex; justify-content: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>내 구매내역</h1>
+    <a href="../">SMEAG 프로그램</a>
+  </header>
+
+  <section class="card" id="tap">
+    <div class="tapicon" aria-hidden="true">
+      <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#e85a24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="6" width="14" height="12" rx="2" /><path d="M7 10h6M7 14h3" /><path d="M19.5 8.5a5 5 0 0 1 0 7M21.5 6.5a8 8 0 0 1 0 11" />
+      </svg>
+    </div>
+    <h2>학생카드를 대주세요</h2>
+    <p>휴대폰(Android Chrome) 뒷면이나 카드 리더기에 학생카드를 대면 캠퍼스 카페·마트·Pusan Mart에서 구매한 내역이 표시됩니다.</p>
+    <details id="manual">
+      <summary>카드를 읽을 수 없나요? UID 직접 입력</summary>
+      <form id="manualForm" autocomplete="off">
+        <input id="uid" placeholder="카드 UID (예: 04A1B2C3D4E5F6)" autocapitalize="characters" spellcheck="false" inputmode="text" />
+        <button type="submit">조회</button>
+      </form>
+    </details>
+    <div class="err" id="err" role="alert"></div>
+    <div class="busy" id="busy" hidden>불러오는 중…</div>
+  </section>
+
+  <section id="result" hidden>
+    <div class="card" id="who"></div>
+    <div class="chips" id="periods" role="group" aria-label="기간">
+      <button type="button" class="chip" data-days="7">최근 7일</button>
+      <button type="button" class="chip" data-days="30" aria-pressed="true">최근 30일</button>
+      <button type="button" class="chip" data-days="90">최근 3개월</button>
+      <button type="button" class="chip" data-days="0">전체</button>
+    </div>
+    <div class="chips" id="storesFilter" role="group" aria-label="매장">
+      <button type="button" class="chip" data-store="" aria-pressed="true">전체 매장</button>
+      <button type="button" class="chip" data-store="cafe">카페</button>
+      <button type="button" class="chip" data-store="mart">마트</button>
+    </div>
+    <div class="sum" id="sum"></div>
+    <div class="card stores" id="stores" hidden></div>
+    <div id="list"></div>
+    <div class="bottom"><button type="button" class="ghost" id="close">닫기 · 다른 카드 조회</button></div>
+    <div class="note">개인정보 보호를 위해 3분 동안 사용하지 않으면 화면이 자동으로 닫힙니다.</div>
+  </section>
+</main>
+
+<script src="../src/nfcService.js"></script>
+<script src="../src/receipts.js"></script>
+<script>
+(function () {
+  'use strict';
+  var IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
+  var API = IS_LOCAL ? 'http://localhost:8787' : location.origin;
+  var IDLE_MS = 3 * 60 * 1000;
+  var PH = 8 * 3600e3;
+  var $ = function (id) { return document.getElementById(id); };
+  var PV = window.PurchaseView;
+  var esc = PV.esc, money = PV.money;
+  var data = null, days = 30, store = '', idleTimer = null, loading = false;
+
+  PV.css();
+
+  function lookup(uid) {
+    uid = String(uid || '').trim();
+    if (!uid || loading) return;
+    loading = true;
+    $('err').textContent = '';
+    $('busy').hidden = false;
+    fetch(API + '/api/student/purchases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ uid: uid })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) {
+        if (!res.ok) throw new Error(res.status === 404 ? '등록되지 않은 카드입니다. 오피스에 문의하세요.' : (d.error || '조회하지 못했습니다. (' + res.status + ')'));
+        return d;
+      });
+    }).then(function (d) {
+      data = d;
+      $('uid').value = '';
+      $('manual').open = false;
+      render();
+      $('tap').hidden = true;
+      $('result').hidden = false;
+      window.scrollTo(0, 0);
+      bump();
+    }).catch(function (e) {
+      $('err').textContent = e.message === 'Failed to fetch' ? '서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.' : e.message;
+    }).then(function () { loading = false; $('busy').hidden = true; });
+  }
+
+  function cutoff() {
+    if (!days) return '';
+    return new Date(Date.now() + PH - (days - 1) * 86400e3).toISOString().slice(0, 10);
+  }
+
+  function render() {
+    var p = data.person;
+    $('who').innerHTML =
+      '<div><div class="name">' + esc(p.name) + '</div><div class="sid">' + esc([p.studentId, p.campus].filter(Boolean).join(' · ')) + '</div></div>' +
+      '<div class="bal"><small>현재 잔액</small><b>₱' + money(p.balance) + '</b></div>';
+
+    var from = cutoff();
+    var rows = data.receipts.filter(function (r) {
+      return (!from || String(r.date).slice(0, 10) >= from) && (!store || r.store === store);
+    });
+    var total = rows.reduce(function (s, r) { return s + r.total; }, 0);
+    $('sum').innerHTML =
+      '<div class="stat"><span>구매 건수</span><b>' + rows.length + '건</b></div>' +
+      '<div class="stat"><span>사용 금액</span><b>₱' + money(total) + '</b></div>';
+
+    var by = {};
+    rows.forEach(function (r) {
+      var k = PV.storeTitle(r);
+      by[k] = by[k] || { name: k, n: 0, t: 0 };
+      by[k].n += 1; by[k].t += r.total;
+    });
+    var list = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.t - a.t; });
+    $('stores').hidden = list.length < 2;
+    $('stores').innerHTML = list.map(function (s) {
+      var pct = total ? Math.max(2, Math.round(s.t / total * 100)) : 0;
+      return '<div class="srow"><span>' + esc(s.name) + ' <span style="color:var(--ink2)">' + s.n + '건</span></span><b>₱' + money(s.t) + '</b>' +
+        '<span class="bar"><i style="width:' + pct + '%"></i></span></div>';
+    }).join('');
+
+    $('list').innerHTML = rows.length ? PV.list(rows) :
+      '<div class="empty">' + (data.receipts.length ? '이 기간에 구매한 내역이 없습니다.' : '아직 매장에서 구매한 내역이 없습니다.') + '</div>';
+  }
+
+  function close() {
+    data = null;
+    clearTimeout(idleTimer);
+    $('list').innerHTML = '';
+    $('who').innerHTML = '';
+    $('result').hidden = true;
+    $('tap').hidden = false;
+    $('err').textContent = '';
+  }
+  function bump() {
+    clearTimeout(idleTimer);
+    if (data) idleTimer = setTimeout(close, IDLE_MS);
+  }
+
+  function pick(groupId, attr, apply) {
+    $(groupId).addEventListener('click', function (e) {
+      var b = e.target.closest('button[' + attr + ']');
+      if (!b || !data) return;
+      $(groupId).querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      apply(b.getAttribute(attr));
+      render();
+    });
+  }
+  pick('periods', 'data-days', function (v) { days = +v; });
+  pick('storesFilter', 'data-store', function (v) { store = v; });
+
+  $('manualForm').addEventListener('submit', function (e) { e.preventDefault(); lookup(window.PusanNfc.readerUidToHex($('uid').value)); });
+  $('close').addEventListener('click', close);
+  ['pointerdown', 'keydown', 'scroll', 'toggle'].forEach(function (ev) { document.addEventListener(ev, bump, true); });
+
+  // Card readers: phone NFC (Android), USB keyboard-mode reader, ACR122U desktop bridge. A new tap replaces the screen.
+  var nfc = window.PusanNfc;
+  nfc.listenForNfc(function (t) { lookup(t.uid); });
+  nfc.enableKeyboardReader(function () { return true; });
+  nfc.keepPhoneNfc(function () { return true; });
+  nfc.connectPcReader();
+})();
+</script>
+</body>
+</html>

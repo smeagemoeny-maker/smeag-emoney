@@ -147,6 +147,12 @@
     createPusanmartPayment: function (uid, amount) {
       return apiCall('POST', '/api/pusanmart/payments', { uid: uid, totalAmount: Math.round(amount * 100) / 100 }).then(function (r) { return r.payment; });
     },
+    fetchPusanmartDaily: function (s, e) {
+      return apiCall('GET', '/api/pusanmart/daily' + q({ from: s, to: e }));
+    },
+    savePusanmartCost: function (date, cost) {
+      return apiCall('PUT', '/api/pusanmart/daily/' + encodeURIComponent(date), { cost: cost }).then(function (r) { return r.day; });
+    },
     fetchPusanmartPayments: function (s, e) {
       return apiCall('GET', '/api/pusanmart/payments' + q({ from: s, to: e })).then(function (r) {
         return ((r && r.payments) || []).map(function (p) { return Object.assign({}, p, { allPayments: num(p.allPayments) }); });
@@ -368,7 +374,8 @@
       case 'pusanpay':
         S = { store: vm.pz.store, amount: vm.pz.amount, awaitingTap: false }; break;
       case 'paylist':
-        S = { start: ymd(weekAgo), end: ymd(today), results: [] };
+        S = { view: 'daily', start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
+          costDate: ymd(new Date(today.getTime() - 24 * 3600 * 1000)), costInput: '', costMsg: null, costSaving: false };
         runPayList(); break;
       case 'receipt':
         S = {}; break;
@@ -904,8 +911,107 @@
   }
 
   function runPayList() {
+    if (S.view === 'daily') {
+      screenLoad(repo.fetchPusanmartDaily(S.start, S.end), function (r) { S.daily = r; syncCostInput(); },
+        function (e) { S.daily = null; S.error = '조회에 실패했습니다: ' + e.message; });
+      return;
+    }
     screenLoad(repo.fetchPusanmartPayments(S.start, S.end), function (rows) { S.results = rows; },
       function (e) { S.results = []; S.error = '조회에 실패했습니다: ' + e.message; });
+  }
+
+  // ----- daily summary: sales (PusanmartPayments) / cost (entered from the POS report) / net
+  function dailyRow(date) {
+    return S.daily && S.daily.days.filter(function (d) { return d.date === date; })[0] || null;
+  }
+  function syncCostInput() {
+    var d = dailyRow(S.costDate);
+    S.costInput = d && d.cost != null ? money(d.cost) : '';
+  }
+  function saveCost() {
+    var raw = String(S.costInput || '').replace(/,/g, '').trim();
+    if (raw !== '' && !(Number(raw) >= 0)) { S.costMsg = { err: true, text: '매입가는 0 이상의 숫자로 입력하세요.' }; return; }
+    var s = S, date = S.costDate;
+    s.costSaving = true; s.costMsg = null;
+    repo.savePusanmartCost(date, raw === '' ? null : Number(raw)).then(function () {
+      if (S !== s) return;
+      s.costMsg = { err: false, text: date + (raw === '' ? ' 매입가를 지웠습니다.' : ' 매입가 ₱' + money(Number(raw)) + ' 저장했습니다.') };
+      if (date < s.start || date > s.end) { if (date < s.start) s.start = date; else s.end = date; }
+      runPayList();
+    }, function (e) {
+      if (S === s) s.costMsg = { err: true, text: '저장 실패: ' + e.message };
+    }).then(function () { if (S === s) { s.costSaving = false; render(); } });
+  }
+  function downloadDailyCsv() {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var r = S.daily, rows = [['Date', 'Trans.', 'Net Sales (PHP)', 'Cost (PHP)', 'Net Profit (PHP)', 'Margin %']];
+    r.days.slice().reverse().forEach(function (d) {
+      rows.push([d.date, d.count, money(d.sales), d.cost == null ? '' : money(d.cost), d.net == null ? '' : money(d.net),
+        d.cost == null || !d.sales ? '' : (d.net / d.sales * 100).toFixed(1)]);
+    });
+    rows.push([]);
+    rows.push(['Total', r.totals.count, money(r.totals.sales), money(r.totals.cost), money(r.totals.net),
+      r.totals.salesWithCost ? (r.totals.net / r.totals.salesWithCost * 100).toFixed(1) : '']);
+    rows.push(['Days without cost', r.totals.daysMissingCost]);
+    var name = 'pusanmart_daily_' + S.start + '_' + S.end + '.csv';
+    downloadFile(name, 'text/csv;charset=utf-8', '\ufeff' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Downloads 폴더에 저장되었습니다: ' + name, 3500);
+  }
+  function payListTabs() {
+    var h = '<div class="chips" style="padding-bottom:11px">';
+    [['daily', '일별 매출·매입·순이익'], ['list', '결제 내역']].forEach(function (c) {
+      h += '<div class="chip' + (S.view === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
+        if (S.view === c[0]) return; S.view = c[0]; S.error = null; runPayList();
+      }) + '">' + c[1] + '</div>';
+    });
+    return h + '</div>';
+  }
+  function dailyScreen() {
+    var r = S.daily;
+    var stat = function (label, value, color, sub) {
+      return '<div class="stat"><div class="lab">' + esc(label) + '</div><div class="val" style="font-size:15px;color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div>' +
+        (sub ? '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + esc(sub) + '</div>' : '') + '</div>';
+    };
+    var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
+      half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
+      secondaryBtn('Search', runPayList) + spacer(10) + '<div class="vscroll fill">' + errorLine();
+    if (!r) { h += loadingOr('조회 결과가 없습니다.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
+    var t = r.totals;
+    var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (입력된 ' + t.daysWithCost + '일)' : '매입가 입력 필요';
+    h += '<div class="row" style="gap:8px">' + stat('매출 Net Sales', '₱' + money(t.sales), null, t.count + '건') +
+      stat('매입가 Cost', '₱' + money(t.cost), 'var(--low)', t.daysMissingCost ? '미입력 ' + t.daysMissingCost + '일' : null) + '</div>' + spacer(8) +
+      '<div class="row" style="gap:8px">' + stat('순이익 Net', '₱' + money(t.net), t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) + '</div>' + spacer(12);
+
+    if (r.costTableMissing) h += txt('매입가 저장용 테이블이 아직 없습니다 (관리자: supabase_pusanmart_daily_cost.sql 실행 필요).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
+    // cost entry (Cost Exp. from the PusanMart POS Daily Sales Report)
+    var cd = dailyRow(S.costDate);
+    h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
+      '<div style="font-size:12px;font-weight:800;padding-bottom:8px">매입가 입력 <span style="font-weight:400;color:var(--ink3)">· 영수증의 Cost Exp.</span></div>' +
+      half(dateField('Date', S.costDate, function (v) { S.costDate = v; S.costMsg = null; syncCostInput(); }),
+        labeledField('pl_cost', 'Cost (PHP)', S.costInput, function (v) { S.costInput = v; S.costMsg = null; }, '0.00', 'decimal'));
+    if (cd) {
+      var raw = String(S.costInput || '').replace(/,/g, '').trim();
+      var preview = raw !== '' && Number(raw) >= 0 ? '  →  순이익 ₱' + money(cd.sales - Number(raw)) : '';
+      h += txt('이 날 매출 ₱' + money(cd.sales) + ' (' + cd.count + '건)' + preview, 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
+    }
+    if (S.costMsg) h += txt(S.costMsg.text, 'font-size:12px;padding-bottom:8px;color:' + (S.costMsg.err ? 'var(--out)' : 'var(--ok)'));
+    h += primaryBtn(S.costSaving ? '저장 중...' : '저장', saveCost, S.costSaving || !S.costDate) + '</div>';
+
+    h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length) + spacer(10);
+    r.days.forEach(function (d) {
+      var sel = d.date === S.costDate;
+      h += '<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer' + (sel ? ';border-color:var(--brand)' : '') + '" data-act="' +
+        act(function () { S.costDate = d.date; S.costMsg = null; syncCostInput(); }) + '">' +
+        '<div class="sb"><span style="font-size:12.5px;font-weight:700">' + esc(d.date) + '</span>' +
+        '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + '건</span></div>' +
+        '<div class="sb" style="padding-top:4px;font-size:11.5px">' +
+        '<span>매출 <b>₱' + money(d.sales) + '</b></span>' +
+        '<span>매입 ' + (d.cost == null ? '<b style="color:var(--out)">미입력</b>' : '<b>₱' + money(d.cost) + '</b>') + '</span>' +
+        '<span>순이익 ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + money(d.net) + '</b>') + '</span>' +
+        '</div></div>';
+    });
+    h += '</div></div>';
+    return h;
   }
   function downloadPayListCsv() {
     var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -921,8 +1027,9 @@
     toast('Downloads 폴더에 저장되었습니다: ' + name, 3500);
   }
   function payListScreen() {
+    if (S.view === 'daily') return dailyScreen();
     var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
-    var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') +
+    var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) +
       '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + '건</span>' +
@@ -1225,6 +1332,14 @@
       // USB keyboard-mode reader: only while a screen is waiting for a card.
       window.PusanNfc.enableKeyboardReader(wantsNfc);
       window.addEventListener('nfc-error', function (e) { toast((e.detail && e.detail.message) || 'NFC read error', 3000); });
+      // ACR122U on a PC: taps come from desktop-bridge (127.0.0.1:47321), not as keystrokes.
+      if (window.PusanNfc.connectPcReader && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')) {
+        var pcOn = false;
+        window.PusanNfc.connectPcReader(function (on) {
+          if (on && !pcOn) toast('Card reader connected', 2000);
+          pcOn = on;
+        });
+      }
     }
     restoreSession();
     window.addEventListener('popstate', routeFromHash);

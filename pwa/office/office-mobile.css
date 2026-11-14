@@ -34,7 +34,7 @@ body.m .tabstrip::-webkit-scrollbar { display: none; }
 body.m .tabstrip::after { display: none; }
 body.m .tab {
   position: relative; left: auto !important; top: auto; flex: 0 0 auto;
-  width: auto; height: 42px; line-height: 42px; padding: 0 14px; font-size: 13px;
+  width: auto !important; height: 42px; line-height: 42px; padding: 0 14px; font-size: 13px;
 }
 body.m .tab.sel { line-height: 40px; border-bottom: 3px solid var(--blue); border-top: 0; border-left: 0; border-right: 0; font-weight: 700; color: var(--blue); }
 body.m .tab-text { transform: none !important; }

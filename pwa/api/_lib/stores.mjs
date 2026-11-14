@@ -5,6 +5,7 @@
 //   - m_menu mentions CAFE / AMERICANO  -> cafe
 //   - m_menu mentions MART / STORE      -> mart
 //   - anything else (unclassified)      -> shown in BOTH the cafe and the mart of its campus
+//   - mart cakes and drinks (isCafeItem) -> also shown in the cafe
 // Campuses are never mixed: a product only shows for its own campus.
 // If a store column is added later, set it on the product (`store: "cafe" | "mart"`) and it wins.
 
@@ -47,10 +48,24 @@ export function productCampusMatches(product, campus) {
   return rowCampus === "ALL" && upper(product?.mMenu).startsWith(wanted);
 }
 
+// Cakes and drinks are registered under the mart menus ("Capital Mart: Cake Tiramisu", "ENCANTO MART: COLA",
+// "Tarlac Store: Pocari Sweat"), but the cafe sells them too. They stay in the mart and also show in the cafe.
+// The NOT_* lists keep out ice cream ("Water Melon", "Milk Melon"), tissue and fish-cake snacks.
+const CAKE = /CAKE|MUFFIN|BROWNIE|BOWNIE/;
+const NOT_CAKE = /FISH CAKE|CAKE BAR/;
+const DRINK = /\bCOKE\b|\bCOLA\b|PEPSI|SPRITE|MOUNT DEW|POCARI|GATORADE|\bC2\b|JUICE|SODA|LEMONADE|YAKULT|DUTCH MILK|MILK SEOUL|SAMDASOO|\bWATER\b|\bTEA\b/;
+const NOT_DRINK = /MELON|TISSUE/;
+
+export function isCafeItem(product) {
+  const name = upper(product?.sMenu);
+  return (CAKE.test(name) && !NOT_CAKE.test(name)) || (DRINK.test(name) && !NOT_DRINK.test(name));
+}
+
 export function filterProductsForStore(products, { campus, store }) {
   return products.filter((p) => {
     if (!productCampusMatches(p, campus)) return false;
     const own = productStore(p);
-    return own === null || own === store;
+    if (own === null || own === store) return true;
+    return store === "cafe" && isCafeItem(p);
   });
 }

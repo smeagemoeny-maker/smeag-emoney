@@ -31,3 +31,6 @@ smeag_mart/app/src/main/java/com/smeag/mobilemart/data/SftpConfig.kt
 smeag_mart/app/release/
 *.apk
 *.aab
+
+# staff activity log files written by the local API server
+api/logs/

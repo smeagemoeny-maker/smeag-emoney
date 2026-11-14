@@ -23,14 +23,18 @@ import {
   assertCanPusanPay,
   assertCanSell,
   assertCanUseOffice,
+  activityLogScope,
   issueToken,
+  peekSession,
   verifyRequest,
 } from "./access.mjs";
+import { listActivity, recordActivity, shouldLog } from "./activityLog.mjs";
 import * as mysqlBackoffice from "./backoffice.mjs";
 import * as supabaseBackoffice from "./backofficeSupabase.mjs";
 import { httpError } from "./repository.mjs";
 import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
 import * as office from "./office.mjs";
+import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -76,7 +80,18 @@ const routes = [
     if (!access) throw httpError(403, "This account cannot use the POS.");
     return { manager, access, token: issueToken(manager) };
   }],
+  // Student purchase history: no staff login, the NFC card UID is the key (POST so it stays out of URLs).
+  ["POST", /^\/api\/student\/purchases$/, async ({ body }) => {
+    supabaseOnly();
+    return studentPurchases(body || {});
+  }],
   // Everything below needs a login token; sales/charges are checked against the account's access.
+  // Store purchase history (receipts + items): Admin = every campus, campus Admin/Manager = own campus only.
+  ["GET", /^\/api\/purchases$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    supabaseOnly();
+    return adminPurchases(query(url, "from", "to", "campus", "store", "search"), purchaseCampuses(access));
+  }],
   ["GET", /^\/api\/products$/, async ({ req, url }) => {
     verifyRequest(req);
     const campus = url.searchParams.get("campus");
@@ -115,6 +130,18 @@ const routes = [
     assertCanPusanPay(access);
     liveOnly();
     return { payments: await backoffice.listPusanmartPayments(query(url, "from", "to")) };
+  }],
+  ["GET", /^\/api\/pusanmart\/daily$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    assertCanPusanPay(access);
+    if (dbBackend !== "supabase") throw httpError(501, "The PusanMart daily summary needs DB_BACKEND=supabase.");
+    return supabaseBackoffice.pusanmartDaily(query(url, "from", "to"));
+  }],
+  ["PUT", /^\/api\/pusanmart\/daily\/(\d{4}-\d{2}-\d{2})$/, async ({ req, match, body }) => {
+    const { session, access } = verifyRequest(req);
+    assertCanPusanPay(access);
+    if (dbBackend !== "supabase") throw httpError(501, "The PusanMart daily summary needs DB_BACKEND=supabase.");
+    return { day: await supabaseBackoffice.savePusanmartCost(match[1], body, session.loginId) };
   }],
   ["POST", /^\/api\/products$/, async ({ req, body }) => {
     const { session, access } = verifyRequest(req);
@@ -162,6 +189,12 @@ const routes = [
     liveOnly();
     return { person: await backoffice.updatePerson(match[1], body) };
   }],
+  ["GET", /^\/api\/admin\/activity-log$/, async ({ req, url }) => {
+    const { session } = verifyRequest(req);
+    activityLogScope(session);
+    if (dbBackend !== "supabase") throw httpError(501, "The activity log needs DB_BACKEND=supabase.");
+    return listActivity(activityFilter(url));
+  }],
   ["GET", /^\/api\/office\/menus$/, async ({ req, url }) => {
     const { access } = verifyRequest(req);
     assertCanUseOffice(access);
@@ -201,6 +234,10 @@ const routes = [
   officeRoute("POST", /^\/api\/office\/transdata$/, ({ body }) => office.transDataMove(body.ids)),
   officeRoute("GET", /^\/api\/office\/report$/, ({ url }) => office.report(query(url, "campus", "from", "to"))),
   officeRoute("PUT", /^\/api\/office\/report$/, ({ body, session }) => office.saveReport(body, session.loginId)),
+  officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
+    activityLogScope(session);
+    return listActivity(activityFilter(url));
+  }),
 ];
 
 // Office-program route: login + office access, Supabase backend only.
@@ -211,6 +248,14 @@ function officeRoute(method, pattern, handler) {
     if (dbBackend !== "supabase") throw httpError(501, "The office program needs DB_BACKEND=supabase.");
     return handler({ ...ctx, session, access });
   }];
+}
+
+function activityFilter(url) {
+  return { ...query(url, "from", "to", "loginId", "action", "campus"), onlyWrites: url.searchParams.get("writes") === "1" };
+}
+
+function supabaseOnly() {
+  if (dbBackend !== "supabase") throw httpError(501, "Purchase history needs DB_BACKEND=supabase.");
 }
 
 function liveOnly() {
@@ -243,25 +288,37 @@ export async function handleRequest(req, res, pathname) {
     return;
   }
 
+  const startedAt = Date.now();
+  // Fixed base: a bad Host header must not throw before the try block.
+  const url = new URL(req.url || "/", "http://localhost");
+  if (pathname) url.pathname = pathname;
+  let body = {};
+  let result = null;
+  let status = 200;
+  let errorMessage = null;
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-    if (pathname) url.pathname = pathname;
     const route = routes.find(([method, pattern]) => method === req.method && pattern.test(url.pathname));
-    if (!route) {
-      sendJson(res, 404, { error: "Not found" });
-      return;
-    }
+    if (!route) throw httpError(404, "Not found");
 
     const [, pattern, handler] = route;
     const match = url.pathname.match(pattern);
-    const body = await readJson(req);
-    const result = await handler({ req, url, match, body });
-    sendJson(res, 200, result);
+    body = await readJson(req);
+    result = await handler({ req, url, match, body });
   } catch (error) {
-    const status = error.status || 500;
+    status = error.status || 500;
+    errorMessage = error.message || "Internal server error";
     if (status >= 500) console.error(error);
-    sendJson(res, status, { error: error.message || "Internal server error" });
   }
+
+  // Staff activity log (activityLog.mjs). Awaited before replying: a serverless function may stop after the response.
+  if (shouldLog(req.method, url.pathname)) {
+    await recordActivity({
+      req, url, method: req.method, pathname: url.pathname, body, result, status,
+      error: errorMessage, actor: peekSession(req), startedAt,
+    });
+  }
+  if (errorMessage) sendJson(res, status, { error: errorMessage });
+  else sendJson(res, 200, result);
 }
 
 async function readJson(req) {
