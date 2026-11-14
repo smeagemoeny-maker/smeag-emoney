@@ -111,9 +111,18 @@ const state = {
 const app = document.querySelector("#app");
 if (!app) throw new Error("Missing app root");
 
+// A tap on a store screen with an empty cart (sale panel) looks up the student without pressing a button.
+function idleLookupStore() {
+  const key = state.route;
+  if (state.nfcMode !== "idle" || !STORES[key] || !state.manager) return null;
+  const store = state.stores[key];
+  return !store.cart.length && store.panel !== "charge" ? key : null;
+}
+
 listenForNfc(async ({ uid, source }) => {
-  if (state.nfcMode === "idle" || state.busy) return;
-  const mode = state.nfcMode;
+  if (state.busy) return;
+  const mode = state.nfcMode === "idle" ? idleLookupStore() : state.nfcMode;
+  if (!mode) return;
   state.busy = true;
   state.status = `NFC 수신: ${source} / ${uid}`;
   render();
@@ -134,7 +143,7 @@ listenForNfc(async ({ uid, source }) => {
 });
 
 // USB/Bluetooth readers (keyboard mode) are only listened to while a tap is expected.
-enableKeyboardReader(() => state.nfcMode !== "idle" && !state.busy);
+enableKeyboardReader(() => !state.busy && (state.nfcMode !== "idle" || !!idleLookupStore()));
 
 window.addEventListener("nfc-error", (event) => {
   if (state.nfcMode === "idle") return;

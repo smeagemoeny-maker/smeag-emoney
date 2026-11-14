@@ -419,7 +419,8 @@
   // card itself and show "Empty tag". onNfc() ignores taps on screens that are not waiting for a card.
   var phoneNfc = null;
   function wantsNfc() {
-    return !!(session.manager && (route === 'buyer' || ((route === 'sales' || route === 'pusanpay') && S.awaitingTap)));
+    // Sales always listens (a tap with an empty cart shows the student's info and balance; with items it opens Pay).
+    return !!(session.manager && (route === 'buyer' || route === 'sales' || (route === 'pusanpay' && S.awaitingTap)));
   }
   function syncNfc() {
     var N = window.PusanNfc;
