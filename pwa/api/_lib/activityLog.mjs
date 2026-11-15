@@ -22,6 +22,7 @@ const writeFile = !process.env.VERCEL && process.env.ACTIVITY_LOG_FILE !== "off"
 // [method, path pattern, label]. First match wins; anything else is logged as "METHOD path".
 const ACTIONS = [
   ["POST", /^\/api\/auth\/login$/, "Login"],
+  ["POST", /^\/api\/auth\/logout$/, "Logout"],
   ["GET", /^\/api\/products$/, "View products"],
   ["POST", /^\/api\/products$/, "Add product"],
   ["PATCH", /^\/api\/products\/\d+$/, "Edit product"],
@@ -175,8 +176,8 @@ function isoDay(value, name) {
 
 const MAX_LIST = 5000;
 
-// f: { from, to, loginId, action, campus }. campus (account campus) is forced for campus-only admins by the route.
-export async function listActivity({ from, to, loginId, action, campus, onlyWrites }) {
+// f: { from, to, loginId, action, campus, onlyWrites, onlyAuth (login/logout rows only) }. campus (account campus) is forced for campus-only admins by the route.
+export async function listActivity({ from, to, loginId, action, campus, onlyWrites, onlyAuth }) {
   const enc = encodeURIComponent;
   const filters = [
     `created_at=gte.${enc(`${isoDay(from, "from")}T00:00:00+08:00`)}`,
@@ -188,6 +189,7 @@ export async function listActivity({ from, to, loginId, action, campus, onlyWrit
   if (act) filters.push(`action=ilike.${enc(`*${escapeLike(act)}*`)}`);
   if (campus) filters.push(`campus=ilike.${enc(escapeLike(campus))}`);
   if (onlyWrites) filters.push("method=neq.GET");
+  if (onlyAuth) filters.push(`path=in.(${enc("/api/auth/login,/api/auth/logout")})`);
 
   const select = "id,created_at,login_id,staff_name,position,campus,action,method,path,status,ok,error,detail,ip,user_agent,duration_ms";
   const rows = [];
