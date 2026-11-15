@@ -547,6 +547,11 @@
   function campusDropdown(key, onSelect) {
     return dropdown(key, S.campus, allowedCampuses(), onSelect);
   }
+  // Landscape tablet / POS / PC: two-column Sales. Re-rendered when the window crosses the line (see resize).
+  function isWide() {
+    var w = window.innerWidth || document.documentElement.clientWidth, hgt = window.innerHeight || 0;
+    return w >= 960 && w > hgt;
+  }
   function salesScreen() {
     var allLabel = 'All';
     var catOpts = [allLabel].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
@@ -560,7 +565,8 @@
     actions.in_s_search = function (v) { S.search = v; };
 
     // Campus / category / subcategory sit in one compact menu row so the products, cart and total stay visible.
-    var h = '<div class="screen">' +
+    var wide = isWide();
+    var h = '<div class="screen' + (wide ? ' wide' : '') + '">' +
       '<div class="sb salesHead"><div class="title" style="padding:0">Sales</div>' +
       '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="🔍 Search product" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">' +
       '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
@@ -571,6 +577,7 @@
       pillDropdown('s_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = allLabel; S.category = v; }, 'Cat') +
       pillDropdown('s_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Sub') +
       '</div>' +
+      (wide ? '<div class="salesMain">' : '') +
       '<div class="vscroll fill" id="sales-scroll">';
     if (S.error) h += errorLine();
     else if (!filtered.length) h += loadingOr('No products match the selected filters.', 'font-size:12px;color:var(--ink3);padding:12px 0');
@@ -581,8 +588,10 @@
         '<div class="pname">' + esc(p.sMenu || '-') + '</div><div class="pprice">₱' + money(p.payment) + (out ? ' · <span style="color:var(--out)">품절</span>' : '') + '</div></div>';
     });
     h += '</div>';
-    h += '<div class="divider" style="margin:14px 0"></div>' + eyebrow('CART') + spacer(8);
-    if (!vm.cart.length) h += txt('Your cart is empty. Select a product above.', 'font-size:12px;color:var(--ink3)');
+    // Wide screen: products scroll on the left, cart + pay stay visible in a right column.
+    if (wide) h += '</div><div class="cartPane"><div class="vscroll fill">' + eyebrow('CART') + spacer(8);
+    else h += '<div class="divider" style="margin:14px 0"></div>' + eyebrow('CART') + spacer(8);
+    if (!vm.cart.length) h += txt('Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
     vm.cart.forEach(function (it) {
       h += '<div class="cartrow">' + thumb(it.product, 40) + '<div class="cartname">' + esc(it.product.sMenu || '-') + '</div>' +
         '<div class="stepper"><div class="stepbtn" data-act="' + act(function () { changeQty(it.product, -1); }) + '">−</div>' +
@@ -623,6 +632,7 @@
       '<div style="font-size:10.5px;color:var(--ink2)">' + (vm.cart.length ? 'Check the student info, then confirm payment' : 'Empty cart: tap to check student info and balance') + '</div></div>';
     }
     h += '</div>';
+    if (wide) { h += '</div></div>'; return h; }   // .salesMain, .screen (cart always visible: no scroll-to-cart button)
     h += '<button class="fab" data-act="' + act(function () {
       var el = document.getElementById('sales-scroll'); if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }) + '" data-norender="1">⬇</button>';
@@ -1381,7 +1391,11 @@
     restoreSession();
     window.addEventListener('popstate', routeFromHash);
     window.addEventListener('hashchange', function () { if (location.hash === '#logout') logout(); });
-    window.addEventListener('resize', function () { if (ui.dropdown) { ui.dropdown = null; render(); } });
+    var lastWide = isWide();
+    window.addEventListener('resize', function () {
+      var w = isWide();
+      if (ui.dropdown || w !== lastWide) { lastWide = w; ui.dropdown = null; render(); }
+    });
     var initial = location.hash.replace('#', '');
     if (initial === 'logout') { logout(); return; }
     if (session.manager) navigate(ROUTES.indexOf(initial) >= 0 ? initial : 'sales', true);

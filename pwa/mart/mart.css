@@ -74,6 +74,31 @@ button, input { font-family: inherit; }
   .photobox { height: 220px; }
   .fab { right: 40px; }
 }
+/* Landscape tablet / POS / PC (mart.js isWide: >= 960px and wider than tall): the frame fills the screen
+   and Sales is two columns - products left, cart + pay right (always visible, no scrolling to pay). */
+@media (min-width: 960px) and (orientation: landscape) {
+  .phone { max-width: 1600px; }
+  .screen { padding: 18px 24px; }
+  /* other screens (forms, lists) keep a readable ~1040px column in the middle */
+  .screen:not(.wide) { padding-left: max(24px, calc((100% - 1040px) / 2)); padding-right: max(24px, calc((100% - 1040px) / 2)); }
+}
+@media (min-width: 960px) and (orientation: landscape) and (max-height: 760px) {
+  .screen { padding: 12px 20px; }
+  .navbar { height: 64px; }
+  .navitem .ind { top: 8px; }
+  .navitem svg { margin-top: 12px; }
+  .navitem .lab { margin-top: 6px; }
+}
+.screen.wide .salesMain { flex: 1; min-height: 0; display: flex; gap: 18px; }
+.screen.wide .salesMain > .vscroll.fill { flex: 1 1 auto; min-width: 0; }
+.screen.wide .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.screen.wide .cartPane {
+  flex: 0 0 clamp(300px, 30%, 420px); min-height: 0; display: flex; flex-direction: column; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px;
+}
+.screen.wide .cartPane > .vscroll.fill { flex: 1; min-height: 0; }
+.screen.wide .cartPane .paybox { margin-top: 0; }
+.screen.wide .filterbar { max-width: 720px; }
 
 .content { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
 .screen {
