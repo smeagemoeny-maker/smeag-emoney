@@ -58,7 +58,7 @@
     mount: function (root, ctx) {
       root.classList.add('g2-page');
       var html =
-        '<div class="g2-panel" style="left:0;top:0;width:1706px;height:231px"></div>' +
+        '<div class="g2-panel" style="left:0;top:0;width:1706px;height:263px"></div>' +
         '<span class="g2-lbl f10" style="left:33px;top:26px">Campus:</span>' +
         comboHtml('campus', 'left:135px;top:21px;width:110px;height:25px', ['CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM', 'PUSAN MART'], 'CAPITAL') +
         dtpHtml('start', 'f10', 'left:310px;top:21px;width:110px;height:25px') +
@@ -71,15 +71,14 @@
           '<input class="g2-card-val" type="text" readonly tabindex="-1" value="' + c[1] + '"></div>';
       });
       html +=
-        '<div class="g2-title" style="top:194px">WEEKLY REPORT</div>' +
-        '<div class="g2-panel g2-rep-grid" data-k="grid" style="left:20px;top:246px;width:1666px;height:517px"></div>' +
-        '<div class="g2-abs g2-rep-tot" data-k="totals" style="left:20px;top:763px;width:1666px;height:40px;background:#DDDCE1"></div>' +
-        '<div class="g2-abs" style="left:0;top:818px;width:1706px;height:62px;background:#F0F0F0"></div>' +
-        '<button class="flat g2-btn" data-k="pdf" style="left:20px;top:828px;width:160px;height:40px;background:#008000">DOWNLOAD PDF</button>' +
-        '<button class="flat g2-btn b" data-k="excel" style="left:190px;top:828px;width:120px;height:40px;background:#1D6F42">EXPORT EXCEL</button>' +
-        '<span class="g2-lbl" style="left:510px;top:840px;font-size:12px;color:#555">Click a row to see its transactions.</span>' +
-        '<button class="flat g2-btn" data-k="folder" style="left:320px;top:828px;width:170px;height:40px;background:#4682B4">OPEN PDF FOLDER</button>' +
-        '<button class="flat g2-btn" data-k="back" style="left:1567px;top:828px;width:120px;height:40px;background:#808080">Back</button>';
+        '<button class="flat g2-btn" data-k="pdf" style="left:20px;top:170px;width:160px;height:40px;background:#008000">DOWNLOAD PDF</button>' +
+        '<button class="flat g2-btn b" data-k="excel" style="left:190px;top:170px;width:120px;height:40px;background:#1D6F42">EXPORT EXCEL</button>' +
+        '<button class="flat g2-btn" data-k="folder" style="left:320px;top:170px;width:170px;height:40px;background:#4682B4">OPEN PDF FOLDER</button>' +
+        '<span class="g2-lbl" style="left:510px;top:182px;font-size:12px;color:#555">Click a row to see its transactions.</span>' +
+        '<button class="flat g2-btn" data-k="back" style="left:1567px;top:170px;width:120px;height:40px;background:#808080">Back</button>' +
+        '<div class="g2-title" style="top:226px">WEEKLY REPORT</div>' +
+        '<div class="g2-panel g2-rep-grid" data-k="grid" style="left:20px;top:278px;width:1666px;height:540px"></div>' +
+        '<div class="g2-abs g2-rep-tot" data-k="totals" style="left:20px;top:818px;width:1666px;height:40px;background:#DDDCE1"></div>';
       root.innerHTML = html;
 
       function q(k) { return root.querySelector('[data-k="' + k + '"]'); }
@@ -219,7 +218,7 @@
         var t = totals.rows()[0] || {};
         var now = new Date();
         function stat(lbl, val, blue) {
-          return '<td><div class="sl">' + esc(lbl) + '</div><div class="sv' + (blue ? ' blue' : '') + '">' + esc(val) + '</div></td>';
+          return '<td><div class="card"><div class="sl">' + esc(lbl) + '</div><div class="sv">' + esc(val) + '</div></div></td>';
         }
         var html =
           '<table class="hd"><tr><td>' +
@@ -235,20 +234,28 @@
           '<thead><tr><th>NO</th><th>DATE</th>' + cats.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
           rows.map(function (r) {
             return '<tr><td class="c">' + esc(r.NO) + '</td><td class="c">' + esc(r.DATE) + '</td>' +
-              cats.map(function (c) { return '<td class="r">' + esc(OfficeKit.money(num(r[c]))) + '</td>'; }).join('') + '</tr>';
+              cats.map(function (c) {
+                var adj = adjusted[r.DATE] && adjusted[r.DATE][c];
+                return '<td class="r' + (adj ? ' adj' : '') + '">' + esc(OfficeKit.money(num(r[c]))) + '</td>';
+              }).join('') + '</tr>';
           }).join('') +
           '<tr class="tot"><td>TOTAL</td><td>-</td>' + cats.map(function (c) { return '<td>' + esc(OfficeKit.money(t[c])) + '</td>'; }).join('') + '</tr>' +
           '</tbody></table>';
+        /* same colours as the screen: navy title, grey summary cards, blue grid header, striped rows, grey totals row */
         var css =
           '@page{margin:1cm;@bottom-center{content:"Page " counter(page);font:8pt "Segoe UI",Arial,sans-serif;}}' +
-          'body{font-size:8pt;font-family:"Segoe UI",Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+          'body{font-size:8pt;font-family:"Segoe UI",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
           'table.hd{width:100%;border-collapse:collapse;} table.hd td{vertical-align:top;padding:0;} table.hd td.r{text-align:right;}' +
-          '.ttl{font-size:18pt;font-weight:600;color:#2196F3;} .m10{font-size:10pt;} .m9{font-size:9pt;}' +
-          'table.stats{width:100%;border:1px solid #E0E0E0;border-collapse:collapse;margin:10pt 0;} table.stats td{padding:10pt 0 10pt 10pt;width:20%;}' +
-          '.sl{font-size:9pt;color:#9E9E9E;} .sv{font-size:12pt;font-weight:700;} .sv.blue{color:#2196F3;}' +
-          'table.wk{width:100%;border-collapse:collapse;table-layout:fixed;} table.wk th{background:#2196F3;color:#FFF;font-weight:600;padding:2pt;text-align:center;overflow-wrap:anywhere;}' +
-          'table.wk td{border-bottom:1px solid #EEE;padding:2pt;white-space:nowrap;overflow:hidden;} table.wk tr{page-break-inside:avoid;}' +
-          'table.wk tr.tot td{background:#F5F5F5;font-weight:600;text-align:center;border-bottom:0;}';
+          '.ttl{font-size:18pt;font-weight:600;color:#000080;} .m10{font-size:10pt;} .m9{font-size:9pt;}' +
+          'table.stats{width:100%;border-collapse:separate;border-spacing:6pt 0;margin:10pt -6pt;} table.stats td{width:20%;padding:0;}' +
+          '.card{border:1px solid #646464;background:#FFF;} .sl{background:#E6E6E6;text-align:center;font-size:9pt;padding:4pt 0;}' +
+          '.sv{margin:5pt 6pt 6pt;border:1px solid #646464;text-align:center;font-size:12pt;padding:2pt 0;}' +
+          'table.wk{width:100%;border-collapse:collapse;table-layout:fixed;}' +
+          'table.wk th{background:#0078D7;color:#FFF;font-weight:400;padding:3pt 2pt;text-align:center;overflow-wrap:anywhere;border:1px solid #646464;}' +
+          'table.wk td{background:#FFF;border:1px solid #E3E3E8;padding:2pt;white-space:nowrap;overflow:hidden;} table.wk tr{page-break-inside:avoid;}' +
+          'table.wk tbody tr:nth-child(even) td{background:#FAFAFC;}' +
+          'table.wk td.adj{background-image:linear-gradient(225deg,#F0A030 5px,transparent 5px);}' +
+          'table.wk tr.tot td{background:#DCDCE1 !important;font-weight:600;text-align:center;border-color:#C8C8CD;}';
         OfficeKit.printDoc('Weekly_Report_' + stamp(now).replace(/[-: ]/g, '').replace(/^(\d{8})/, '$1_'), html, { landscape: true, css: css });
       }
 

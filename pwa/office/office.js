@@ -777,21 +777,26 @@
     if (mobileOn) {
       win.style.transform = ''; win.style.left = '';
       stage.style.width = ''; stage.style.height = '';
+      document.body.style.overflowY = '';
       return;
     }
     var vw = document.documentElement.clientWidth || window.innerWidth;
     var vh = window.innerHeight || document.documentElement.clientHeight;
-    // Desktop: fit the width; on big monitors grow past 1:1 only while the whole window still fits the height.
-    // Tablet / phone: never shrink below MIN_SCALE so the text stays readable; the page then scrolls sideways.
+    // Every machine (1366x768 laptop, 1920x1080 / 4K monitor, landscape tablet): the whole window fits the
+    // screen width AND height, so nothing is cut off and no scrolling is needed.
+    // When that would make the text too small (short phone-landscape screen, forced PC view on a phone),
+    // fit the width only, never below MIN_SCALE; the page then scrolls.
     var MIN_SCALE = vw < 768 ? 0.5 : 0.55;
-    var scale = Math.min(vw / WIN_W, Math.max(1, vh / WIN_H), 1.6);
-    scale = Math.max(scale, Math.min(MIN_SCALE, 1));
-    var w = Math.ceil(WIN_W * scale);
+    var sw = vw / WIN_W, sh = vh / WIN_H;
+    var scale = Math.min(sw, sh, 1.6);
+    if (scale < MIN_SCALE) scale = Math.max(Math.min(sw, 1.6), Math.min(MIN_SCALE, 1));
+    var w = Math.ceil(WIN_W * scale), h = Math.ceil(WIN_H * scale);
     var left = Math.max(0, Math.floor((vw - w) / 2));
     win.style.transform = 'scale(' + scale + ')';
     win.style.left = left + 'px';
     stage.style.width = Math.max(vw, w) + 'px';
-    stage.style.height = Math.ceil(WIN_H * scale) + 'px';
+    stage.style.height = Math.max(h, vh) + 'px';
+    document.body.style.overflowY = h > vh ? 'auto' : 'hidden';
   }
 
   /* ================= NFC: one reader for every tab ================= */
