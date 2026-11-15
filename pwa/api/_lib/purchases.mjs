@@ -4,7 +4,8 @@
 //   - bank / beforebank rows written by a store terminal: transaction_source 'POS' (Android / Windows terminals)
 //     or 'PWA POS' (pos_checkout RPC), transaction_type 'decrease'. One row per item line;
 //     payment = line total, quantity = units, subcategory = product name.
-//   - PusanmartPayments: Pusan Mart total-only payments (no item lines, no e-money balance).
+//   - PusanmartPayments: Pusan Mart total-only payments. Old rows were records only; rows paid by card
+//     (pos_pusanmart_pay) carry bank_order and are read from their bank row instead.
 // Receipts
 //   - PWA rows share bank."order" (a uuid per checkout).
 //   - Terminal rows have no order: the lines of one sale share uid + transaction_date + category.
@@ -184,13 +185,27 @@ async function load({ filters, pusanFilters }) {
   const [a, b, p] = await Promise.all([
     paged("bank", COLS, base, order),
     paged("beforebank", COLS, base, order),
-    pusanFilters ? paged("PusanmartPayments", "id,nfcid,name,allpayments,register_days", ["center=eq.PusanMart", ...pusanFilters], "register_days.desc,id.desc") : { rows: [], truncated: false },
+    pusanFilters ? pusanRows(pusanFilters) : { rows: [], truncated: false },
   ]);
   const rows = [...a.rows.map((r) => ({ ...r, table: "BANK" })), ...b.rows.map((r) => ({ ...r, table: "BEFOREBANK" }))];
   const people = await studentIds(p.rows.map((r) => r.nfcid));
   const receipts = [...toReceipts(rows), ...p.rows.map((r) => pusanReceipt(r, people.get(String(r.nfcid || "").toLowerCase())))];
   receipts.sort(newestFirst);
   return { receipts, truncated: a.truncated || b.truncated || p.truncated };
+}
+
+// Pusan Pay card payments (pos_pusanmart_pay) also write a bank row, which is already a receipt:
+// only the old record-only rows (bank_order null) are read here. Before that migration the column
+// does not exist yet, so fall back to every row.
+async function pusanRows(pusanFilters) {
+  const base = ["center=eq.PusanMart", ...pusanFilters];
+  const order = "register_days.desc,id.desc";
+  try {
+    return await paged("PusanmartPayments", "id,nfcid,name,allpayments,register_days", [...base, "bank_order=is.null"], order);
+  } catch (e) {
+    if (!/bank_order/.test(String(e?.message || ""))) throw e;
+    return paged("PusanmartPayments", "id,nfcid,name,allpayments,register_days", base, order);
+  }
 }
 
 async function studentIds(uids) {

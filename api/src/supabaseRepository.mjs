@@ -129,25 +129,43 @@ export async function createCharge({ uid, campus, amount, staffLoginId }) {
   });
 }
 
-export async function createPusanmartPayment({ uid, totalAmount }) {
-  if (!(Number(totalAmount) > 0)) throw httpError(400, "Total amount must be greater than 0.");
-  const person = await findPersonByUid(uid);
-  if (!person) throw httpError(404, "This NFC card is not registered.");
-
-  const [row] = await rest("PusanmartPayments", {
-    method: "POST",
-    headers: { prefer: "return=representation" },
-    body: {
-      nfcid: normalizeUid(uid),
-      center: "PusanMart",
-      name: person.name || "",
-      allpayments: Number(totalAmount),
-      stock: 0,
-      register_days: new Date().toISOString(),
-    },
-  });
-
-  return { id: row.id, nfcid: normalizeUid(uid), name: person.name, allPayments: Number(totalAmount) };
+// Pusan Mart "amount only" payment: the cashier types the total, the student taps the card and the amount is
+// paid from e-money (bank row + person.totalmoney + PusanmartPayments row, one transaction in
+// pos_pusanmart_pay — api/migrations/supabase_pusanmart_pay.sql).
+export async function createPusanmartPayment({ uid, totalAmount, discountLabel, clientKey, staffLoginId }) {
+  const amount = Math.round(Number(totalAmount) * 100) / 100;
+  if (!(amount > 0)) throw httpError(400, "Total amount must be greater than 0.");
+  const card = normalizeUid(uid);
+  if (!card) throw httpError(400, "Tap a card first.");
+  let r;
+  try {
+    r = await rest("rpc/pos_pusanmart_pay", {
+      method: "POST",
+      body: {
+        p_uid: card,
+        p_amount: amount,
+        p_discount_label: String(discountLabel || "No Discount").slice(0, 40),
+        p_staff: staffLoginId ? String(staffLoginId) : null,
+        p_client_key: clientKey ? String(clientKey).slice(0, 80) : null,
+      },
+    });
+  } catch (e) {
+    if (/pos_pusanmart_pay/.test(String(e?.message || "")) && /schema cache|does not exist|Could not find/i.test(String(e?.message || ""))) {
+      throw httpError(503, "Pusan Mart card payment is not set up yet: run api/migrations/supabase_pusanmart_pay.sql in the Supabase SQL Editor.");
+    }
+    throw e;
+  }
+  return {
+    id: r.id,
+    nfcid: card,
+    name: r.name,
+    studentId: r.studentId,
+    allPayments: Number(r.amount),
+    orderId: r.orderId,
+    balanceBefore: r.balanceBefore == null ? null : Number(r.balanceBefore),
+    remainingBalance: Number(r.remainingBalance),
+    repeated: !!r.repeated,
+  };
 }
 
 export function escapeLike(value) {

@@ -130,9 +130,11 @@ const routes = [
     return { charge: await repo.createCharge({ ...body, staffLoginId: session.loginId }) };
   }],
   ["POST", /^\/api\/pusanmart\/payments$/, async ({ req, body }) => {
-    const { access } = verifyRequest(req);
+    const { session, access } = verifyRequest(req);
     assertCanPusanPay(access);
-    return { payment: await repo.createPusanmartPayment(body) };
+    // Pays from e-money now, so a frozen (lost) card is refused like at any other store.
+    if (dbBackend === "supabase") await campus.assertCardUsable(body.uid);
+    return { payment: await repo.createPusanmartPayment({ ...body, staffLoginId: session.loginId }) };
   }],
 
   // ----- back-office screens (MySQL or Supabase; the DBSQL mock does not have these tables) -----

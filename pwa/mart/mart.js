@@ -144,8 +144,10 @@
         };
       });
     },
-    createPusanmartPayment: function (uid, amount) {
-      return apiCall('POST', '/api/pusanmart/payments', { uid: uid, totalAmount: Math.round(amount * 100) / 100 }).then(function (r) { return r.payment; });
+    // Pays the amount from the card's e-money (bank row + PusanmartPayments row). clientKey: one per tap.
+    createPusanmartPayment: function (uid, amount, discountLabel, clientKey) {
+      return apiCall('POST', '/api/pusanmart/payments', { uid: uid, totalAmount: Math.round(amount * 100) / 100,
+        discountLabel: discountLabel, clientKey: clientKey }).then(function (r) { return r.payment; });
     },
     fetchPusanmartDaily: function (s, e) {
       return apiCall('GET', '/api/pusanmart/daily' + q({ from: s, to: e }));
@@ -168,7 +170,7 @@
     checkoutError: null,
     last: null,
     buyerResult: null, buyerLookupError: null, buyerLoading: false,
-    pz: { store: 'Select Store', amount: '', label: 'No Discount', rate: 0, submitting: false, error: null, success: null }
+    pz: { store: 'PUSANMART', amount: '', label: 'No Discount', rate: 0, submitting: false, error: null, success: null }
   };
   var route = 'sales';
   var S = {};          // screen-local `remember` state; reset whenever a destination is (re)entered
@@ -411,7 +413,7 @@
     } else if (route === 'buyer') {
       lookupBuyer(uidStr);
     } else if (route === 'pusanpay') {
-      if (vm.pz.submitting) { toast('Saving payment... please wait.'); return; }
+      if (vm.pz.submitting) { toast('Processing payment... please wait.'); return; }
       var amt = pusanFinalTotal();
       var storeOk = S.store.trim().replace(/ /g, '').toUpperCase() === 'PUSANMART';
       if (!storeOk || amt == null || !(amt > 0)) { toast('Card read (' + uidStr + '). Select the store and enter the amount first.', 3000); return; }
@@ -524,14 +526,20 @@
     var sub = parseNum(S.amount);
     return sub == null ? null : sub - sub * vm.pz.rate;
   }
+  // Pusan Pay: amount typed by the cashier + card tap = paid from the student's e-money right away.
   function submitPusanmartPayment(uidStr, amount) {
     vm.pz.error = null; vm.pz.success = null; vm.pz.submitting = true; render();
-    repo.createPusanmartPayment(uidStr, amount).then(function (p) {
-      vm.pz.success = 'Recorded ₱' + money(amount) + ' for ' + ((p && p.name) || uidStr) + '.';
+    var key = 'pz-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    repo.createPusanmartPayment(uidStr, amount, vm.pz.label, key).then(function (p) {
+      beep('ok');
+      vm.pz.success = 'Paid ₱' + money(p.allPayments) + ' — ' + ((p && p.name) || uidStr) +
+        (p && p.studentId ? ' (' + p.studentId + ')' : '') + '. Remaining balance ₱' + money(p.remainingBalance) + '.';
       vm.pz.amount = '';
       if (route === 'pusanpay') S.amount = '';
     }, function (e) {
-      vm.pz.error = e.status === 404 ? 'This NFC card is not registered.' : 'An error occurred while saving the payment: ' + e.message;
+      beep('error');
+      vm.pz.error = e.status === 404 ? 'This NFC card is not registered.' :
+        e.status === 409 || e.status === 423 ? e.message : 'An error occurred during payment: ' + e.message;
     }).then(function () { vm.pz.submitting = false; render(); });
   }
 
@@ -928,12 +936,12 @@
       if (vm.pz.success) h += txt(vm.pz.success, 'color:var(--ok);font-size:12px;padding-bottom:8px');
       if (vm.pz.error) h += txt(vm.pz.error, 'color:var(--out);font-size:12px;padding-bottom:8px');
       h += spacer(6);
-      var label = vm.pz.submitting ? 'Saving payment...' : S.awaitingTap ? 'Please tap your NFC card...' : !canStart ? 'Enter a valid total amount first' : 'Tap your NFC card on the back of the phone';
+      var label = vm.pz.submitting ? 'Processing payment...' : S.awaitingTap ? 'Please tap your NFC card...' : !canStart ? 'Enter a valid total amount first' : 'Tap your NFC card on the back of the phone';
       var en = canStart && !vm.pz.submitting;
       h += '<div class="nfcbox' + (S.awaitingTap ? ' wait' : '') + (en ? ' enabled' : '') + '"' +
         (en ? ' data-act="' + act(function () { vm.pz.error = null; vm.pz.success = null; S.awaitingTap = true; }) + '"' : '') + '>' +
         '<div class="ic">📶</div><div style="font-size:12px;font-weight:700">' + label + '</div>' +
-        (canStart ? '<div style="font-size:10.5px;color:var(--ink2)">Payment logs as soon as you tap</div>' : '') + '</div>';
+        (canStart ? '<div style="font-size:10.5px;color:var(--ink2)">₱' + money(finalTotal) + ' is paid from the card\'s e-money as soon as it is tapped</div>' : '') + '</div>';
     }
     h += '</div>';
     return h;
