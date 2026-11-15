@@ -82,6 +82,9 @@ const routes = [
     if (!access) throw httpError(403, "This account cannot use the POS.");
     return { manager, access, token: issueToken(manager) };
   }],
+  // Logout only writes the activity log row ("Logout"); the token is stateless, the screen forgets it.
+  // The (possibly expired) token names who logged out — see peekSession().
+  ["POST", /^\/api\/auth\/logout$/, async () => ({ ok: true })],
   // Student purchase history: no staff login, the NFC card UID is the key (POST so it stays out of URLs).
   ["POST", /^\/api\/student\/purchases$/, async ({ body }) => {
     supabaseOnly();
@@ -309,7 +312,8 @@ function officeRoute(method, pattern, handler) {
 }
 
 function activityFilter(url) {
-  return { ...query(url, "from", "to", "loginId", "action", "campus"), onlyWrites: url.searchParams.get("writes") === "1" };
+  return { ...query(url, "from", "to", "loginId", "action", "campus"), onlyWrites: url.searchParams.get("writes") === "1",
+    onlyAuth: url.searchParams.get("auth") === "1" };
 }
 
 function supabaseOnly() {

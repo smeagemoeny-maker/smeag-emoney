@@ -1,6 +1,6 @@
 /* LOG tab — registers window.OfficeTabs['LOG'] (see showPage() in office.js).
    Staff activity log: every API request made from the POS / Mart / Cafe / Office screens (who, when, what, result).
-   API: GET /api/office/activity-log?from&to&loginId&action&writes=1 -> {rows, truncated}. Admin accounts only
+   API: GET /api/office/activity-log?from&to&loginId&action&writes=1&auth=1 -> {rows, truncated}. Admin accounts only
    (a campus Admin sees only its own campus). DOWNLOAD CSV saves the rows shown as a log file. */
 (function () {
   'use strict';
@@ -151,7 +151,8 @@
       var txtLogin = k.txt(530, 20, 140, 25, 'all staff');
       wlbl(k, 'Action:', 690, 23);
       var txtAction = k.txt(745, 20, 170, 25, 'e.g. checkout, delete');
-      var chkWrites = k.chk('Changes only (no views)', 935, 24);
+      var chkWrites = k.chk('Changes only (no views)', 935, 14);
+      var chkAuth = k.chk('Login / Logout only', 935, 36);
       var btnSearch = k.btn('SEARCH', 1150, 15, 120, 40, '#007ACC');
       var btnCsv = k.btn('DOWNLOAD CSV', 1290, 15, 150, 40, '#2E7D32');
 
@@ -174,6 +175,7 @@
         if (txtLogin.value.trim()) qs += '&loginId=' + encodeURIComponent(txtLogin.value.trim());
         if (txtAction.value.trim()) qs += '&action=' + encodeURIComponent(txtAction.value.trim());
         if (chkWrites.checked) qs += '&writes=1';
+        if (chkAuth.checked) qs += '&auth=1';
         return OfficeKit.busy(btnSearch, api.request('GET', '/api/office/activity-log?' + qs).then(function (res) {
           rows = res.rows || [];
           grid.setRows(rows);

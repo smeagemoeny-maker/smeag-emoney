@@ -129,3 +129,8 @@ body.m .m-flow > span, body.m .m-flow > label { text-align: left; width: auto !i
 body.m .banner { position: relative; }
 body.m .content { overflow-x: hidden; }
 body.m .m-flow > .g3-band { height: auto !important; line-height: 1.3 !important; padding: 10px 8px; font-size: 16px !important; white-space: normal; }
+
+body.m .userbox { right: 10px; height: 48px; gap: 8px; font-size: 12px; }
+body.m .ub-who b { font-size: 13px; }
+body.m .ub-who span { display: none; }
+body.m .ub-btn { padding: 8px 10px; font-size: 12px; }

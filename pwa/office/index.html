@@ -29,6 +29,11 @@
       <!-- ① header banner -->
       <div class="banner">
         <svg id="logo" class="logo" width="260" height="80" viewBox="0 0 260 80" aria-label="SMEAG GLOBAL EDUCATION"></svg>
+        <!-- signed-in staff + logout (filled by applySession in office.js) -->
+        <div class="userbox" id="userbox" hidden>
+          <span class="ub-who"><b id="ubId"></b><span id="ubRole"></span></span>
+          <button type="button" class="ub-btn" id="btnLogout">LOGOUT</button>
+        </div>
       </div>
 
       <!-- ② tab strip -->

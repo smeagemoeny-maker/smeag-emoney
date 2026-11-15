@@ -69,7 +69,12 @@
       setSession: setSession,
       lastLoginId: function () { return ssGet('officeLastLogin') || ''; },
       setUnauthorizedHandler: function (fn) { onUnauthorized = fn; },
-      login: function (loginId) { return request('POST', '/api/auth/login', { loginId: loginId }); },
+      login: function (loginId) { return request('POST', '/api/auth/login', { loginId: loginId, app: 'office' }); },
+      // Records "Logout" in the activity log while the token is still attached. Never blocks the logout.
+      logout: function () {
+        if (!session || !session.token) return Promise.resolve();
+        return request('POST', '/api/auth/logout', { app: 'office' }, true).catch(function () { /* ignore */ });
+      },
       personByUid: function (uid) { return request('GET', '/api/people/by-nfc/' + encodeURIComponent(uid)); },
       menus: function (campus) { return request('GET', '/api/office/menus?campus=' + encodeURIComponent(campus || '')); },
       saveTransaction: function (uid, lines) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines }); },
@@ -858,7 +863,23 @@
       titleEl.textContent = who ? baseTitle + ' - ' + who : baseTitle;
       titleEl.title = s && s.manager ? (s.manager.name + ' / ' + s.manager.position + ' / ' + s.manager.campus) : '';
       document.title = titleEl.textContent;
+      var box = document.getElementById('userbox');
+      if (box) {
+        box.hidden = !who;
+        document.getElementById('ubId').textContent = who;
+        document.getElementById('ubRole').textContent = s && s.manager ? (s.manager.position + ' @ ' + s.manager.campus) : '';
+      }
     }
+    // LOGOUT: forget the session and show the login window again (a different staff member can sign in).
+    var logoutBtn = document.getElementById('btnLogout');
+    if (logoutBtn) logoutBtn.addEventListener('click', function () {
+      logoutBtn.disabled = true;
+      api.logout().then(function () {
+        logoutBtn.disabled = false;
+        api.setSession(null);
+        login().then(function () { page.focusUid(); });
+      });
+    });
     function login() {
       if (pendingLogin) return pendingLogin;
       applySession(null);
