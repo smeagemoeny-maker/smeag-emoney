@@ -4,7 +4,7 @@
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
 import { httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
-import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
+import { checkoutCategory, filterProductsForStore, productStore } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
 
@@ -84,8 +84,8 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
   const sellStore = store || "mart";
 
   // Campuses are never mixed: every product must be one this campus store lists (stores.mjs).
-  // Every line is booked to the store it was sold at: a mart item (cola) sold at the cafe counter
-  // is cafe sales ("ENCANTO CAFE"), as the old terminals did.
+  // Each line is booked to the product's own store, so a mart item sold at the cafe counter
+  // counts as mart sales ("Capital Mart"); unclassified products ("ENCANTO MINI CAKES", "WATER") are mart sales too.
   const ids = [...new Set(cart.map((item) => Number(item.productId)))];
   const rows = await rest(`store_menus?select=id,Campus,m_menu,s_menu&id=in.(${ids.join(",")})`);
   const byId = new Map(rows.map((row) => [Number(row.id), mapProduct(row)]));
@@ -98,7 +98,7 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
     return {
       productId: Number(item.productId),
       quantity: Number(item.quantity),
-      category: checkoutCategory(sellStore, campus),
+      category: checkoutCategory(productStore(product) || "mart", campus),
     };
   });
 
