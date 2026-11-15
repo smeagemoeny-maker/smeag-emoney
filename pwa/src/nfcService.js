@@ -376,7 +376,9 @@
     const ua = navigator.userAgent || "";
     if (/Windows/i.test(ua)) {
       return {
-        cmd: `powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';$b='${base}';irm $b/install.ps1|iex"`,
+        // No "$" in the line: pasted into a PowerShell window instead of Win+R, the outer PowerShell would expand
+        // $b inside the double quotes to nothing. sv/irm with literal strings work from Win+R, cmd and PowerShell.
+        cmd: `powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';sv b '${base}';irm '${base}/install.ps1'|iex"`,
         steps: ["아래 [명령 복사]를 누릅니다", "키보드에서 Windows 키 + R", "Ctrl + V 붙여넣기 후 Enter"],
       };
     }

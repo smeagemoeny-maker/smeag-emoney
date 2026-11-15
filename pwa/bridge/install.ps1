@@ -1,6 +1,6 @@
 # PUSAN MART card reader bridge: one-step installer for Windows.
 # The Mart/Office/Cafe page shows this one line when the reader program is not running (Win+R, paste, Enter):
-#   powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';$b='https://smeag-estore.vercel.app/bridge';irm $b/install.ps1|iex"
+#   powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';sv b 'https://smeag-estore.vercel.app/bridge';irm 'https://smeag-estore.vercel.app/bridge/install.ps1'|iex"
 # It copies the bridge to %LOCALAPPDATA%\PusanMartBridge, starts it hidden (no window to close by mistake),
 # keeps it running (restarts within seconds if it stops), and starts it again at every Windows sign-in.
 # Undo: same line with uninstall.ps1 instead of install.ps1.
