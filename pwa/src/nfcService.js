@@ -379,7 +379,12 @@
         // No "$" in the line: pasted into a PowerShell window instead of Win+R, the outer PowerShell would expand
         // $b inside the double quotes to nothing. sv/irm with literal strings work from Win+R, cmd and PowerShell.
         cmd: `powershell -NoProfile -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';sv b '${base}';irm '${base}/install.ps1'|iex"`,
-        steps: ["아래 [명령 복사]를 누릅니다", "키보드에서 Windows 키 + R", "Ctrl + V 붙여넣기 후 Enter"],
+        // The page cannot open PowerShell itself (browsers forbid it): the closest is a downloaded install.cmd
+        // that opens its own window and waits for Enter. The copy line stays as the fallback.
+        download: base + "/install.cmd",
+        steps: ["[설치 파일 받기]를 누릅니다", "브라우저의 다운로드 목록에서 install.cmd를 엽니다", "검은 창이 뜨면 Enter만 누르세요"],
+        note: "Windows가 경고하면 [추가 정보] → [실행]을 누르세요. 브라우저가 파일을 막으면 [유지]를 누르세요.",
+        fallbackSteps: ["[명령 복사]를 누릅니다", "Windows 키 + R", "Ctrl + V 붙여넣기 후 Enter"],
       };
     }
     // iPadOS also says "Macintosh"; it has touch points, a real Mac does not.
@@ -424,6 +429,22 @@
     const ol = el("ol", "margin:0 0 10px;padding-left:20px");
     info.steps.forEach((s) => ol.appendChild(el("li", "", s)));
     box.appendChild(ol);
+    if (info.download) {
+      const dl = el(
+        "a",
+        "display:block;text-align:center;text-decoration:none;font-weight:700;font-size:15px;padding:11px 12px;border-radius:8px;" +
+          "background:#0f7a5c;color:#fff;margin-bottom:8px;",
+        "⬇ 설치 파일 받기",
+      );
+      dl.href = info.download;
+      dl.setAttribute("download", "install.cmd");
+      box.appendChild(dl);
+      if (info.note) box.appendChild(el("div", "color:#5a6762;font-size:12px;margin-bottom:10px", info.note));
+      box.appendChild(el("div", "font-weight:600;font-size:13px;margin:4px 0", "또는 직접 붙여넣기"));
+      const ol2 = el("ol", "margin:0 0 8px;padding-left:20px;font-size:13px");
+      info.fallbackSteps.forEach((s) => ol2.appendChild(el("li", "", s)));
+      box.appendChild(ol2);
+    }
     const code = el(
       "textarea",
       "width:100%;box-sizing:border-box;height:58px;resize:none;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;" +
@@ -440,7 +461,7 @@
           (primary ? "background:#0f7a5c;color:#fff;border:1px solid #0f7a5c;" : "background:#fff;color:#17201d;border:1px solid #cfd8d4;"),
         label,
       );
-    const copy = btn("명령 복사", true);
+    const copy = btn("명령 복사", !info.download);
     copy.type = "button";
     copy.addEventListener("click", () => {
       const done = () => (copy.textContent = "복사됨 ✓");
