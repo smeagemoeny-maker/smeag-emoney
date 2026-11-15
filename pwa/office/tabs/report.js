@@ -1,7 +1,9 @@
 /* REPORT tab — registers window.OfficeTabs['REPORT'] (see showPage() in office.js).
    Screen-only replica of the weekly report: Campus / start / end / week no. + SEARCH, five summary cards,
    WEEKLY REPORT grid + totals row, and DOWNLOAD PDF / UPDATE / OPEN PDF FOLDER / Back.
-   Data: GET/PUT /api/office/report (port of ReportControl.cs BtnLoad_Click / RecalculateTotals / BtnUpdate_Click). */
+   Data: GET /api/office/report (port of ReportControl.cs BtnLoad_Click / RecalculateTotals).
+   The numbers are read-only (UPDATE removed; PUT /api/office/report is refused by the server).
+   Click a row -> the transactions of that day (GET /api/office/report/detail); EXPORT EXCEL -> .xlsx. */
 (function () {
   'use strict';
 
@@ -74,7 +76,8 @@
         '<div class="g2-abs g2-rep-tot" data-k="totals" style="left:20px;top:763px;width:1666px;height:40px;background:#DDDCE1"></div>' +
         '<div class="g2-abs" style="left:0;top:818px;width:1706px;height:62px;background:#F0F0F0"></div>' +
         '<button class="flat g2-btn" data-k="pdf" style="left:20px;top:828px;width:160px;height:40px;background:#008000">DOWNLOAD PDF</button>' +
-        '<button class="flat g2-btn b" data-k="update" style="left:190px;top:828px;width:120px;height:40px;background:#FF8C00">UPDATE</button>' +
+        '<button class="flat g2-btn b" data-k="excel" style="left:190px;top:828px;width:120px;height:40px;background:#1D6F42">EXPORT EXCEL</button>' +
+        '<span class="g2-lbl" style="left:510px;top:840px;font-size:12px;color:#555">Click a row to see its transactions.</span>' +
         '<button class="flat g2-btn" data-k="folder" style="left:320px;top:828px;width:170px;height:40px;background:#4682B4">OPEN PDF FOLDER</button>' +
         '<button class="flat g2-btn" data-k="back" style="left:1567px;top:828px;width:120px;height:40px;background:#808080">Back</button>';
       root.innerHTML = html;
@@ -105,14 +108,19 @@
       }
       function makeGrids(cats) {
         if (cats) { OFFICE = cats.office; STORE = cats.store; }
-        weekly = OfficeKit.grid(q('grid'), { columns: columnsFor(true), select: 'row', rowHeight: 35, font: '12px' });
+        weekly = OfficeKit.grid(q('grid'), { columns: columnsFor(false), select: 'row', rowHeight: 35, font: '12px' });
+        weekly.el.classList.add('g2-rep-click');
+        weekly.el.addEventListener('click', function (e) {
+          var tr = e.target.closest('tbody tr[data-ri]');
+          if (!tr) return;
+          var row = weekly.rows()[+tr.getAttribute('data-ri')];
+          var td = e.target.closest('td[data-ci]');
+          var col = td ? columnsFor(false)[+td.getAttribute('data-ci')] : null;
+          var cat = col && col.format === 'money' && num(row[col.key]) !== 0 ? col.key : '';
+          if (row) showDetail(row.DATE, cat);
+        });
         totals = OfficeKit.grid(q('totals'), { columns: columnsFor(false), select: 'row', rowHeight: 38, font: '12px' });
         weekly.el.addEventListener('scroll', function () { totals.el.scrollLeft = weekly.el.scrollLeft; });
-        // grid.js has no "cell edited" callback: watch the body for re-rendered rows (an edit commit re-renders its row).
-        new MutationObserver(function () {
-          markAdjusted();
-          if (!weekly.el.querySelector('td.editing')) recalc();
-        }).observe(weekly.el, { childList: true, subtree: true });
       }
       makeGrids();
 
@@ -130,7 +138,7 @@
         });
       }
       function markAdjusted() {
-        var cols = columnsFor(true);
+        var cols = columnsFor(false);
         weekly.el.querySelectorAll('tbody tr[data-ri]').forEach(function (tr) {
           var row = weekly.rows()[+tr.getAttribute('data-ri')];
           var adj = row && adjusted[row.DATE];
@@ -199,40 +207,6 @@
         }).catch(OfficeKit.fail(ctx, 'Error loading report'));
       }
 
-      function update() {
-        if (!loaded || !weekly.count()) {
-          return ctx.messageBox('먼저 SEARCH로 데이터를 조회한 후 UPDATE 해주세요.\n(Please SEARCH first, then UPDATE.)', '알림', 'OK', 'info');
-        }
-        var rows = currentRows();
-        return ctx.messageBox('현재 화면에 표시된 값으로 영구 저장하시겠습니까?\n저장 후에는 다시 조회해도 수정한 값이 유지됩니다.\n\n' +
-          '(Save the values shown on screen permanently?)', 'UPDATE 확인', 'YesNo', 'question').then(function (ans) {
-          if (ans !== 'Yes') return null;
-          var body = {
-            campus: loaded.campus,
-            days: rows.map(function (r) {
-              var v = {};
-              OFFICE.concat(STORE).forEach(function (c) { v[c] = num(r[c]); });
-              return { date: r.DATE, values: v };
-            })
-          };
-          return OfficeKit.busy(q('update'), ctx.api.request('PUT', '/api/office/report', body)).then(function (res) {
-            // every value on screen is now a saved correction
-            var clean = rows.map(function (r) {
-              var o = { NO: r.NO, DATE: r.DATE };
-              adjusted[r.DATE] = {};
-              OFFICE.concat(STORE).forEach(function (c) { o[c] = num(r[c]); adjusted[r.DATE][c] = true; });
-              return o;
-            });
-            weekly.setRows(clean);
-            markAdjusted();
-            recalc();
-            return ctx.messageBox('저장되었습니다. (' + (res && res.saved != null ? res.saved : body.days.length * OFFICE.concat(STORE).length) + '건 반영)\nSaved.', 'UPDATE 완료', 'OK', 'info');
-          }, function (err) {
-            return ctx.messageBox('UPDATE 중 오류가 발생했습니다: ' + (err && err.message ? err.message : err), '오류', 'OK', 'error');
-          });
-        });
-      }
-
       function pad(n) { return (n < 10 ? '0' : '') + n; }
       function stamp(d) {
         return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
@@ -283,8 +257,105 @@
           'the file goes to your Downloads folder (or the folder you pick).', 'SMEAG', 'OK', 'info');
       }
 
+      /* ---------- transactions behind a row (one day) ---------- */
+      var DETAIL_COLS = [
+        { key: 'column', header: 'Report column', width: 110 },
+        { key: 'date', header: 'Date / time', width: 150, align: 'center' },
+        { key: 'studentId', header: 'Student ID', width: 90 },
+        { key: 'name', header: 'Name', width: 170 },
+        { key: 'uid', header: 'UID', width: 110 },
+        { key: 'campus', header: 'Campus', width: 80 },
+        { key: 'category', header: 'Category', width: 150 },
+        { key: 'subcategory', header: 'Subcategory', width: 180 },
+        { key: 'type', header: 'Type', width: 75, align: 'center' },
+        { key: 'payment', header: 'Payment', width: 95, align: 'right', format: 'money' },
+        { key: 'amount', header: 'Report amount', width: 105, align: 'right', format: 'money' },
+        { key: 'balance', header: 'Balance after', width: 105, align: 'right', format: 'money' },
+        { key: 'source', header: 'Source', width: 90 },
+        { key: 'remark', header: 'Remark', width: 120 },
+        { key: 'staff', header: 'Staff', width: 90 },
+        { key: 'table', header: 'Table', width: 90 },
+        { key: 'id', header: 'ID', width: 70, align: 'right', format: 'int' }
+      ];
+      function fetchDetail(from, to, cat) {
+        return ctx.api.request('GET', '/api/office/report/detail?campus=' + encodeURIComponent(loaded.campus) +
+          '&from=' + from + '&to=' + to + (cat ? '&category=' + encodeURIComponent(cat) : ''));
+      }
+      function sumBy(rows) {
+        var m = {};
+        rows.forEach(function (r) { m[r.column] = (m[r.column] || 0) + num(r.amount); });
+        return m;
+      }
+
+      function showDetail(date, initialCat) {
+        if (!loaded) return;
+        var esc = OfficeKit.esc;
+        return fetchDetail(date, date, '').then(function (res) {
+          var all = res.rows || [];
+          var sums = sumBy(all);
+          var shown = weekly.rows().filter(function (r) { return r.DATE === date; })[0] || {};
+          var cats = OFFICE.concat(STORE).filter(function (c) { return sums[c] !== undefined || num(shown[c]) !== 0; });
+          var html = '<div class="dlg-title">TRANSACTIONS — ' + esc(loaded.campus) + ' — ' + esc(date) +
+            '<button class="dlg-x" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.1"/></svg></button></div>' +
+            '<div class="rdt-bar"><label>Column: <select data-r="cat"><option value="">All (' + all.length + ')</option>' +
+            cats.map(function (c) {
+              var n = all.filter(function (r) { return r.column === c; }).length;
+              return '<option value="' + esc(c) + '"' + (c === initialCat ? ' selected' : '') + '>' + esc(c) + ' (' + n + ')</option>';
+            }).join('') + '</select></label><span class="rdt-sum" data-r="sum"></span></div>' +
+            '<div class="rdt-grid" data-r="grid"></div>' +
+            '<div class="mb-foot"><span class="rdt-note" data-r="note"></span>' +
+            '<button class="w10btn" data-r="xls">Export Excel</button><button class="w10btn def" data-r="close" data-autofocus>Close</button></div>';
+          return ctx.openDialog(html, function (dlg, close) {
+            function r(k) { return dlg.querySelector('[data-r="' + k + '"]'); }
+            var grid = OfficeKit.grid(r('grid'), { columns: DETAIL_COLS, select: 'row', rowHeight: 26, font: '12px' });
+            function current() { var c = r('cat').value; return c ? all.filter(function (x) { return x.column === c; }) : all; }
+            function render() {
+              var c = r('cat').value, rows = current();
+              grid.setRows(rows);
+              var total = rows.reduce(function (s, x) { return s + num(x.amount); }, 0);
+              r('sum').textContent = rows.length + ' rows' + (c ? ' · ' + c + ' total ' + OfficeKit.money(total) +
+                ' · report shows ' + OfficeKit.money(num(shown[c])) : '');
+              var notes = [];
+              if (c && adjusted[date] && adjusted[date][c]) notes.push('This cell has a saved manual value, so it can differ from the transactions.');
+              if (res.truncated) notes.push('List truncated.');
+              r('note').textContent = notes.join(' ');
+            }
+            r('cat').addEventListener('change', render);
+            render();
+            r('close').addEventListener('click', function () { close(); });
+            r('xls').addEventListener('click', function () {
+              var c = r('cat').value;
+              OfficeKit.busy(r('xls'), OfficeKit.downloadXlsx('Report_Transactions_' + loaded.campus + '_' + date + (c ? '_' + c : '') + '.xlsx', [{
+                name: 'Transactions ' + date,
+                title: ['TRANSACTIONS', 'Campus: ' + loaded.campus, 'Date: ' + date + (c ? '   Column: ' + c : '')],
+                columns: DETAIL_COLS, rows: current()
+              }])).catch(OfficeKit.fail(ctx, 'Excel export'));
+            });
+            return {};
+          });
+        }).catch(OfficeKit.fail(ctx, 'Error loading transactions'));
+      }
+
+      /* EXPORT EXCEL: sheet 1 = weekly report (+ TOTAL), sheet 2 = every transaction of the period */
+      function exportExcel() {
+        if (!loaded || !weekly.count()) return ctx.messageBox('No data to export. SEARCH first.', 'SMEAG', 'OK', 'info');
+        var cols = columnsFor(false);
+        var rows = currentRows().concat(totals.rows());
+        var title = ['WEEKLY REPORT', 'Campus: ' + loaded.campus, 'Period: ' + loaded.from + ' ~ ' + loaded.to,
+          'Recharge ' + cardVals[0].value + ' · Cash Out ' + cardVals[1].value + ' · Receipt ' + cardVals[2].value +
+          ' · Store shop ' + cardVals[3].value + ' · Total ' + cardVals[4].value];
+        var job = fetchDetail(loaded.from, loaded.to, '').then(function (res) {
+          return OfficeKit.downloadXlsx('Weekly_Report_' + loaded.campus + '_' + loaded.from + '_' + loaded.to + '.xlsx', [
+            { name: 'Weekly Report', title: title, columns: cols, rows: rows },
+            { name: 'Transactions', title: ['TRANSACTIONS', 'Campus: ' + loaded.campus, 'Period: ' + loaded.from + ' ~ ' + loaded.to],
+              columns: DETAIL_COLS, rows: res.rows || [] }
+          ]);
+        });
+        return OfficeKit.busy(q('excel'), job).catch(OfficeKit.fail(ctx, 'Excel export'));
+      }
+
       q('search').addEventListener('click', load);
-      q('update').addEventListener('click', update);
+      q('excel').addEventListener('click', exportExcel);
       q('pdf').addEventListener('click', downloadPdf);
       q('folder').addEventListener('click', pdfFolder);
       // Back: the original WinForms button has no Click handler (does nothing) — kept inert.

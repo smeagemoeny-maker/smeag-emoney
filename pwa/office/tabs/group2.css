@@ -103,3 +103,12 @@
 .g2-rep-tot.og-grid tbody td,
 .g2-rep-tot.og-grid tbody tr.cur td { background: #DCDCE1 !important; color: #000; border-bottom: 0; }
 .g2-rep-tot.og-grid tbody tr.cur td.rh::before { content: none; }
+
+/* REPORT: click a row -> transactions dialog */
+.g2-rep-grid.og-grid.g2-rep-click tbody tr { cursor: pointer; }
+.g2-rep-grid.og-grid.g2-rep-click tbody tr:hover td { background-color: #E5F1FB; }
+.rdt-bar { display: flex; align-items: center; gap: 18px; height: 36px; padding: 0 12px; background: #F7F7F7; border-top: 1px solid #E0E0E0; font-size: 12px; }
+.rdt-bar select { height: 24px; font: 12px var(--font); min-width: 200px; }
+.rdt-sum { color: #000080; font-weight: 600; }
+.og-grid.rdt-grid { position: relative; width: 1500px; max-width: 1640px; height: 620px; border-top: 1px solid #C8C8C8; }
+.rdt-note { margin-right: auto; color: #B05A00; font-size: 12px; }

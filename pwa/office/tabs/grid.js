@@ -23,6 +23,7 @@
    OfficeKit.printDoc(title, bodyHtml, { landscape }) -> browser print dialog ("Save as PDF" = DOWNLOAD PDF).
    OfficeKit.tableHtml(columns, rows) -> plain <table> HTML for printDoc (same column spec as grid).
    OfficeKit.downloadCsv(fileName, columns, rows)
+   OfficeKit.downloadXlsx(fileName, [{ name, columns, rows, title }]) -> Promise (real .xlsx, SheetJS lazy-loaded)
    OfficeKit.readImage(file, maxSide) -> Promise<dataUrl> (JPEG, resized so the longer side <= maxSide). */
 (function () {
   'use strict';
@@ -439,8 +440,60 @@
     });
   }
 
+  /* ---------- Excel (.xlsx) export via SheetJS (lazy-loaded from cdnjs) ---------- */
+  var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  var sheetJsPromise = null;
+  function loadSheetJs() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (sheetJsPromise) return sheetJsPromise;
+    sheetJsPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = SHEETJS;
+      s.onload = function () { if (window.XLSX) resolve(window.XLSX); else { sheetJsPromise = null; reject(new Error('Cannot load the Excel library.')); } };
+      s.onerror = function () { sheetJsPromise = null; s.remove(); reject(new Error('Cannot load the Excel library (check the internet connection).')); };
+      document.head.appendChild(s);
+    });
+    return sheetJsPromise;
+  }
+  // sheets: [{ name, columns (grid column spec; format 'money' -> number cell #,##0.00), rows, title?: [lines above the table] }]
+  function downloadXlsx(fileName, sheets) {
+    return loadSheetJs().then(function (XLSX) {
+      var wb = XLSX.utils.book_new();
+      sheets.forEach(function (sh) {
+        var aoa = (sh.title || []).map(function (t) { return [t]; });
+        if (aoa.length) aoa.push([]);
+        var headRow = aoa.length;
+        aoa.push(sh.columns.map(function (c) { return c.header || c.key; }));
+        sh.rows.forEach(function (r) {
+          aoa.push(sh.columns.map(function (c) {
+            var v = r[c.key];
+            if (c.format === 'money' || c.format === 'dec2' || c.format === 'int') {
+              if (v === null || v === undefined || v === '') return null;
+              var n = Number(String(v).replace(/,/g, ''));
+              return isNaN(n) ? v : n;
+            }
+            return v === null || v === undefined ? '' : String(v);
+          }));
+        });
+        var ws = XLSX.utils.aoa_to_sheet(aoa);
+        sh.columns.forEach(function (c, ci) {
+          if (c.format !== 'money' && c.format !== 'dec2') return;
+          for (var ri = headRow + 1; ri < aoa.length; ri++) {
+            var cell = ws[XLSX.utils.encode_cell({ r: ri, c: ci })];
+            if (cell && cell.t === 'n') cell.z = '#,##0.00';
+          }
+        });
+        ws['!cols'] = sh.columns.map(function (c) { return { wch: Math.max(8, Math.round((c.width || 100) / 7)) }; });
+        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headRow, c: 0 }, e: { r: Math.max(headRow, aoa.length - 1), c: sh.columns.length - 1 } }) };
+        XLSX.utils.book_append_sheet(wb, ws, String(sh.name || 'Sheet').replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31));
+      });
+      XLSX.writeFile(wb, fileName);
+    });
+  }
+
   window.OfficeKit = {
     grid: grid, money: money, iso: iso, esc: esc, busy: busy, fail: fail,
-    printDoc: printDoc, tableHtml: tableHtml, downloadCsv: downloadCsv, readImage: readImage
+    printDoc: printDoc, tableHtml: tableHtml, downloadCsv: downloadCsv, readImage: readImage,
+    loadSheetJs: loadSheetJs, downloadXlsx: downloadXlsx
   };
 })();

@@ -60,6 +60,7 @@ const ACTIONS = [
   ["GET", /^\/api\/office\/transdata$/, "Office: view TransData"],
   ["POST", /^\/api\/office\/transdata$/, "Office: move TransData"],
   ["GET", /^\/api\/office\/report$/, "Office: view report"],
+  ["GET", /^\/api\/office\/report\/detail$/, "Office: view report detail"],
   ["PUT", /^\/api\/office\/report$/, "Office: save report"],
   ["GET", /^\/api\/office\/activity-log$/, "Office: view activity log"],
   ["GET", /^\/api\/admin\/activity-log$/, "Admin: view activity log"],

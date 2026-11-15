@@ -246,7 +246,9 @@ const routes = [
   officeRoute("GET", /^\/api\/office\/transdata$/, ({ url }) => office.transDataList(query(url, "from", "to"))),
   officeRoute("POST", /^\/api\/office\/transdata$/, ({ body }) => office.transDataMove(body.ids)),
   officeRoute("GET", /^\/api\/office\/report$/, ({ url }) => office.report(query(url, "campus", "from", "to"))),
-  officeRoute("PUT", /^\/api\/office\/report$/, ({ body, session }) => office.saveReport(body, session.loginId)),
+  officeRoute("GET", /^\/api\/office\/report\/detail$/, ({ url }) => office.reportDetail(query(url, "campus", "from", "to", "category"))),
+  // REPORT numbers are read-only: editing/saving corrections is disabled.
+  officeRoute("PUT", /^\/api\/office\/report$/, () => { throw httpError(403, "The report cannot be edited."); }),
   officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
     activityLogScope(session);
     return listActivity(activityFilter(url));

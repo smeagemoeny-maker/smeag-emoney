@@ -843,7 +843,7 @@
   function start() {
     var api = createApi();
     tabCtx = {
-      api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml,
+      api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml, openDialog: openDialog,
       showCardInfo: function (uid) { return showCardInfo(api, uid); }
     };
     drawLogo();

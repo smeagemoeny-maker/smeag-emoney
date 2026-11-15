@@ -650,7 +650,7 @@ const REPORT_CATEGORIES = [...OFFICE_CATEGORIES, ...STORE_CATEGORIES];
 //   - "Capital Cafe", "ENCANTO MART", "Tarlac Store", ... -> the campus the category names, Cafe or Mart;
 //   - terminal rows whose category names no store ("WATER", "ENCANTO MINI CAKES") -> the store of the
 //     other lines of the same sale (same card + time), else Mart; campus = bank.campus;
-//   - "Pusan Mart" = bank rows with category exactly "Pusan Mart" + PusanmartPayments (see pusanmartByDay).
+//   - "Pusan Mart" = bank rows with category exactly "Pusan Mart" + PusanmartPayments (see pusanmartRows).
 // Services sold by the office, filed under the campus the category names ("Talac massage" = Tarlac):
 //   - Massage     = "Talac massage" / "Tarlac massage";
 //   - Car Service = "Capital Car Service", "Encanto Car Service", "Tarlac Car Service".
@@ -719,14 +719,23 @@ function sameCampus(a, b) {
   return norm(a) === norm(b);
 }
 
-export async function report({ campus, from, to }) {
+function reportRange(campus, from, to) {
   if (!campus) throw httpError(400, "Campus is required.");
   const a = isoDay(from, "from");
   const b = isoDay(to, "to");
   const dayCount = Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
   if (dayCount < 1) throw httpError(400, "End date is before start date.");
   if (dayCount > 100) throw httpError(400, "The report covers at most 100 days.");
+  return { a, b, dayCount };
+}
 
+// CashOut/Refund/store and service sales are decreases; the other office categories are increases.
+function decreaseColumn(cat) {
+  return cat === "CashOut" || cat === "Refund" || STORE_CATEGORIES.includes(cat) || SERVICE_CATEGORIES.includes(cat);
+}
+
+// Every source row counted by the report for campus/a..b: { col, day, amount (signed: + adds to the column), ... }.
+async function reportEntries(campus, a, b, detail = false) {
   // Rows of this campus's students, plus store/service sales of this campus bought by other campuses.
   const names = campusNames(campus);
   const prefixes = CAMPUS_PREFIXES.filter(([, name]) => names.some((n) => sameCampus(n, name))).map(([prefix]) => prefix);
@@ -735,33 +744,43 @@ export async function report({ campus, from, to }) {
     ...(prefixes.length ? prefixes : names).map((p) => `category.ilike.${q(`${escapeLike(p)}*`)}`),
   ];
   const filters = [...tsRange("transaction_date", a, b), `or=${enc(`(${campusOr.join(",")})`)}`];
-  const select = "id,uid,campus,category,subcategory,transaction_type,payment,transaction_source,transaction_date";
+  const select = detail ? BANK_COLS : "id,uid,campus,category,subcategory,transaction_type,payment,transaction_source,transaction_date";
   const pusanOnly = isPusanCampus(campus);
   const [bank, before, pusan] = await Promise.all([
     pusanOnly ? NO_RESULT : paged("bank", select, filters, "id.asc", 100000),
     pusanOnly ? NO_RESULT : paged("beforebank", select, filters, "id.asc", 100000),
-    pusanmartByDay(campus, a, b),
+    pusanmartRows(campus, a, b, detail),
   ]);
 
-  // day -> column -> { inc, dec }
-  const sums = new Map();
-  const classified = [...classifyReportRows(bank.rows), ...classifyReportRows(before.rows)];
-  for (const { row: r, col, campus: rowCampus } of classified) {
+  const entries = [];
+  const tagged = [
+    ...classifyReportRows(bank.rows).map((x) => ({ ...x, table: "bank" })),
+    ...classifyReportRows(before.rows).map((x) => ({ ...x, table: "beforebank" })),
+  ];
+  for (const { row: r, col, campus: rowCampus, table } of tagged) {
     if (!names.some((n) => sameCampus(n, rowCampus))) continue;
-    const day = phDay(r.transaction_date);
-    const byCol = sums.get(day) || new Map();
-    const s = byCol.get(col) || { inc: 0, dec: 0 };
     const t = String(r.transaction_type || "").toLowerCase();
-    if (t === "increase") s.inc += Number(r.payment || 0);
-    else if (t === "decrease") s.dec += Number(r.payment || 0);
-    byCol.set(col, s);
-    sums.set(day, byCol);
+    const pay = Number(r.payment || 0);
+    let amount = 0;
+    if (t === "increase") amount = decreaseColumn(col) ? -pay : pay;
+    else if (t === "decrease") amount = decreaseColumn(col) ? pay : -pay;
+    entries.push({ col, day: phDay(r.transaction_date), amount, table, row: r });
   }
-  for (const [day, amount] of pusan.byDay) {
+  for (const r of pusan.rows) {
+    entries.push({ col: "Pusan Mart", day: phDay(r.register_days), amount: Number(r.allpayments || 0), table: "PusanmartPayments", row: r });
+  }
+  return { entries, truncated: bank.truncated || before.truncated || pusan.truncated };
+}
+
+export async function report({ campus, from, to }) {
+  const { a, b, dayCount } = reportRange(campus, from, to);
+  const { entries, truncated } = await reportEntries(campus, a, b);
+
+  // day -> column -> net (sign as the column counts it)
+  const sums = new Map();
+  for (const { col, day, amount } of entries) {
     const byCol = sums.get(day) || new Map();
-    const s = byCol.get("Pusan Mart") || { inc: 0, dec: 0 };
-    s.dec += amount;
-    byCol.set("Pusan Mart", s);
+    byCol.set(col, (byCol.get(col) || 0) + amount);
     sums.set(day, byCol);
   }
 
@@ -776,10 +795,7 @@ export async function report({ campus, from, to }) {
     const values = {};
     const adjusted = [];
     for (const cat of REPORT_CATEGORIES) {
-      const s = sums.get(date)?.get(cat) || { inc: 0, dec: 0 };
-      // CashOut/Refund/store and service sales are decreases; the other office categories are increases.
-      const decreases = cat === "CashOut" || cat === "Refund" || STORE_CATEGORIES.includes(cat) || SERVICE_CATEGORIES.includes(cat);
-      const net = decreases ? s.dec - s.inc : s.inc - s.dec;
+      const net = sums.get(date)?.get(cat) || 0;
       // Service columns keep their sign: a day with more refunds than sales is negative, so the total is net sales.
       values[cat] = SERVICE_CATEGORIES.includes(cat) ? round(net) : round(Math.abs(net));
       const key = `${date}|${cat}`;
@@ -792,29 +808,45 @@ export async function report({ campus, from, to }) {
     officeCategories: OFFICE_CATEGORIES,
     storeCategories: STORE_CATEGORIES,
     days,
-    truncated: bank.truncated || before.truncated || pusan.truncated,
+    truncated,
   };
+}
+
+// Transactions behind the REPORT cells: one day (from = to) or the whole range, optionally one column.
+export async function reportDetail({ campus, from, to, category }) {
+  const { a, b } = reportRange(campus, from, to || from);
+  if (category && !REPORT_CATEGORIES.includes(category)) throw httpError(400, `Unknown report column: ${category}`);
+  const { entries, truncated } = await reportEntries(campus, a, b, true);
+  const rows = entries
+    .filter((e) => !category || e.col === category)
+    .map(({ col, amount, table, row: r }) => table === "PusanmartPayments"
+      ? {
+          id: r.id, table, column: col, date: phDateTime(r.register_days), uid: r.nfcid, studentId: null, name: r.name,
+          campus: null, category: "Pusan Mart", subcategory: "Pusan Mart purchase", type: "decrease",
+          payment: round(r.allpayments), amount: round(amount), balance: null, source: "PusanmartPayments", remark: null, staff: null,
+        }
+      : {
+          id: r.id, table, column: col, date: phDateTime(r.transaction_date), uid: r.uid, studentId: r.studentid, name: r.name,
+          campus: r.campus, category: r.category, subcategory: r.subcategory, type: r.transaction_type,
+          payment: round(r.payment), amount: round(amount), balance: r.totalmoney == null ? null : round(r.totalmoney),
+          source: r.transaction_source, remark: r.remark, staff: r.order == null ? null : String(r.order),
+        })
+    .sort((x, y) => REPORT_CATEGORIES.indexOf(x.column) - REPORT_CATEGORIES.indexOf(y.column) ||
+      String(x.date).localeCompare(String(y.date)) || Number(x.id) - Number(y.id));
+  return { campus, from: a, to: b, category: category || null, columns: REPORT_CATEGORIES, rows, truncated };
 }
 
 // PUSAN MART purchases (PusanmartPayments) per PH day. The table has no campus, so a campus
 // report counts the purchases of that campus's students (person.campus, like bank.campus);
 // campus "PUSAN MART" counts every purchase.
-async function pusanmartByDay(campus, from, to) {
+async function pusanmartRows(campus, from, to, detail = false) {
   const filters = ["center=eq.PusanMart", ...tsRange("register_days", from, to)];
-  const { rows, truncated } = await paged("PusanmartPayments", "id,nfcid,allpayments,register_days", filters, "id.asc", 100000);
-  let keep = () => true;
-  if (!isPusanCampus(campus)) {
-    const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
-    const campusOf = await campusesFor(rows.map((r) => r.nfcid));
-    keep = (r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase());
-  }
-  const byDay = new Map();
-  for (const r of rows) {
-    if (!keep(r)) continue;
-    const day = phDay(r.register_days);
-    byDay.set(day, (byDay.get(day) || 0) + Number(r.allpayments || 0));
-  }
-  return { byDay, truncated };
+  const select = detail ? "id,nfcid,name,allpayments,register_days" : "id,nfcid,allpayments,register_days";
+  const { rows, truncated } = await paged("PusanmartPayments", select, filters, "id.asc", 100000);
+  if (isPusanCampus(campus)) return { rows, truncated };
+  const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
+  const campusOf = await campusesFor(rows.map((r) => r.nfcid));
+  return { rows: rows.filter((r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase())), truncated };
 }
 
 async function campusesFor(uids) {
