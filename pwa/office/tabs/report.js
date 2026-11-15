@@ -91,7 +91,7 @@
         if (v !== this.value) this.value = v;
       });
 
-      var OFFICE = ['Recharge', 'AGRecharge', 'EBILL', 'Records', 'Refund', 'CashOut', 'Souvenir', 'Visa', 'Academic', 'Admin', 'Activities', 'Diving Shop'];
+      var OFFICE = ['Recharge', 'AGRecharge', 'EBILL', 'Records', 'Refund', 'CashOut', 'Souvenir', 'Visa', 'Academic', 'Admin', 'Activities', 'Diving Shop', 'Massage', 'Car Service'];
       var STORE = ['Mart', 'Cafe', 'Pusan Mart'];
       var loaded = null;        // { campus, from, to, ref } of the last SEARCH
       var weekly = null, totals = null, adjusted = {};   // adjusted[date] = { category: true }
@@ -142,7 +142,9 @@
         });
       }
 
-      /* RecalculateTotals(): column sums of |value|; Receipt = every office column except CashOut and Refund */
+      /* RecalculateTotals(): column sums of |value|; Receipt = every office column except CashOut and Refund.
+         Massage / Car Service are summed with their sign (a refund day is negative). */
+      var SIGNED = { 'Massage': true, 'Car Service': true };
       function recalc() {
         if (!loaded) return;
         var rows = currentRows();
@@ -150,7 +152,7 @@
         var rech = 0, cash = 0, receipt = 0, store = 0;
         OFFICE.forEach(function (cat) {
           var s = 0;
-          rows.forEach(function (r) { s += Math.abs(num(r[cat])); });
+          rows.forEach(function (r) { s += SIGNED[cat] ? num(r[cat]) : Math.abs(num(r[cat])); });
           t[cat] = s;
           if (cat === 'Recharge') rech += s;
           if (cat === 'CashOut') cash += s;

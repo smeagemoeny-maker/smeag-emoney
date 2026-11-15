@@ -641,17 +641,82 @@ export async function transDataMove(ids) {
 
 // ---------- REPORT (daily totals by category; bank + beforebank + PusanmartPayments; saved corrections) ----------
 
-export const OFFICE_CATEGORIES = ["Recharge", "AGRecharge", "EBILL", "Records", "Refund", "CashOut", "Souvenir", "Visa", "Academic", "Admin", "Activities", "Diving Shop"];
+export const OFFICE_CATEGORIES = ["Recharge", "AGRecharge", "EBILL", "Records", "Refund", "CashOut", "Souvenir", "Visa", "Academic", "Admin", "Activities", "Diving Shop", "Massage", "Car Service"];
 export const STORE_CATEGORIES = ["Mart", "Cafe", "Pusan Mart"];
 const REPORT_CATEGORIES = [...OFFICE_CATEGORIES, ...STORE_CATEGORIES];
 
-// Same as the old Windows program: a column counts only rows whose category is exactly that name.
-// Store terminal sales ("ENCANTO MART", "Capital Cafe", "Tarlac Store", ...) are NOT in Mart/Cafe,
-// so those columns (and the Store shop card) show 0 unless a row is literally "Mart"/"Cafe".
-// "Pusan Mart" = bank rows with category exactly "Pusan Mart" + PusanmartPayments (see pusanmartByDay).
-function reportColumn(category) {
+// Office columns count rows whose category is exactly that name, filed under the buyer's campus (bank.campus).
+// Store sales are filed under the campus and store where they were SOLD:
+//   - "Capital Cafe", "ENCANTO MART", "Tarlac Store", ... -> the campus the category names, Cafe or Mart;
+//   - terminal rows whose category names no store ("WATER", "ENCANTO MINI CAKES") -> the store of the
+//     other lines of the same sale (same card + time), else Mart; campus = bank.campus;
+//   - "Pusan Mart" = bank rows with category exactly "Pusan Mart" + PusanmartPayments (see pusanmartByDay).
+// Services sold by the office, filed under the campus the category names ("Talac massage" = Tarlac):
+//   - Massage     = "Talac massage" / "Tarlac massage";
+//   - Car Service = "Capital Car Service", "Encanto Car Service", "Tarlac Car Service".
+//   Sales are decreases, refunds (increase, same item) are subtracted; the driver's 5% incentive
+//   ("... Car Rent incentive for driver 5%", an increase to the driver's card) is not a sale and is skipped.
+// Other office categories that match no column stay out.
+const SERVICE_CATEGORIES = ["Massage", "Car Service"];
+
+function serviceColumn(category) {
   const c = String(category || "").trim().toLowerCase();
-  return REPORT_CATEGORIES.find((name) => name.toLowerCase() === c) || null;
+  if (/massage/.test(c)) return "Massage";
+  if (/car\s*service/.test(c)) return "Car Service";
+  return null;
+}
+
+function officeColumn(category) {
+  const c = String(category || "").trim().toLowerCase();
+  return OFFICE_CATEGORIES.find((name) => name.toLowerCase() === c) || (c === "pusan mart" ? "Pusan Mart" : null);
+}
+
+function campusOfCategory(category) {
+  const c = String(category || "").trim().toUpperCase();
+  const hit = CAMPUS_PREFIXES.find(([prefix]) => c.startsWith(prefix));
+  return hit ? hit[1] : null;
+}
+
+function storeColumn(category) {
+  const c = String(category || "").toUpperCase();
+  if (/CAFE|CAFÉ|AMERICANO/.test(c)) return "Cafe";
+  if (/MART|STORE/.test(c)) return "Mart";
+  return null;
+}
+
+const TERMINAL_SOURCES = new Set(["pos", "market"]);
+
+// The report column and the campus (as written in bank) of one bank row, or null when the row is not counted.
+function classifyReportRows(rows) {
+  const storeOfSale = new Map();
+  const saleKey = (r) => `${String(r.uid || "").toLowerCase()}|${r.transaction_date}`;
+  for (const r of rows) {
+    if (officeColumn(r.category) || serviceColumn(r.category)) continue;
+    const col = storeColumn(r.category);
+    if (col && !storeOfSale.has(saleKey(r))) storeOfSale.set(saleKey(r), col);
+  }
+  return rows.map((r) => {
+    const service = serviceColumn(r.category);
+    if (service) {
+      if (/incentive/i.test(String(r.subcategory || ""))) return null;
+      return { row: r, col: service, campus: campusOfCategory(r.category) || r.campus };
+    }
+    const office = officeColumn(r.category);
+    if (office) return { row: r, col: office, campus: r.campus };
+    const named = storeColumn(r.category);
+    const terminal = TERMINAL_SOURCES.has(String(r.transaction_source || "").trim().toLowerCase());
+    if (!named && !terminal) return null;
+    const col = named || storeOfSale.get(saleKey(r)) || "Mart";
+    return { row: r, col, campus: (named && campusOfCategory(r.category)) || r.campus };
+  }).filter(Boolean);
+}
+
+// Category prefixes that name the campus of a store or service (legacy typos Talrac / Talac included).
+const CAMPUS_PREFIXES = [["CAPITAL", "Capital"], ["ENCANTO", "Encanto"], ["TARLAC", "Tarlac"], ["TALRAC", "Tarlac"], ["TALAC", "Tarlac"], ["BAYDREAM", "Baydream"]];
+
+function sameCampus(a, b) {
+  const norm = (v) => String(v || "").trim().toUpperCase().replace(/^TALRAC$/, "TARLAC");
+  return norm(a) === norm(b);
 }
 
 export async function report({ campus, from, to }) {
@@ -662,8 +727,15 @@ export async function report({ campus, from, to }) {
   if (dayCount < 1) throw httpError(400, "End date is before start date.");
   if (dayCount > 100) throw httpError(400, "The report covers at most 100 days.");
 
-  const filters = [...tsRange("transaction_date", a, b), ...campusFilter("campus", campus)];
-  const select = "id,category,transaction_type,payment,transaction_date";
+  // Rows of this campus's students, plus store/service sales of this campus bought by other campuses.
+  const names = campusNames(campus);
+  const prefixes = CAMPUS_PREFIXES.filter(([, name]) => names.some((n) => sameCampus(n, name))).map(([prefix]) => prefix);
+  const campusOr = [
+    ...names.map((n) => `campus.ilike.${q(escapeLike(n))}`),
+    ...(prefixes.length ? prefixes : names).map((p) => `category.ilike.${q(`${escapeLike(p)}*`)}`),
+  ];
+  const filters = [...tsRange("transaction_date", a, b), `or=${enc(`(${campusOr.join(",")})`)}`];
+  const select = "id,uid,campus,category,subcategory,transaction_type,payment,transaction_source,transaction_date";
   const pusanOnly = isPusanCampus(campus);
   const [bank, before, pusan] = await Promise.all([
     pusanOnly ? NO_RESULT : paged("bank", select, filters, "id.asc", 100000),
@@ -673,9 +745,9 @@ export async function report({ campus, from, to }) {
 
   // day -> column -> { inc, dec }
   const sums = new Map();
-  for (const r of [...bank.rows, ...before.rows]) {
-    const col = reportColumn(r.category);
-    if (!col) continue;
+  const classified = [...classifyReportRows(bank.rows), ...classifyReportRows(before.rows)];
+  for (const { row: r, col, campus: rowCampus } of classified) {
+    if (!names.some((n) => sameCampus(n, rowCampus))) continue;
     const day = phDay(r.transaction_date);
     const byCol = sums.get(day) || new Map();
     const s = byCol.get(col) || { inc: 0, dec: 0 };
@@ -705,9 +777,11 @@ export async function report({ campus, from, to }) {
     const adjusted = [];
     for (const cat of REPORT_CATEGORIES) {
       const s = sums.get(date)?.get(cat) || { inc: 0, dec: 0 };
-      // CashOut/Refund/store sales are decreases; the other office categories are increases.
-      const net = cat === "CashOut" || cat === "Refund" || STORE_CATEGORIES.includes(cat) ? s.dec - s.inc : s.inc - s.dec;
-      values[cat] = round(Math.abs(net));
+      // CashOut/Refund/store and service sales are decreases; the other office categories are increases.
+      const decreases = cat === "CashOut" || cat === "Refund" || STORE_CATEGORIES.includes(cat) || SERVICE_CATEGORIES.includes(cat);
+      const net = decreases ? s.dec - s.inc : s.inc - s.dec;
+      // Service columns keep their sign: a day with more refunds than sales is negative, so the total is net sales.
+      values[cat] = SERVICE_CATEGORIES.includes(cat) ? round(net) : round(Math.abs(net));
       const key = `${date}|${cat}`;
       if (saved.has(key)) { values[cat] = round(saved.get(key)); adjusted.push(cat); }
     }
