@@ -177,6 +177,30 @@
   function it(h, cls, style, inner) {
     return '<div class="it ' + (cls || '') + '" style="height:' + h + 'pt;' + (style || '') + '">' + (inner || '') + '</div>';
   }
+  // Long names ("CHEN I WEN(supporter)(Encanto campus)") used to be clipped on one line:
+  // wrap onto at most 2 lines (never inside a "(...)" group) and shrink the font until the measured text fits.
+  var measureCtx = null;
+  function nameLines(tokens, fs, widthPt) {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    measureCtx.font = '700 ' + fs + 'pt "Segoe UI",Arial,sans-serif';
+    var maxPx = widthPt * 4 / 3 * 0.96, lines = 1, cur = '';
+    for (var i = 0; i < tokens.length; i++) {
+      var next = cur + tokens[i];
+      if (cur && measureCtx.measureText(next.trim()).width > maxPx) { lines++; cur = tokens[i].replace(/^\s+/, ''); }
+      else cur = next;
+      if (measureCtx.measureText(cur.trim()).width > maxPx) lines++; // a single token wider than the line
+    }
+    return lines;
+  }
+  function nameIt(name, base, minH, padPt, widthPt) {
+    var n = String(name || ''), fs = base;
+    // break points: before each "(...)" group and at spaces outside the groups
+    var tokens = n.match(/\s*\([^()]*\)|\s*[^\s(]+/g) || [n];
+    while (fs > base * 0.6 && nameLines(tokens, fs, widthPt - 2 * padPt) > 2) fs -= 0.25;
+    var html = OfficeKit.esc(n).replace(/\([^()]*\)/g, function (g) { return '<wbr><span style="white-space:nowrap">' + g + '</span>'; });
+    return '<div class="it b" style="height:auto;min-height:' + minH + 'pt;max-height:' + (fs * 2.3).toFixed(2) + 'pt;' +
+      'white-space:normal;overflow-wrap:anywhere;line-height:1.1;padding:0 ' + padPt + 'pt;font-size:' + fs.toFixed(2) + 'pt"><div>' + html + '</div></div>';
+  }
   function gap(h) { return '<div style="flex:none;height:' + h + 'pt"></div>'; }
   function photoBox(src) { return '<div class="photo"><img src="' + OfficeKit.esc(src) + '"></div>'; }
   function logo(w, h, boxH) {
@@ -188,7 +212,7 @@
       it(18, 'blk', 'font-size:8.25pt', 'SMEAG GLOBAL EDUCATION') +
       it(14, 'wht', 'font-size:7.5pt', '( ' + esc(campusName(p.campus)) + ' )') +
       gap(14) + it(75, '', '', photoBox(p.photoSrc)) + gap(8) +
-      it(12, 'b', 'font-size:9.75pt', esc(p.name)) + gap(4) +
+      nameIt(p.name, 9.75, 12, 4, 150.75) + gap(4) +
       it(11, 'b', 'font-size:9pt', esc(p.studentId)) + gap(4) +
       it(36, 'b pre', 'font-size:7.5pt;padding:0 4pt', esc(DISCLAIMER)) +
       '<div class="sp"></div>' + logo(78.75, 18.75, 24.75) + '</div>';
@@ -200,7 +224,7 @@
       it(16.5, 'blk', 'font-size:6.75pt', 'SMEAG GLOBAL EDUCATION') +
       it(12, 'wht', 'font-size:6pt', '( ' + esc(campusName(p.campus)) + ' )') +
       gap(12.5) + it(75, '', '', photoBox(p.photoSrc)) + gap(6) +
-      it(12, 'b', 'font-size:8.25pt', esc(p.name)) + gap(4.5) +
+      nameIt(p.name, 8.25, 12, 3, 120.75) + gap(4.5) +
       it(10.5, 'b', 'font-size:7.5pt', esc(p.studentId)) +
       '<div class="sp"></div>' + logo(71.25, 15, 19.5) + '</div>' +
       '<div class="half">' +
