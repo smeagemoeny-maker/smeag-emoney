@@ -41,7 +41,7 @@
       var headers = { 'Accept': 'application/json' };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (session && session.token) headers['Authorization'] = 'Bearer ' + session.token;
-      return fetch(base + path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body) })
+      return fetch(base + path, { method: method, headers: headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) })
         .catch(function () { throw apiError(0, 'Cannot connect to the server.\n' + base); })
         .then(function (res) {
           return res.text().then(function (t) {
@@ -398,6 +398,8 @@
         updateStudentLabels(); refreshGrid(false);
         return Promise.resolve();
       }
+      // Show the lookup is running (labels blank) so every tap visibly refreshes with the latest balance.
+      lblName.textContent = 'Name: Loading...'; lblCampus.textContent = 'Campus: '; lblBalance.textContent = 'Balance: ';
       return api.personByUid(uid).then(function (res) {
         if (seq !== lookupSeq) return;
         var p = res && res.person;
@@ -412,6 +414,7 @@
         updateStudentLabels(); refreshGrid(false);
       }, function (err) {
         if (seq !== lookupSeq) return;
+        updateStudentLabels();
         return messageBox(err.message, 'SMEAG', 'OK', 'error');
       });
     }

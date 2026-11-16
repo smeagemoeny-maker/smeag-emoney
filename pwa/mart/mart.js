@@ -72,7 +72,7 @@
     var headers = { 'Accept': 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (session.token) headers['Authorization'] = 'Bearer ' + session.token;
-    return fetch(API_BASE + path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    return fetch(API_BASE + path, { method: method, headers: headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) })
       .catch(function (e) {
         var err = new Error('Unable to connect to the server: ' + (e && e.message || 'Unknown error'));
         err.status = 0; throw err;
@@ -512,7 +512,8 @@
   }
 
   function lookupBuyer(uidStr) {
-    vm.buyerLookupError = null; vm.buyerLoading = true; render();
+    // Every tap starts from a blank card so the screen visibly refreshes with the latest data.
+    vm.buyerResult = null; vm.buyerLookupError = null; vm.buyerLoading = true; beep('ok'); render();
     repo.findPersonByUid(uidStr).then(function (p) {
       vm.buyerResult = p;
       if (!p) vm.buyerLookupError = 'This card is not registered.';
