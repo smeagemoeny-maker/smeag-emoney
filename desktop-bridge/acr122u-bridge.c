@@ -289,7 +289,13 @@ int main(int argc, char **argv) {
       st.dwCurrentState = st.dwEventState;
       if (st.dwEventState & SCARD_STATE_PRESENT) {
         char uid[64];
-        if (!last[0] && read_uid(ctx, name, uid, sizeof uid)) {
+        /* The first read often fails while the card is still settling: retry, or the tap is lost until the card is lifted. */
+        int got = 0;
+        for (int tries = 0; !last[0] && !got && tries < 15; tries++) {
+          if (tries) usleep(60000);
+          got = read_uid(ctx, name, uid, sizeof uid);
+        }
+        if (!last[0] && got) {
           snprintf(last, sizeof last, "%s", uid);
           if (dry) {
             logf_("Card %s (dry run: not sent)", uid);

@@ -282,7 +282,13 @@ public static class PusanAcrBridge {
                     st[0].dwCurrentState = st[0].dwEventState;
                     if ((st[0].dwEventState & SCARD_STATE_PRESENT) != 0) {
                         if (last == null) {
-                            string uid = ReadUid(ctx, reader);
+                            // The first read often fails while the card is still settling on the reader. Without a retry
+                            // the tap was lost (no new status change until the card is lifted), so staff had to tap twice.
+                            string uid = null;
+                            for (int tries = 0; uid == null && tries < 15; tries++) {
+                                if (tries > 0) System.Threading.Thread.Sleep(60);
+                                uid = ReadUid(ctx, reader);
+                            }
                             if (uid != null) {
                                 last = uid;
                                 if (dryRun) {
