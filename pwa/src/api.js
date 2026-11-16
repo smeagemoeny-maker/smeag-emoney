@@ -73,7 +73,7 @@
         body: options.body ? JSON.stringify(options.body) : undefined,
       });
     } catch {
-      throw new Error(`API 서버에 연결할 수 없습니다 (${getApiBase()}). 서버 실행과 설정의 API URL을 확인하세요.`);
+      throw new Error(`Cannot reach the API server (${getApiBase()}). Check that the server is running and the API URL in Settings.`);
     }
     const payload = await response.json().catch(() => ({}));
     if (response.status === 401 && authToken) onUnauthorized(payload.error);

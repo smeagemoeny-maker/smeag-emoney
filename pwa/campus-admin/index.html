@@ -15,18 +15,22 @@
   .tabsA button { border: 0; background: none; padding: 10px 12px; font-weight: 600; color: var(--ink2); border-bottom: 2px solid transparent; cursor: pointer; }
   .tabsA button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-  .filters .input { width: auto; min-height: 38px; padding: 7px 10px; }
-  .qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .filters .input { width: auto; min-height: 38px; padding: 7px 10px; max-width: 100%; }
+  .qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; }
   .act { display: grid; gap: 8px; margin-top: 10px; }
   .act textarea { min-height: 52px; }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .tbl th, .tbl td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl th { color: var(--ink2); font-weight: 600; font-size: 12px; }
   .scroll { overflow-x: auto; }
-  .formgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .formgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 10px; }
   .codebox { font-family: var(--mono); font-size: 28px; letter-spacing: .25em; background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 10px 14px; display: inline-block; }
   .count { font-size: 12px; color: var(--ink2); }
   pre.sample { background: var(--soft); border-radius: 10px; padding: 10px; font-size: 12px; overflow-x: auto; margin: 0; }
+  .langsel { min-height: 34px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card, transparent); color: inherit; font: inherit; font-size: 13px; width: auto; }
+  .langrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  #stuSearch { min-width: min(260px, 100%); }
+  @media (max-width: 640px) { .bar { gap: 8px; } .bar h1 { flex: 1 1 100%; } }
 </style>
 </head>
 <body>
@@ -37,13 +41,274 @@
   var IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
   var API = (function () { try { var o = localStorage.getItem('campusApiOrigin'); if (o) return o; } catch (e) {} return IS_LOCAL ? 'http://localhost:8787' : location.origin; })();
   var KEY = 'smeagCampusOffice';
+  var LANG_KEY = 'campusAdminLang';
   var root = document.getElementById('root');
   var session = null;
   try { session = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { session = null; }
   function saveSession(s) { session = s; try { s ? sessionStorage.setItem(KEY, JSON.stringify(s)) : sessionStorage.removeItem(KEY); } catch (e) {} }
 
+  // ---------- text (en is the base and the fallback) ----------
+  var LANGS = [['en', 'English'], ['ko', '한국어'], ['ja', '日本語'], ['zh', '繁體中文'], ['vi', 'Tiếng Việt'], ['ru', 'Русский']];
+  var W = {
+    en: {
+      tagline: 'Student requests, notices, scores and SMEAG Bot', language: 'Language', staffId: 'Staff ID', login: 'Log in',
+      loginNote: 'Office accounts only (Admin, campus Managers). Managers see their own campus.',
+      expired: 'Your login expired. Please log in again.', noServer: 'Cannot reach the server.', unknownStaff: 'Unknown staff ID.',
+      noOffice: 'This account cannot use the office program.', studentApp: 'Student app', logout: 'Log out',
+      tabRequests: 'Requests', tabStudents: 'Students', tabNotices: 'Notices', tabCatalog: 'Prices & options', tabScores: 'Scores', tabFaq: 'SMEAG Bot FAQ',
+      stOpen: 'Open (sent, reviewing, approved)', stAll: 'All', allTypes: 'All types', searchPh: 'Name or student ID', refresh: 'Refresh', loading: 'Loading…',
+      nRequests: function (n) { return n + (n === 1 ? ' request' : ' requests'); }, noRequests: 'No requests.', option: 'Option',
+      markReviewing: 'Mark reviewing', approve: 'Approve', approveCharge: function (p) { return 'Approve & charge ' + p; }, reject: 'Reject', markDone: 'Mark done',
+      sentAt: function (d) { return 'sent ' + d; }, charged: 'charged', notCharged: 'not charged yet', free: 'free',
+      noteToStudent: 'Note to student:', lastChange: 'Last change by', notePh: 'Note for the student (required to reject)',
+      rejectNeedsNote: 'Write the reason for the student before rejecting.',
+      decided: function (id, st, fee) { return 'Request #' + id + ' → ' + st + (fee ? ' (charged ' + fee + ')' : '') + '.'; },
+      stuSearchPh: 'Name or student ID (2+ letters)', search: 'Search',
+      stuHelp: 'A student signs in with their student ID + PIN. First time: they tap their card in the app (Android), or you give them a one-time code here (iPhone, or a forgotten PIN). A new code clears the old PIN and signs the student out everywhere.',
+      thName: 'Name', thStudentId: 'Student ID', thCampus: 'Campus', thCourseEnd: 'Course end', thBalance: 'Balance', thAccount: 'App account',
+      released: 'Released card', notSigned: 'Not signed up', codePending: 'Code issued, waiting', noPin: 'No PIN', active: 'Active',
+      lastLogin: function (d) { return '(last ' + d + ')'; }, frozen: 'Card frozen', locked: 'Locked', issueCode: 'Issue sign-in code', unfreezeBtn: 'Unfreeze / unlock',
+      noStudents: 'No students found.',
+      codeGiven: function (name, sid, exp) { return 'Give this to ' + name + ' (' + sid + '). Valid until ' + exp + '. In the app: First time here → Use an office code.'; },
+      unfrozen: 'Card unfrozen and sign-in unlocked.',
+      noticesHint: 'Shown on the student Home screen and the Notices list. Leave campus empty for every campus.',
+      catalogHint: 'Activities, pickup routes, rental cars and courses that students choose from. The fee here is what gets charged on approval: once, per day (car rental) or per week (course).',
+      faqHint: 'SMEAG Bot answers only from these entries, current notices and the student\'s own data. Keep answers short and exact; add Korean words to Keywords so Korean questions match too.',
+      fTitleEn: 'Title (English)', fTitleKo: 'Title (Korean)', fBodyEn: 'Text (English)', fBodyKo: 'Text (Korean)', fCampus: 'Campus (empty = all)',
+      fPinned: 'Pinned to top', fPublish: 'Publish from', fHide: 'Hide after', fKind: 'Kind', fNameEn: 'Name (English)', fNameKo: 'Name (Korean)',
+      fDetailEn: 'Details (English)', fDetailKo: 'Details (Korean)', fFee: 'Fee (₱)', fUnit: 'Charged', fStarts: 'Activity date & time', fCapacity: 'Seats (activities)',
+      fOpen: 'Open for requests', fSort: 'Order', fQuestion: 'Question', fAnswer: 'Answer', fKeywords: 'Keywords (any language)', fActive: 'Active',
+      allCampuses: 'All campuses', closed: 'Closed', off: 'Off', seats: function (n) { return n + ' seats'; },
+      yes: 'Yes', no: 'No', once: 'Once', perDay: 'Per day', perWeek: 'Per week', unitDay: 'day', unitWeek: 'week',
+      kindActivity: 'Activity', kindPickup: 'Pickup', kindCar: 'Car', kindCourse: 'Course', phTime: 'Philippine time',
+      add: '+ Add', edit: 'Edit', addTitle: 'Add', editTitle: 'Edit', save: 'Save', cancel: 'Cancel', del: 'Delete', delSure: 'Click again to delete',
+      nothing: 'Nothing yet.', saved: 'Saved.', deleted: 'Deleted.',
+      importTitle: 'Import mock test scores',
+      importHelp: 'Paste rows from Excel or a CSV. First line = column names. Columns: studentId, test (IELTS or TOEFL), date (YYYY-MM-DD), listening, reading, writing, speaking, overall, comment. A row with the same student, test and date replaces the old one.',
+      pastePh: 'Paste here', checkRows: 'Check rows', importBtn: 'Import', scoreSidPh: 'Student ID (empty = latest 300)', showScores: 'Show scores',
+      thTest: 'Test', thDate: 'Date', thOverall: 'Overall', thComment: 'Comment', noScores: 'No scores.',
+      rowsReady: function (n) { return n + ' rows ready. Check the table below, then Import.'; }, noRows: 'No rows found. The first line must be the column names.',
+      imported: function (n) { return 'Imported ' + n + ' rows.'; }, notFoundIds: 'Not found in e-money (check the ID): '
+    },
+    ko: {
+      tagline: '학생 신청, 공지, 점수, SMEAG 봇', language: '언어', staffId: '직원 ID', login: '로그인',
+      loginNote: '오피스 계정 전용 (관리자, 캠퍼스 매니저). 매니저는 자기 캠퍼스만 봅니다.',
+      expired: '로그인이 만료되었습니다. 다시 로그인해 주세요.', noServer: '서버에 연결할 수 없습니다.', unknownStaff: '등록되지 않은 직원 ID입니다.',
+      noOffice: '이 계정은 오피스 프로그램을 사용할 수 없습니다.', studentApp: '학생 앱', logout: '로그아웃',
+      tabRequests: '신청', tabStudents: '학생', tabNotices: '공지', tabCatalog: '가격과 항목', tabScores: '점수', tabFaq: 'SMEAG 봇 FAQ',
+      stOpen: '진행 중 (접수·검토중·승인)', stAll: '전체', allTypes: '모든 종류', searchPh: '이름 또는 학번', refresh: '새로고침', loading: '불러오는 중…',
+      nRequests: function (n) { return n + '건'; }, noRequests: '신청이 없습니다.', option: '선택 항목',
+      markReviewing: '검토중으로', approve: '승인', approveCharge: function (p) { return '승인 + ' + p + ' 차감'; }, reject: '반려', markDone: '완료로',
+      sentAt: function (d) { return d + ' 접수'; }, charged: '차감됨', notCharged: '아직 차감 안 됨', free: '무료',
+      noteToStudent: '학생에게 메모:', lastChange: '마지막 변경:', notePh: '학생에게 남길 메모 (반려 시 필수)',
+      rejectNeedsNote: '반려하기 전에 학생에게 보낼 사유를 적어 주세요.',
+      decided: function (id, st, fee) { return '신청 #' + id + ' → ' + st + (fee ? ' (' + fee + ' 차감)' : '') + '.'; },
+      stuSearchPh: '이름 또는 학번 (2글자 이상)', search: '검색',
+      stuHelp: '학생은 학번 + PIN으로 로그인합니다. 처음에는 앱에서 카드를 대거나(안드로이드), 여기서 발급한 일회용 코드를 씁니다(아이폰, 또는 PIN 분실). 새 코드를 발급하면 기존 PIN이 지워지고 모든 기기에서 로그아웃됩니다.',
+      thName: '이름', thStudentId: '학번', thCampus: '캠퍼스', thCourseEnd: '과정 종료', thBalance: '잔액', thAccount: '앱 계정',
+      released: '반납된 카드', notSigned: '가입 전', codePending: '코드 발급됨, 대기 중', noPin: 'PIN 없음', active: '사용 중',
+      lastLogin: function (d) { return '(최근 ' + d + ')'; }, frozen: '카드 정지', locked: '잠김', issueCode: '로그인 코드 발급', unfreezeBtn: '정지·잠금 해제',
+      noStudents: '학생을 찾지 못했습니다.',
+      codeGiven: function (name, sid, exp) { return name + ' (' + sid + ') 학생에게 전달하세요. ' + exp + '까지 유효. 앱에서: 처음 사용 → 오피스 코드로 확인.'; },
+      unfrozen: '카드 정지와 로그인 잠금을 해제했습니다.',
+      noticesHint: '학생 앱 홈과 공지 목록에 표시됩니다. 캠퍼스를 비우면 모든 캠퍼스에 보입니다.',
+      catalogHint: '학생이 고르는 액티비티, 픽업 노선, 렌탈 차량, 교육과정입니다. 여기 금액이 승인 시 차감됩니다: 1회, 일당(렌탈), 주당(과정).',
+      faqHint: 'SMEAG 봇은 이 항목들, 현재 공지, 학생 본인 정보로만 답합니다. 답은 짧고 정확하게 쓰고, 키워드에 한국어 단어도 넣으세요.',
+      fTitleEn: '제목 (영어)', fTitleKo: '제목 (한국어)', fBodyEn: '내용 (영어)', fBodyKo: '내용 (한국어)', fCampus: '캠퍼스 (비우면 전체)',
+      fPinned: '상단 고정', fPublish: '게시 시작', fHide: '숨김 시각', fKind: '종류', fNameEn: '이름 (영어)', fNameKo: '이름 (한국어)',
+      fDetailEn: '설명 (영어)', fDetailKo: '설명 (한국어)', fFee: '금액 (₱)', fUnit: '차감 방식', fStarts: '액티비티 일시', fCapacity: '정원 (액티비티)',
+      fOpen: '신청 받기', fSort: '순서', fQuestion: '질문', fAnswer: '답변', fKeywords: '키워드 (아무 언어)', fActive: '사용',
+      allCampuses: '전체 캠퍼스', closed: '마감', off: '꺼짐', seats: function (n) { return '정원 ' + n; },
+      yes: '예', no: '아니요', once: '1회', perDay: '일당', perWeek: '주당', unitDay: '일', unitWeek: '주',
+      kindActivity: '액티비티', kindPickup: '픽업', kindCar: '차량', kindCourse: '과정', phTime: '필리핀 시간',
+      add: '+ 추가', edit: '수정', addTitle: '추가', editTitle: '수정', save: '저장', cancel: '취소', del: '삭제', delSure: '한 번 더 누르면 삭제',
+      nothing: '아직 없습니다.', saved: '저장했습니다.', deleted: '삭제했습니다.',
+      importTitle: '모의고사 점수 업로드',
+      importHelp: '엑셀이나 CSV에서 행을 붙여 넣으세요. 첫 줄은 열 이름입니다. 열: studentId, test (IELTS 또는 TOEFL), date (YYYY-MM-DD), listening, reading, writing, speaking, overall, comment. 같은 학생·시험·날짜의 행은 기존 기록을 덮어씁니다.',
+      pastePh: '여기에 붙여 넣기', checkRows: '행 확인', importBtn: '업로드', scoreSidPh: '학번 (비우면 최근 300건)', showScores: '점수 보기',
+      thTest: '시험', thDate: '날짜', thOverall: '종합', thComment: '코멘트', noScores: '점수가 없습니다.',
+      rowsReady: function (n) { return n + '행 준비됨. 아래 표를 확인한 뒤 업로드하세요.'; }, noRows: '행이 없습니다. 첫 줄은 열 이름이어야 합니다.',
+      imported: function (n) { return n + '행을 업로드했습니다.'; }, notFoundIds: '이머니에 없는 학번 (확인 필요): '
+    },
+    ja: {
+      tagline: '学生の申請・お知らせ・スコア・SMEAG Bot', language: '言語', staffId: 'スタッフID', login: 'ログイン',
+      loginNote: 'オフィスアカウント専用(管理者・キャンパスマネージャー)。マネージャーは自分のキャンパスのみ表示されます。',
+      expired: 'ログインの有効期限が切れました。もう一度ログインしてください。', noServer: 'サーバーに接続できません。', unknownStaff: '登録されていないスタッフIDです。',
+      noOffice: 'このアカウントはオフィスプログラムを使用できません。', studentApp: '学生アプリ', logout: 'ログアウト',
+      tabRequests: '申請', tabStudents: '学生', tabNotices: 'お知らせ', tabCatalog: '料金と項目', tabScores: 'スコア', tabFaq: 'SMEAG Bot FAQ',
+      stOpen: '処理中(受付・確認中・承認)', stAll: 'すべて', allTypes: 'すべての種類', searchPh: '名前または学籍番号', refresh: '更新', loading: '読み込み中…',
+      nRequests: function (n) { return n + '件'; }, noRequests: '申請はありません。', option: '選択項目',
+      markReviewing: '確認中にする', approve: '承認', approveCharge: function (p) { return '承認して' + p + 'を引き落とし'; }, reject: '却下', markDone: '完了にする',
+      sentAt: function (d) { return d + ' 受付'; }, charged: '引き落とし済み', notCharged: 'まだ引き落とされていません', free: '無料',
+      noteToStudent: '学生へのメモ:', lastChange: '最終変更:', notePh: '学生へのメモ(却下の場合は必須)',
+      rejectNeedsNote: '却下する前に、学生への理由を書いてください。',
+      decided: function (id, st, fee) { return '申請 #' + id + ' → ' + st + (fee ? '(' + fee + ' 引き落とし)' : '') + '。'; },
+      stuSearchPh: '名前または学籍番号(2文字以上)', search: '検索',
+      stuHelp: '学生は学籍番号とPINでログインします。初回はアプリでカードをかざす(Android)か、ここで発行するワンタイムコードを使います(iPhone、またはPINを忘れた場合)。新しいコードを発行すると古いPINは消え、すべての端末でログアウトされます。',
+      thName: '名前', thStudentId: '学籍番号', thCampus: 'キャンパス', thCourseEnd: 'コース終了', thBalance: '残高', thAccount: 'アプリアカウント',
+      released: '返却済みカード', notSigned: '未登録', codePending: 'コード発行済み・待機中', noPin: 'PINなし', active: '利用中',
+      lastLogin: function (d) { return '(最終 ' + d + ')'; }, frozen: 'カード停止中', locked: 'ロック中', issueCode: 'ログインコード発行', unfreezeBtn: '停止・ロック解除',
+      noStudents: '学生が見つかりません。',
+      codeGiven: function (name, sid, exp) { return name + '(' + sid + ')さんに渡してください。' + exp + 'まで有効。アプリで:First use → オフィスコードで確認。'; },
+      unfrozen: 'カードの停止とログインのロックを解除しました。',
+      noticesHint: '学生アプリのホームとお知らせ一覧に表示されます。キャンパスを空欄にすると全キャンパスに表示されます。',
+      catalogHint: '学生が選ぶアクティビティ、送迎ルート、レンタカー、コースです。ここの料金が承認時に引き落とされます:1回、1日ごと(レンタカー)、1週ごと(コース)。',
+      faqHint: 'SMEAG Botはこの項目、現在のお知らせ、学生本人の情報だけで回答します。回答は短く正確に。韓国語の質問にも合うよう、キーワードに韓国語も入れてください。',
+      fTitleEn: 'タイトル(英語)', fTitleKo: 'タイトル(韓国語)', fBodyEn: '本文(英語)', fBodyKo: '本文(韓国語)', fCampus: 'キャンパス(空欄 = すべて)',
+      fPinned: '上部に固定', fPublish: '掲載開始', fHide: '非表示にする日時', fKind: '種類', fNameEn: '名前(英語)', fNameKo: '名前(韓国語)',
+      fDetailEn: '詳細(英語)', fDetailKo: '詳細(韓国語)', fFee: '料金 (₱)', fUnit: '請求方法', fStarts: 'アクティビティ日時', fCapacity: '定員(アクティビティ)',
+      fOpen: '申請受付中', fSort: '並び順', fQuestion: '質問', fAnswer: '回答', fKeywords: 'キーワード(言語自由)', fActive: '有効',
+      allCampuses: '全キャンパス', closed: '締切', off: 'オフ', seats: function (n) { return '定員' + n; },
+      yes: 'はい', no: 'いいえ', once: '1回', perDay: '1日ごと', perWeek: '1週ごと', unitDay: '日', unitWeek: '週',
+      kindActivity: 'アクティビティ', kindPickup: '送迎', kindCar: '車両', kindCourse: 'コース', phTime: 'フィリピン時間',
+      add: '+ 追加', edit: '編集', addTitle: '追加', editTitle: '編集', save: '保存', cancel: 'キャンセル', del: '削除', delSure: 'もう一度押すと削除',
+      nothing: 'まだありません。', saved: '保存しました。', deleted: '削除しました。',
+      importTitle: '模試スコアのアップロード',
+      importHelp: 'ExcelやCSVから行を貼り付けてください。1行目は列名です。列:studentId、test(IELTSまたはTOEFL)、date(YYYY-MM-DD)、listening、reading、writing、speaking、overall、comment。同じ学生・試験・日付の行は古い記録を置き換えます。',
+      pastePh: 'ここに貼り付け', checkRows: '行を確認', importBtn: 'アップロード', scoreSidPh: '学籍番号(空欄 = 最新300件)', showScores: 'スコアを表示',
+      thTest: '試験', thDate: '日付', thOverall: '総合', thComment: 'コメント', noScores: 'スコアはありません。',
+      rowsReady: function (n) { return n + '行の準備ができました。下の表を確認してからアップロードしてください。'; }, noRows: '行が見つかりません。1行目は列名にしてください。',
+      imported: function (n) { return n + '行をアップロードしました。'; }, notFoundIds: 'Eマネーに存在しない学籍番号(要確認):'
+    },
+    zh: {
+      tagline: '學生申請、公告、成績與SMEAG Bot', language: '語言', staffId: '職員帳號', login: '登入',
+      loginNote: '僅限辦公室帳號(管理員、校區經理)。經理只看得到自己的校區。',
+      expired: '登入已過期，請重新登入。', noServer: '無法連線到伺服器。', unknownStaff: '找不到此職員帳號。',
+      noOffice: '此帳號無法使用辦公室程式。', studentApp: '學生App', logout: '登出',
+      tabRequests: '申請', tabStudents: '學生', tabNotices: '公告', tabCatalog: '價格與項目', tabScores: '成績', tabFaq: 'SMEAG Bot FAQ',
+      stOpen: '處理中(已送出、審核中、已核准)', stAll: '全部', allTypes: '所有類型', searchPh: '姓名或學號', refresh: '重新整理', loading: '載入中…',
+      nRequests: function (n) { return n + ' 件申請'; }, noRequests: '沒有申請。', option: '選項',
+      markReviewing: '設為審核中', approve: '核准', approveCharge: function (p) { return '核准並扣款 ' + p; }, reject: '駁回', markDone: '設為完成',
+      sentAt: function (d) { return d + ' 送出'; }, charged: '已扣款', notCharged: '尚未扣款', free: '免費',
+      noteToStudent: '給學生的備註:', lastChange: '最後修改:', notePh: '給學生的備註(駁回時必填)',
+      rejectNeedsNote: '駁回前請先寫下給學生的理由。',
+      decided: function (id, st, fee) { return '申請 #' + id + ' → ' + st + (fee ? '(已扣 ' + fee + ')' : '') + '。'; },
+      stuSearchPh: '姓名或學號(至少2個字)', search: '搜尋',
+      stuHelp: '學生用學號 + PIN登入。第一次登入時，學生在App刷卡(Android)，或使用你在這裡發的一次性代碼(iPhone，或忘記PIN)。發新代碼會清除舊PIN，並讓學生在所有裝置登出。',
+      thName: '姓名', thStudentId: '學號', thCampus: '校區', thCourseEnd: '課程結束', thBalance: '餘額', thAccount: 'App帳號',
+      released: '已歸還的卡', notSigned: '尚未註冊', codePending: '已發代碼，等待中', noPin: '沒有PIN', active: '使用中',
+      lastLogin: function (d) { return '(最近 ' + d + ')'; }, frozen: '卡片已停用', locked: '已鎖定', issueCode: '發登入代碼', unfreezeBtn: '解除停用/鎖定',
+      noStudents: '找不到學生。',
+      codeGiven: function (name, sid, exp) { return '請交給 ' + name + '(' + sid + ')。有效至 ' + exp + '。在App中:First use → 使用辦公室代碼。'; },
+      unfrozen: '已解除卡片停用與登入鎖定。',
+      noticesHint: '顯示在學生App首頁和公告列表。校區留空則所有校區都看得到。',
+      catalogHint: '學生可選的活動、接送路線、租用車輛和課程。這裡的費用會在核准時扣款:一次、每天(租車)或每週(課程)。',
+      faqHint: 'SMEAG Bot只根據這些項目、目前公告和學生本人的資料回答。答案要簡短準確;在關鍵字加入韓文詞，韓文問題也能對應。',
+      fTitleEn: '標題(英文)', fTitleKo: '標題(韓文)', fBodyEn: '內容(英文)', fBodyKo: '內容(韓文)', fCampus: '校區(空白 = 全部)',
+      fPinned: '置頂', fPublish: '發布時間', fHide: '隱藏時間', fKind: '類型', fNameEn: '名稱(英文)', fNameKo: '名稱(韓文)',
+      fDetailEn: '說明(英文)', fDetailKo: '說明(韓文)', fFee: '費用 (₱)', fUnit: '扣款方式', fStarts: '活動日期與時間', fCapacity: '名額(活動)',
+      fOpen: '開放申請', fSort: '排序', fQuestion: '問題', fAnswer: '答案', fKeywords: '關鍵字(任何語言)', fActive: '啟用',
+      allCampuses: '所有校區', closed: '已截止', off: '關閉', seats: function (n) { return n + ' 個名額'; },
+      yes: '是', no: '否', once: '一次', perDay: '每天', perWeek: '每週', unitDay: '天', unitWeek: '週',
+      kindActivity: '活動', kindPickup: '接送', kindCar: '車輛', kindCourse: '課程', phTime: '菲律賓時間',
+      add: '+ 新增', edit: '編輯', addTitle: '新增', editTitle: '編輯', save: '儲存', cancel: '取消', del: '刪除', delSure: '再按一次即刪除',
+      nothing: '目前沒有。', saved: '已儲存。', deleted: '已刪除。',
+      importTitle: '上傳模擬考成績',
+      importHelp: '從Excel或CSV貼上資料。第一行是欄位名稱。欄位:studentId、test(IELTS或TOEFL)、date(YYYY-MM-DD)、listening、reading、writing、speaking、overall、comment。同一學生、考試和日期的資料會取代舊紀錄。',
+      pastePh: '貼在這裡', checkRows: '檢查資料', importBtn: '上傳', scoreSidPh: '學號(空白 = 最近300筆)', showScores: '顯示成績',
+      thTest: '考試', thDate: '日期', thOverall: '總分', thComment: '評語', noScores: '沒有成績。',
+      rowsReady: function (n) { return n + ' 筆資料已就緒。請檢查下方表格後再上傳。'; }, noRows: '找不到資料。第一行必須是欄位名稱。',
+      imported: function (n) { return '已上傳 ' + n + ' 筆。'; }, notFoundIds: '電子錢包中找不到的學號(請確認):'
+    },
+    vi: {
+      tagline: 'Yêu cầu của học viên, thông báo, điểm và SMEAG Bot', language: 'Ngôn ngữ', staffId: 'Mã nhân viên', login: 'Đăng nhập',
+      loginNote: 'Chỉ dành cho tài khoản văn phòng (Admin, quản lý cơ sở). Quản lý chỉ thấy cơ sở của mình.',
+      expired: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', noServer: 'Không kết nối được máy chủ.', unknownStaff: 'Mã nhân viên không tồn tại.',
+      noOffice: 'Tài khoản này không dùng được chương trình văn phòng.', studentApp: 'Ứng dụng học viên', logout: 'Đăng xuất',
+      tabRequests: 'Yêu cầu', tabStudents: 'Học viên', tabNotices: 'Thông báo', tabCatalog: 'Giá & mục chọn', tabScores: 'Điểm', tabFaq: 'FAQ SMEAG Bot',
+      stOpen: 'Đang mở (đã gửi, đang xem xét, đã duyệt)', stAll: 'Tất cả', allTypes: 'Mọi loại', searchPh: 'Tên hoặc mã học viên', refresh: 'Làm mới', loading: 'Đang tải…',
+      nRequests: function (n) { return n + ' yêu cầu'; }, noRequests: 'Không có yêu cầu.', option: 'Mục chọn',
+      markReviewing: 'Chuyển sang xem xét', approve: 'Duyệt', approveCharge: function (p) { return 'Duyệt & trừ ' + p; }, reject: 'Từ chối', markDone: 'Đánh dấu hoàn tất',
+      sentAt: function (d) { return 'gửi lúc ' + d; }, charged: 'đã trừ', notCharged: 'chưa trừ', free: 'miễn phí',
+      noteToStudent: 'Ghi chú cho học viên:', lastChange: 'Thay đổi cuối bởi', notePh: 'Ghi chú cho học viên (bắt buộc khi từ chối)',
+      rejectNeedsNote: 'Hãy ghi lý do cho học viên trước khi từ chối.',
+      decided: function (id, st, fee) { return 'Yêu cầu #' + id + ' → ' + st + (fee ? ' (đã trừ ' + fee + ')' : '') + '.'; },
+      stuSearchPh: 'Tên hoặc mã học viên (từ 2 ký tự)', search: 'Tìm',
+      stuHelp: 'Học viên đăng nhập bằng mã học viên + PIN. Lần đầu: chạm thẻ trong ứng dụng (Android), hoặc dùng mã một lần bạn cấp ở đây (iPhone, hoặc quên PIN). Cấp mã mới sẽ xóa PIN cũ và đăng xuất học viên trên mọi thiết bị.',
+      thName: 'Tên', thStudentId: 'Mã học viên', thCampus: 'Cơ sở', thCourseEnd: 'Kết thúc khóa', thBalance: 'Số dư', thAccount: 'Tài khoản ứng dụng',
+      released: 'Thẻ đã trả', notSigned: 'Chưa đăng ký', codePending: 'Đã cấp mã, đang chờ', noPin: 'Chưa có PIN', active: 'Đang dùng',
+      lastLogin: function (d) { return '(lần cuối ' + d + ')'; }, frozen: 'Thẻ bị khóa', locked: 'Bị khóa đăng nhập', issueCode: 'Cấp mã đăng nhập', unfreezeBtn: 'Mở khóa thẻ / đăng nhập',
+      noStudents: 'Không tìm thấy học viên.',
+      codeGiven: function (name, sid, exp) { return 'Đưa mã này cho ' + name + ' (' + sid + '). Hiệu lực đến ' + exp + '. Trong ứng dụng: First use → Dùng mã văn phòng.'; },
+      unfrozen: 'Đã mở khóa thẻ và đăng nhập.',
+      noticesHint: 'Hiển thị trên trang chủ và danh sách thông báo của học viên. Để trống cơ sở để gửi cho mọi cơ sở.',
+      catalogHint: 'Hoạt động, tuyến đưa đón, xe thuê và khóa học để học viên chọn. Phí ở đây sẽ bị trừ khi duyệt: một lần, theo ngày (thuê xe) hoặc theo tuần (khóa học).',
+      faqHint: 'SMEAG Bot chỉ trả lời dựa trên các mục này, thông báo hiện tại và dữ liệu của chính học viên. Viết câu trả lời ngắn và chính xác; thêm từ tiếng Hàn vào Từ khóa để câu hỏi tiếng Hàn cũng khớp.',
+      fTitleEn: 'Tiêu đề (tiếng Anh)', fTitleKo: 'Tiêu đề (tiếng Hàn)', fBodyEn: 'Nội dung (tiếng Anh)', fBodyKo: 'Nội dung (tiếng Hàn)', fCampus: 'Cơ sở (trống = tất cả)',
+      fPinned: 'Ghim lên đầu', fPublish: 'Đăng từ', fHide: 'Ẩn sau', fKind: 'Loại', fNameEn: 'Tên (tiếng Anh)', fNameKo: 'Tên (tiếng Hàn)',
+      fDetailEn: 'Chi tiết (tiếng Anh)', fDetailKo: 'Chi tiết (tiếng Hàn)', fFee: 'Phí (₱)', fUnit: 'Cách tính', fStarts: 'Ngày giờ hoạt động', fCapacity: 'Số chỗ (hoạt động)',
+      fOpen: 'Nhận yêu cầu', fSort: 'Thứ tự', fQuestion: 'Câu hỏi', fAnswer: 'Câu trả lời', fKeywords: 'Từ khóa (mọi ngôn ngữ)', fActive: 'Bật',
+      allCampuses: 'Mọi cơ sở', closed: 'Đã đóng', off: 'Tắt', seats: function (n) { return n + ' chỗ'; },
+      yes: 'Có', no: 'Không', once: 'Một lần', perDay: 'Theo ngày', perWeek: 'Theo tuần', unitDay: 'ngày', unitWeek: 'tuần',
+      kindActivity: 'Hoạt động', kindPickup: 'Đưa đón', kindCar: 'Xe', kindCourse: 'Khóa học', phTime: 'Giờ Philippines',
+      add: '+ Thêm', edit: 'Sửa', addTitle: 'Thêm', editTitle: 'Sửa', save: 'Lưu', cancel: 'Hủy', del: 'Xóa', delSure: 'Bấm lần nữa để xóa',
+      nothing: 'Chưa có gì.', saved: 'Đã lưu.', deleted: 'Đã xóa.',
+      importTitle: 'Tải lên điểm thi thử',
+      importHelp: 'Dán các dòng từ Excel hoặc CSV. Dòng đầu = tên cột. Các cột: studentId, test (IELTS hoặc TOEFL), date (YYYY-MM-DD), listening, reading, writing, speaking, overall, comment. Dòng có cùng học viên, bài thi và ngày sẽ thay thế dòng cũ.',
+      pastePh: 'Dán vào đây', checkRows: 'Kiểm tra dòng', importBtn: 'Tải lên', scoreSidPh: 'Mã học viên (trống = 300 mới nhất)', showScores: 'Xem điểm',
+      thTest: 'Bài thi', thDate: 'Ngày', thOverall: 'Tổng', thComment: 'Nhận xét', noScores: 'Không có điểm.',
+      rowsReady: function (n) { return 'Đã sẵn sàng ' + n + ' dòng. Kiểm tra bảng bên dưới rồi bấm Tải lên.'; }, noRows: 'Không tìm thấy dòng nào. Dòng đầu phải là tên cột.',
+      imported: function (n) { return 'Đã tải lên ' + n + ' dòng.'; }, notFoundIds: 'Không có trong ví điện tử (kiểm tra mã): '
+    },
+    ru: {
+      tagline: 'Заявки студентов, объявления, баллы и SMEAG Bot', language: 'Язык', staffId: 'ID сотрудника', login: 'Войти',
+      loginNote: 'Только для офисных аккаунтов (администраторы, менеджеры кампусов). Менеджеры видят только свой кампус.',
+      expired: 'Сеанс истёк. Войдите снова.', noServer: 'Нет связи с сервером.', unknownStaff: 'Такого ID сотрудника нет.',
+      noOffice: 'Этот аккаунт не может пользоваться офисной программой.', studentApp: 'Приложение студента', logout: 'Выйти',
+      tabRequests: 'Заявки', tabStudents: 'Студенты', tabNotices: 'Объявления', tabCatalog: 'Цены и варианты', tabScores: 'Баллы', tabFaq: 'FAQ SMEAG Bot',
+      stOpen: 'Открытые (отправлены, на рассмотрении, одобрены)', stAll: 'Все', allTypes: 'Все типы', searchPh: 'Имя или номер студента', refresh: 'Обновить', loading: 'Загрузка…',
+      nRequests: function (n) { return 'Заявок: ' + n; }, noRequests: 'Заявок нет.', option: 'Вариант',
+      markReviewing: 'На рассмотрение', approve: 'Одобрить', approveCharge: function (p) { return 'Одобрить и списать ' + p; }, reject: 'Отклонить', markDone: 'Выполнено',
+      sentAt: function (d) { return 'отправлено ' + d; }, charged: 'списано', notCharged: 'ещё не списано', free: 'бесплатно',
+      noteToStudent: 'Сообщение студенту:', lastChange: 'Последнее изменение:', notePh: 'Сообщение студенту (обязательно при отклонении)',
+      rejectNeedsNote: 'Перед отклонением напишите причину для студента.',
+      decided: function (id, st, fee) { return 'Заявка #' + id + ' → ' + st + (fee ? ' (списано ' + fee + ')' : '') + '.'; },
+      stuSearchPh: 'Имя или номер студента (от 2 букв)', search: 'Найти',
+      stuHelp: 'Студент входит по номеру и PIN. В первый раз он прикладывает карту в приложении (Android) или вводит одноразовый код, который вы выдаёте здесь (iPhone или забытый PIN). Новый код стирает старый PIN и выводит студента из системы на всех устройствах.',
+      thName: 'Имя', thStudentId: 'Номер студента', thCampus: 'Кампус', thCourseEnd: 'Конец курса', thBalance: 'Баланс', thAccount: 'Аккаунт в приложении',
+      released: 'Карта сдана', notSigned: 'Не зарегистрирован', codePending: 'Код выдан, ожидание', noPin: 'Нет PIN', active: 'Активен',
+      lastLogin: function (d) { return '(последний вход ' + d + ')'; }, frozen: 'Карта заблокирована', locked: 'Вход заблокирован', issueCode: 'Выдать код входа', unfreezeBtn: 'Разблокировать',
+      noStudents: 'Студенты не найдены.',
+      codeGiven: function (name, sid, exp) { return 'Передайте это студенту ' + name + ' (' + sid + '). Действует до ' + exp + '. В приложении: First use → Код из офиса.'; },
+      unfrozen: 'Карта и вход разблокированы.',
+      noticesHint: 'Показывается на главной странице приложения и в списке объявлений. Оставьте кампус пустым, чтобы показать всем кампусам.',
+      catalogHint: 'Мероприятия, маршруты трансфера, машины в аренду и курсы, из которых выбирают студенты. Эта цена списывается при одобрении: один раз, за день (аренда) или за неделю (курс).',
+      faqHint: 'SMEAG Bot отвечает только по этим записям, текущим объявлениям и данным самого студента. Пишите ответы коротко и точно; добавьте корейские слова в ключевые слова, чтобы находились и корейские вопросы.',
+      fTitleEn: 'Заголовок (англ.)', fTitleKo: 'Заголовок (кор.)', fBodyEn: 'Текст (англ.)', fBodyKo: 'Текст (кор.)', fCampus: 'Кампус (пусто = все)',
+      fPinned: 'Закрепить сверху', fPublish: 'Опубликовать с', fHide: 'Скрыть после', fKind: 'Тип', fNameEn: 'Название (англ.)', fNameKo: 'Название (кор.)',
+      fDetailEn: 'Подробности (англ.)', fDetailKo: 'Подробности (кор.)', fFee: 'Цена (₱)', fUnit: 'Оплата', fStarts: 'Дата и время мероприятия', fCapacity: 'Мест (мероприятия)',
+      fOpen: 'Приём заявок', fSort: 'Порядок', fQuestion: 'Вопрос', fAnswer: 'Ответ', fKeywords: 'Ключевые слова (любой язык)', fActive: 'Включено',
+      allCampuses: 'Все кампусы', closed: 'Закрыто', off: 'Выкл.', seats: function (n) { return 'мест: ' + n; },
+      yes: 'Да', no: 'Нет', once: 'Один раз', perDay: 'За день', perWeek: 'За неделю', unitDay: 'день', unitWeek: 'неделя',
+      kindActivity: 'Мероприятие', kindPickup: 'Трансфер', kindCar: 'Машина', kindCourse: 'Курс', phTime: 'Филиппинское время',
+      add: '+ Добавить', edit: 'Изменить', addTitle: 'Добавить', editTitle: 'Изменить', save: 'Сохранить', cancel: 'Отмена', del: 'Удалить', delSure: 'Нажмите ещё раз для удаления',
+      nothing: 'Пока ничего нет.', saved: 'Сохранено.', deleted: 'Удалено.',
+      importTitle: 'Загрузка баллов пробных тестов',
+      importHelp: 'Вставьте строки из Excel или CSV. Первая строка — названия столбцов. Столбцы: studentId, test (IELTS или TOEFL), date (ГГГГ-ММ-ДД), listening, reading, writing, speaking, overall, comment. Строка с тем же студентом, тестом и датой заменяет старую.',
+      pastePh: 'Вставьте сюда', checkRows: 'Проверить строки', importBtn: 'Загрузить', scoreSidPh: 'Номер студента (пусто = последние 300)', showScores: 'Показать баллы',
+      thTest: 'Тест', thDate: 'Дата', thOverall: 'Итог', thComment: 'Комментарий', noScores: 'Баллов нет.',
+      rowsReady: function (n) { return 'Готово строк: ' + n + '. Проверьте таблицу ниже и нажмите «Загрузить».'; }, noRows: 'Строки не найдены. Первая строка должна содержать названия столбцов.',
+      imported: function (n) { return 'Загружено строк: ' + n + '.'; }, notFoundIds: 'Нет в электронном кошельке (проверьте номер): '
+    }
+  };
+  var lang = (function () { var l = null; try { l = localStorage.getItem(LANG_KEY); } catch (e) {} return W[l] ? l : 'en'; })();
+  function t(k) { var v = W[lang][k]; return v === undefined ? W.en[k] : v; }
+  function L(obj) { return obj ? (obj[lang] || obj.en || '') : ''; } // config objects: {en, ko, ja, ...}
+  function setLang(l) {
+    lang = W[l] ? l : 'en';
+    try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+    document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : lang;
+  }
+  setLang(lang);
+  function langSelect() {
+    return '<select class="langsel" id="langSel" aria-label="' + esc(t('language')) + '">' + LANGS.map(function (x) {
+      return '<option value="' + x[0] + '"' + (x[0] === lang ? ' selected' : '') + '>' + esc(x[1]) + '</option>';
+    }).join('') + '</select>';
+  }
+
   var config = null, tab = 'requests', state = { status: 'open', type: '', search: '' };
   var TYPES = {};
+  var loginMsg = '';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function peso(n) { return '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -53,11 +318,11 @@
     if (session) h.Authorization = 'Bearer ' + session.token;
     return fetch(API + path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (d) {
-        if (res.status === 401 && path !== '/api/auth/login') { saveSession(null); renderLogin('Your login expired. Please log in again.'); throw new Error('Login expired'); }
+        if (res.status === 401 && path !== '/api/auth/login') { saveSession(null); renderLogin(t('expired')); throw new Error(t('expired')); }
         if (!res.ok) throw new Error(d.error || ('Error ' + res.status));
         return d;
       });
-    }, function () { throw new Error('Cannot reach the server.'); });
+    }, function () { throw new Error(t('noServer')); });
   }
   function flash(msg, ok) {
     var el = document.getElementById('flash'); if (!el) return;
@@ -67,117 +332,130 @@
 
   // ---------- login ----------
   function renderLogin(msg) {
-    root.innerHTML = '<div class="signin"><div class="brand"><div class="logo">S</div><div><b>SMEAG Campus Office</b><span class="muted small">Student requests, notices, scores and SMEAG Bot</span></div></div>' +
-      '<form id="loginForm" class="card stack"><div class="field"><label for="lid">Staff ID</label><input class="input" id="lid" autocomplete="username" required></div>' +
-      '<div class="err">' + esc(msg || '') + '</div><button class="btn block" type="submit">Log in</button>' +
-      '<p class="small muted" style="margin:0">Office accounts only (Admin, campus Managers). Managers see their own campus.</p></form></div>';
+    loginMsg = msg || '';
+    root.innerHTML = '<div class="signin"><div class="langrow">' + langSelect() + '</div>' +
+      '<div class="brand"><div class="logo">S</div><div><b>SMEAG Campus Office</b><span class="muted small">' + esc(t('tagline')) + '</span></div></div>' +
+      '<form id="loginForm" class="card stack"><div class="field"><label for="lid">' + esc(t('staffId')) + '</label><input class="input" id="lid" autocomplete="username" required></div>' +
+      '<div class="err">' + esc(loginMsg) + '</div><button class="btn block" type="submit">' + esc(t('login')) + '</button>' +
+      '<p class="small muted" style="margin:0">' + esc(t('loginNote')) + '</p></form></div>';
   }
 
   // ---------- frame ----------
-  var TABS = [['requests', 'Requests'], ['students', 'Students'], ['notices', 'Notices'], ['catalog', 'Prices & options'], ['scores', 'Scores'], ['faq', 'SMEAG Bot FAQ']];
+  var TABS = [['requests', 'tabRequests'], ['students', 'tabStudents'], ['notices', 'tabNotices'], ['catalog', 'tabCatalog'], ['scores', 'tabScores'], ['faq', 'tabFaq']];
   function frame(body) {
     root.innerHTML = '<div class="bar"><h1>SMEAG Campus Office</h1><span class="small muted">' + esc(session.name || session.loginId) + ' · ' + esc(session.position) + ' @ ' + esc(session.campus) + '</span>' +
-      '<a class="btn ghost small" href="../campus/" target="_blank" rel="noopener">Student app</a><button class="btn ghost small" id="logout">Log out</button></div>' +
-      '<div class="tabsA" role="tablist">' + TABS.map(function (x) { return '<button type="button" data-tab="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + esc(x[1]) + '</button>'; }).join('') + '</div>' +
+      langSelect() +
+      '<a class="btn ghost small" href="../campus/" target="_blank" rel="noopener">' + esc(t('studentApp')) + '</a><button class="btn ghost small" id="logout">' + esc(t('logout')) + '</button></div>' +
+      '<div class="tabsA" role="tablist">' + TABS.map(function (x) { return '<button type="button" data-tab="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + esc(t(x[1])) + '</button>'; }).join('') + '</div>' +
       '<div id="flash" class="err" role="status"></div><div id="body">' + body + '</div>';
   }
 
   // ---------- requests ----------
+  function fieldDef(type, key) { var d = TYPES[type]; return d && (d.fields || []).filter(function (x) { return x.name === key; })[0]; }
   function fieldText(type, key, v) {
-    var d = TYPES[type]; var f = d && d.fields.filter(function (x) { return x.name === key; })[0];
-    if (f && f.options) { var o = f.options.filter(function (x) { return x.value === v; })[0]; if (o) return o.en; }
+    var f = fieldDef(type, key);
+    if (f && f.options) { var o = f.options.filter(function (x) { return x.value === v; })[0]; if (o) return L(o); }
     return v;
   }
-  function fieldName(type, key) { var d = TYPES[type]; var f = d && d.fields.filter(function (x) { return x.name === key; })[0]; return f ? f.en : key; }
+  function fieldName(type, key) { var f = fieldDef(type, key); return f ? L(f) : key; }
+  function statusName(s) { return config && config.statuses[s] ? L(config.statuses[s]) : s; }
   function showRequests() {
     frame('<div class="filters">' +
-      '<select class="input" id="fStatus">' + [['open', 'Open (sent, reviewing, approved)'], ['submitted', 'Sent'], ['reviewing', 'Reviewing'], ['approved', 'Approved'], ['done', 'Done'], ['rejected', 'Rejected'], ['cancelled', 'Cancelled'], ['all', 'All']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (state.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
-      '<select class="input" id="fType"><option value="">All types</option>' + config.types.map(function (x) { return '<option value="' + x.key + '"' + (state.type === x.key ? ' selected' : '') + '>' + esc(x.en) + '</option>'; }).join('') + '</select>' +
-      '<input class="input" id="fSearch" placeholder="Name or student ID" value="' + esc(state.search) + '">' +
-      '<button class="btn small" id="reload">Refresh</button><span class="count" id="count"></span></div><div class="qgrid" id="queue"><div class="muted">Loading…</div></div>');
+      '<select class="input" id="fStatus">' + [['open', t('stOpen')], ['submitted', statusName('submitted')], ['reviewing', statusName('reviewing')], ['approved', statusName('approved')], ['done', statusName('done')], ['rejected', statusName('rejected')], ['cancelled', statusName('cancelled')], ['all', t('stAll')]]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (state.status === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>' +
+      '<select class="input" id="fType"><option value="">' + esc(t('allTypes')) + '</option>' + config.types.map(function (x) { return '<option value="' + x.key + '"' + (state.type === x.key ? ' selected' : '') + '>' + esc(L(x)) + '</option>'; }).join('') + '</select>' +
+      '<input class="input" id="fSearch" placeholder="' + esc(t('searchPh')) + '" value="' + esc(state.search) + '">' +
+      '<button class="btn small" id="reload">' + esc(t('refresh')) + '</button><span class="count" id="count"></span></div><div class="qgrid" id="queue"><div class="muted">' + esc(t('loading')) + '</div></div>');
     loadRequests();
   }
   function loadRequests() {
     var q = '?status=' + encodeURIComponent(state.status) + (state.type ? '&type=' + state.type : '') + (state.search ? '&search=' + encodeURIComponent(state.search) : '');
     api('GET', '/api/campus-admin/requests' + q).then(function (d) {
       var el = document.getElementById('queue'); if (!el) return;
-      document.getElementById('count').textContent = d.requests.length + ' request' + (d.requests.length === 1 ? '' : 's');
-      el.innerHTML = d.requests.length ? d.requests.map(reqCard).join('') : '<div class="card empty">No requests.</div>';
+      document.getElementById('count').textContent = t('nRequests')(d.requests.length);
+      el.innerHTML = d.requests.length ? d.requests.map(reqCard).join('') : '<div class="card empty">' + esc(t('noRequests')) + '</div>';
     }).catch(function (e) { flash(e.message); });
   }
+  function itemTitle(it) { return (lang === 'ko' && it.title_ko) || it.title_en || ''; }
   function reqCard(r) {
     var d = TYPES[r.type] || { en: r.type };
     var p = r.payload || {};
     var order = ((TYPES[r.type] || {}).fields || []).map(function (f) { return f.name; });
     var rows = Object.keys(p).filter(function (k) { return k !== 'item'; }).sort(function (x, y) { return order.indexOf(x) - order.indexOf(y); }).map(function (k) { return '<dt>' + esc(fieldName(r.type, k)) + '</dt><dd>' + esc(fieldText(r.type, k, p[k])) + '</dd>'; });
-    if (p.item) rows.unshift('<dt>Option</dt><dd>' + esc(p.item.title_en) + (p.item.startsAt ? ' (' + esc(p.item.startsAt) + ')' : '') + '</dd>');
+    if (p.item) rows.unshift('<dt>' + esc(t('option')) + '</dt><dd>' + esc(itemTitle(p.item)) + (p.item.startsAt ? ' (' + esc(p.item.startsAt) + ')' : '') + '</dd>');
     var next = { submitted: ['reviewing', 'approved', 'rejected'], reviewing: ['approved', 'rejected'], approved: ['done'] }[r.status] || [];
-    var label = { reviewing: 'Mark reviewing', approved: r.fee ? 'Approve & charge ' + peso(r.fee) : 'Approve', rejected: 'Reject', done: 'Mark done' };
-    return '<article class="card reqcard"><div class="head"><b>' + esc(d.en) + '</b><span class="pill ' + esc(r.status) + '">' + esc(config.statuses[r.status].en) + '</span></div>' +
+    var label = { reviewing: t('markReviewing'), approved: r.fee ? t('approveCharge')(peso(r.fee)) : t('approve'), rejected: t('reject'), done: t('markDone') };
+    return '<article class="card reqcard"><div class="head"><b>' + esc(L(d)) + '</b><span class="pill ' + esc(r.status) + '">' + esc(statusName(r.status)) + '</span></div>' +
       '<div class="small"><b>' + esc(r.name) + '</b> · ' + esc(r.studentId) + ' · ' + esc(r.campus) + '</div>' +
-      '<div class="small muted">#' + r.id + ' · sent ' + esc(r.created) + (r.fee ? ' · <span class="fee">' + esc(peso(r.fee)) + '</span>' + (r.charged ? ' charged' : ' not charged yet') : ' · free') + '</div>' +
+      '<div class="small muted">#' + r.id + ' · ' + esc(t('sentAt')(r.created)) + (r.fee ? ' · <span class="fee">' + esc(peso(r.fee)) + '</span> ' + esc(r.charged ? t('charged') : t('notCharged')) : ' · ' + esc(t('free'))) + '</div>' +
       '<dl>' + rows.join('') + '</dl>' +
-      (r.staffNote ? '<div class="note"><b>Note to student:</b> ' + esc(r.staffNote) + (r.handledBy ? ' — ' + esc(r.handledBy) + ' ' + esc(r.handled) : '') + '</div>' : (r.handledBy ? '<div class="small muted" style="margin-top:6px">Last change by ' + esc(r.handledBy) + ' ' + esc(r.handled) + '</div>' : '')) +
-      (next.length ? '<div class="act"><textarea class="input" id="note' + r.id + '" maxlength="500" placeholder="Note for the student (required to reject)"></textarea><div class="row">' +
+      (r.staffNote ? '<div class="note"><b>' + esc(t('noteToStudent')) + '</b> ' + esc(r.staffNote) + (r.handledBy ? ' — ' + esc(r.handledBy) + ' ' + esc(r.handled) : '') + '</div>' : (r.handledBy ? '<div class="small muted" style="margin-top:6px">' + esc(t('lastChange')) + ' ' + esc(r.handledBy) + ' ' + esc(r.handled) + '</div>' : '')) +
+      (next.length ? '<div class="act"><textarea class="input" id="note' + r.id + '" maxlength="500" placeholder="' + esc(t('notePh')) + '"></textarea><div class="row">' +
         next.map(function (s) { return '<button type="button" class="btn small' + (s === 'rejected' ? ' danger' : s === 'reviewing' ? ' ghost' : '') + '" data-decide="' + r.id + '" data-status="' + s + '">' + esc(label[s]) + '</button>'; }).join('') +
       '</div></div>' : '') + '</article>';
   }
 
   // ---------- students ----------
+  var lastStudentSearch = '';
   function showStudents() {
-    frame('<form id="stuForm" class="filters"><input class="input" id="stuSearch" placeholder="Name or student ID (2+ letters)" style="min-width:260px"><button class="btn small" type="submit">Search</button></form>' +
-      '<p class="small muted">A student signs in with their student ID + PIN. First time: they tap their card in the app (Android), or you give them a one-time code here (iPhone, or a forgotten PIN). A new code clears the old PIN and signs the student out everywhere.</p>' +
+    frame('<form id="stuForm" class="filters"><input class="input" id="stuSearch" placeholder="' + esc(t('stuSearchPh')) + '" value="' + esc(lastStudentSearch) + '"><button class="btn small" type="submit">' + esc(t('search')) + '</button></form>' +
+      '<p class="small muted">' + esc(t('stuHelp')) + '</p>' +
       '<div id="stuOut"></div>');
+    if (lastStudentSearch) searchStudents(lastStudentSearch);
   }
   function searchStudents(s) {
+    lastStudentSearch = s;
     api('GET', '/api/campus-admin/students?search=' + encodeURIComponent(s)).then(function (d) {
-      document.getElementById('stuOut').innerHTML = d.students.length ? '<div class="card scroll"><table class="tbl"><thead><tr><th>Name</th><th>Student ID</th><th>Campus</th><th>Course end</th><th>Balance</th><th>App account</th><th></th></tr></thead><tbody>' +
+      document.getElementById('stuOut').innerHTML = d.students.length ? '<div class="card scroll"><table class="tbl"><thead><tr><th>' + esc(t('thName')) + '</th><th>' + esc(t('thStudentId')) + '</th><th>' + esc(t('thCampus')) + '</th><th>' + esc(t('thCourseEnd')) + '</th><th>' + esc(t('thBalance')) + '</th><th>' + esc(t('thAccount')) + '</th><th></th></tr></thead><tbody>' +
         d.students.map(function (s) {
           var a = s.account;
-          var st = s.released ? 'Released card' : !a ? 'Not signed up' : a.codePending ? 'Code issued, waiting' : !a.hasPin ? 'No PIN' : 'Active' + (a.lastLogin ? ' (last ' + a.lastLogin + ')' : '');
-          var flags = a ? [a.frozen ? '<span class="pill rejected">Card frozen</span>' : '', a.locked ? '<span class="pill reviewing">Locked</span>' : ''].join(' ') : '';
+          var st = s.released ? t('released') : !a ? t('notSigned') : a.codePending ? t('codePending') : !a.hasPin ? t('noPin') : t('active') + (a.lastLogin ? ' ' + t('lastLogin')(a.lastLogin) : '');
+          var flags = a ? [a.frozen ? '<span class="pill rejected">' + esc(t('frozen')) + '</span>' : '', a.locked ? '<span class="pill reviewing">' + esc(t('locked')) + '</span>' : ''].join(' ') : '';
           return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.studentId) + '</td><td>' + esc(s.campus) + '</td><td>' + esc(s.endDate) + '</td><td class="num">' + esc(peso(s.balance)) + '</td><td>' + esc(st) + ' ' + flags + '</td><td><div class="row">' +
-            (s.released ? '' : '<button class="btn small ghost" data-code="' + s.personId + '">Issue sign-in code</button>') +
-            (a && (a.frozen || a.locked) ? '<button class="btn small ghost" data-unfreeze="' + s.personId + '">Unfreeze / unlock</button>' : '') + '</div><div id="code' + s.personId + '"></div></td></tr>';
-        }).join('') + '</tbody></table></div>' : '<div class="card empty">No students found.</div>';
+            (s.released ? '' : '<button class="btn small ghost" data-code="' + s.personId + '">' + esc(t('issueCode')) + '</button>') +
+            (a && (a.frozen || a.locked) ? '<button class="btn small ghost" data-unfreeze="' + s.personId + '">' + esc(t('unfreezeBtn')) + '</button>' : '') + '</div><div id="code' + s.personId + '"></div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="card empty">' + esc(t('noStudents')) + '</div>';
     }).catch(function (e) { flash(e.message); });
   }
 
   // ---------- generic CRUD (notices, catalog, faq) ----------
+  // field: [column, label key, input kind, required]
   var CRUD = {
     notices: {
-      title: 'Notices', hint: 'Shown on the student Home screen and the Notices list. Leave campus empty for every campus.',
-      fields: [['title_en', 'Title (English)', 'text', true], ['title_ko', 'Title (Korean)', 'text'], ['body_en', 'Text (English)', 'textarea', true], ['body_ko', 'Text (Korean)', 'textarea'],
-        ['campus', 'Campus (empty = all)', 'campus'], ['pinned', 'Pinned to top', 'bool'], ['published_at', 'Publish from', 'datetime'], ['expires_at', 'Hide after', 'datetime']],
-      line: function (r) { return '<b>' + (r.pinned ? '📌 ' : '') + esc(r.title_en) + '</b><div class="small muted">' + esc(r.campus || 'All campuses') + ' · ' + esc(String(r.published_at || '').slice(0, 16).replace('T', ' ')) + (r.expires_at ? ' → ' + esc(String(r.expires_at).slice(0, 10)) : '') + '</div>'; }
+      title: 'tabNotices', hint: 'noticesHint',
+      fields: [['title_en', 'fTitleEn', 'text', true], ['title_ko', 'fTitleKo', 'text'], ['body_en', 'fBodyEn', 'textarea', true], ['body_ko', 'fBodyKo', 'textarea'],
+        ['campus', 'fCampus', 'campus'], ['pinned', 'fPinned', 'bool'], ['published_at', 'fPublish', 'datetime'], ['expires_at', 'fHide', 'datetime']],
+      line: function (r) { return '<b>' + (r.pinned ? '📌 ' : '') + esc(r.title_en) + '</b><div class="small muted">' + esc(r.campus || t('allCampuses')) + ' · ' + esc(String(r.published_at || '').slice(0, 16).replace('T', ' ')) + (r.expires_at ? ' → ' + esc(String(r.expires_at).slice(0, 10)) : '') + '</div>'; }
     },
     catalog: {
-      title: 'Prices & options', hint: 'Activities, pickup routes, rental cars and courses that students choose from. The fee here is what gets charged on approval: once, per day (car rental) or per week (course).',
-      fields: [['kind', 'Kind', 'kind', true], ['title_en', 'Name (English)', 'text', true], ['title_ko', 'Name (Korean)', 'text'], ['detail_en', 'Details (English)', 'text'], ['detail_ko', 'Details (Korean)', 'text'],
-        ['fee', 'Fee (₱)', 'number'], ['fee_unit', 'Charged', 'unit'], ['starts_at', 'Activity date & time', 'datetime'], ['capacity', 'Seats (activities)', 'number'], ['campus', 'Campus (empty = all)', 'campus'], ['active', 'Open for requests', 'bool'], ['sort', 'Order', 'number']],
-      line: function (r) { return '<b>' + esc(r.title_en) + '</b> <span class="fee">' + esc(peso(r.fee)) + (r.fee_unit !== 'once' ? ' / ' + esc(r.fee_unit) : '') + '</span>' + (r.active ? '' : ' <span class="pill cancelled">Closed</span>') + '<div class="small muted">' + esc(r.kind) + ' · ' + esc(r.campus || 'All campuses') + (r.starts_at ? ' · ' + esc(String(r.starts_at).slice(0, 16).replace('T', ' ')) : '') + (r.capacity ? ' · ' + r.capacity + ' seats' : '') + '</div>'; }
+      title: 'tabCatalog', hint: 'catalogHint',
+      fields: [['kind', 'fKind', 'kind', true], ['title_en', 'fNameEn', 'text', true], ['title_ko', 'fNameKo', 'text'], ['detail_en', 'fDetailEn', 'text'], ['detail_ko', 'fDetailKo', 'text'],
+        ['fee', 'fFee', 'number'], ['fee_unit', 'fUnit', 'unit'], ['starts_at', 'fStarts', 'datetime'], ['capacity', 'fCapacity', 'number'], ['campus', 'fCampus', 'campus'], ['active', 'fOpen', 'bool'], ['sort', 'fSort', 'number']],
+      line: function (r) { return '<b>' + esc(r.title_en) + '</b> <span class="fee">' + esc(peso(r.fee)) + (r.fee_unit !== 'once' ? ' / ' + esc(unitShort(r.fee_unit)) : '') + '</span>' + (r.active ? '' : ' <span class="pill cancelled">' + esc(t('closed')) + '</span>') + '<div class="small muted">' + esc(kindName(r.kind)) + ' · ' + esc(r.campus || t('allCampuses')) + (r.starts_at ? ' · ' + esc(String(r.starts_at).slice(0, 16).replace('T', ' ')) : '') + (r.capacity ? ' · ' + esc(t('seats')(r.capacity)) : '') + '</div>'; }
     },
     faq: {
-      title: 'SMEAG Bot FAQ', hint: 'SMEAG Bot answers only from these entries, current notices and the student\'s own data. Keep answers short and exact; add Korean words to Keywords so Korean questions match too.',
-      fields: [['question', 'Question', 'text', true], ['answer', 'Answer', 'textarea', true], ['keywords', 'Keywords (any language)', 'text'], ['campus', 'Campus (empty = all)', 'campus'], ['active', 'Active', 'bool'], ['sort', 'Order', 'number']],
-      line: function (r) { return '<b>' + esc(r.question) + '</b>' + (r.active ? '' : ' <span class="pill cancelled">Off</span>') + '<div class="small muted">' + esc(r.answer.slice(0, 160)) + '</div>'; }
+      title: 'tabFaq', hint: 'faqHint',
+      fields: [['question', 'fQuestion', 'text', true], ['answer', 'fAnswer', 'textarea', true], ['keywords', 'fKeywords', 'text'], ['campus', 'fCampus', 'campus'], ['active', 'fActive', 'bool'], ['sort', 'fSort', 'number']],
+      line: function (r) { return '<b>' + esc(r.question) + '</b>' + (r.active ? '' : ' <span class="pill cancelled">' + esc(t('off')) + '</span>') + '<div class="small muted">' + esc(String(r.answer || '').slice(0, 160)) + '</div>'; }
     }
   };
+  var KINDS = { activity: 'kindActivity', pickup: 'kindPickup', car: 'kindCar', course: 'kindCourse' };
+  function kindName(k) { return KINDS[k] ? t(KINDS[k]) : k; }
+  function unitShort(u) { return u === 'day' ? t('unitDay') : u === 'week' ? t('unitWeek') : u; }
   var editing = null;
   function input(f, v) {
     var id = 'c_' + f[0];
     if (f[2] === 'textarea') return '<textarea class="input" id="' + id + '">' + esc(v || '') + '</textarea>';
-    if (f[2] === 'bool') return '<select class="input" id="' + id + '"><option value="true"' + (v !== false ? ' selected' : '') + '>Yes</option><option value="false"' + (v === false ? ' selected' : '') + '>No</option></select>';
-    if (f[2] === 'kind') return '<select class="input" id="' + id + '">' + ['activity', 'pickup', 'car', 'course'].map(function (k) { return '<option' + (v === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>';
-    if (f[2] === 'unit') return '<select class="input" id="' + id + '">' + [['once', 'Once'], ['day', 'Per day'], ['week', 'Per week']].map(function (k) { return '<option value="' + k[0] + '"' + (v === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select>';
-    if (f[2] === 'campus') return '<select class="input" id="' + id + '"><option value="">All campuses</option>' + ['Capital', 'Encanto', 'Tarlac'].map(function (k) { return '<option' + (String(v || '').toUpperCase() === k.toUpperCase() ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>';
-    if (f[2] === 'datetime') { var local = v ? new Date(new Date(v).getTime() + 8 * 3600e3).toISOString().slice(0, 16) : ''; return '<input class="input" type="datetime-local" id="' + id + '" value="' + local + '"><span class="hint">Philippine time</span>'; }
+    if (f[2] === 'bool') return '<select class="input" id="' + id + '"><option value="true"' + (v !== false ? ' selected' : '') + '>' + esc(t('yes')) + '</option><option value="false"' + (v === false ? ' selected' : '') + '>' + esc(t('no')) + '</option></select>';
+    if (f[2] === 'kind') return '<select class="input" id="' + id + '">' + ['activity', 'pickup', 'car', 'course'].map(function (k) { return '<option value="' + k + '"' + (v === k ? ' selected' : '') + '>' + esc(kindName(k)) + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'unit') return '<select class="input" id="' + id + '">' + [['once', t('once')], ['day', t('perDay')], ['week', t('perWeek')]].map(function (k) { return '<option value="' + k[0] + '"' + (v === k[0] ? ' selected' : '') + '>' + esc(k[1]) + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'campus') return '<select class="input" id="' + id + '"><option value="">' + esc(t('allCampuses')) + '</option>' + ['Capital', 'Encanto', 'Tarlac'].map(function (k) { return '<option' + (String(v || '').toUpperCase() === k.toUpperCase() ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select>';
+    if (f[2] === 'datetime') { var local = v ? new Date(new Date(v).getTime() + 8 * 3600e3).toISOString().slice(0, 16) : ''; return '<input class="input" type="datetime-local" id="' + id + '" value="' + local + '"><span class="hint">' + esc(t('phTime')) + '</span>'; }
     return '<input class="input" id="' + id + '" type="' + (f[2] === 'number' ? 'number' : 'text') + '" value="' + esc(v == null ? '' : v) + '"' + (f[2] === 'number' ? ' step="any" min="0"' : '') + '>';
   }
   function showCrud(name) {
     var c = CRUD[name];
-    frame('<p class="small muted">' + esc(c.hint) + '</p><div class="row" style="margin-bottom:10px"><button class="btn small" data-add="' + name + '">+ Add</button></div><div id="crudForm"></div><div class="card"><div class="list" id="crudList"><div class="muted">Loading…</div></div></div>');
+    frame('<p class="small muted">' + esc(t(c.hint)) + '</p><div class="row" style="margin-bottom:10px"><button class="btn small" data-add="' + name + '">' + esc(t('add')) + '</button></div><div id="crudForm"></div><div class="card"><div class="list" id="crudList"><div class="muted">' + esc(t('loading')) + '</div></div></div>');
     loadCrud(name);
   }
   var crudRows = [];
@@ -185,16 +463,16 @@
     api('GET', '/api/campus-admin/' + name).then(function (d) {
       crudRows = d.rows;
       document.getElementById('crudList').innerHTML = d.rows.length ? d.rows.map(function (r) {
-        return '<div class="li"><span>' + CRUD[name].line(r) + '</span><span class="v"><button class="btn ghost small" data-edit="' + r.id + '">Edit</button></span></div>';
-      }).join('') : '<div class="empty">Nothing yet.</div>';
+        return '<div class="li"><span>' + CRUD[name].line(r) + '</span><span class="v"><button class="btn ghost small" data-edit="' + r.id + '">' + esc(t('edit')) + '</button></span></div>';
+      }).join('') : '<div class="empty">' + esc(t('nothing')) + '</div>';
     }).catch(function (e) { flash(e.message); });
   }
   function crudForm(name, row) {
     editing = { name: name, id: row ? row.id : null };
     var c = CRUD[name];
-    document.getElementById('crudForm').innerHTML = '<form class="card stack" id="crudSave" style="margin-bottom:12px"><b>' + (row ? 'Edit' : 'Add') + '</b><div class="formgrid">' +
-      c.fields.map(function (f) { return '<div class="field"' + (f[2] === 'textarea' ? ' style="grid-column:1/-1"' : '') + '><label for="c_' + f[0] + '">' + esc(f[1]) + (f[3] ? ' *' : '') + '</label>' + input(f, row ? row[f[0]] : (f[0] === 'active' ? true : f[0] === 'fee_unit' ? 'once' : undefined)) + '</div>'; }).join('') +
-      '</div><div class="row"><button class="btn small" type="submit">Save</button><button class="btn ghost small" type="button" data-cancelform>Cancel</button>' + (row ? '<button class="btn danger small" type="button" data-delete="' + row.id + '" style="margin-left:auto">Delete</button>' : '') + '</div></form>';
+    document.getElementById('crudForm').innerHTML = '<form class="card stack" id="crudSave" style="margin-bottom:12px"><b>' + esc(row ? t('editTitle') : t('addTitle')) + '</b><div class="formgrid">' +
+      c.fields.map(function (f) { return '<div class="field"' + (f[2] === 'textarea' ? ' style="grid-column:1/-1"' : '') + '><label for="c_' + f[0] + '">' + esc(t(f[1])) + (f[3] ? ' *' : '') + '</label>' + input(f, row ? row[f[0]] : (f[0] === 'active' ? true : f[0] === 'fee_unit' ? 'once' : undefined)) + '</div>'; }).join('') +
+      '</div><div class="row"><button class="btn small" type="submit">' + esc(t('save')) + '</button><button class="btn ghost small" type="button" data-cancelform>' + esc(t('cancel')) + '</button>' + (row ? '<button class="btn danger small" type="button" data-delete="' + row.id + '" style="margin-left:auto">' + esc(t('del')) + '</button>' : '') + '</div></form>';
     document.getElementById('crudForm').scrollIntoView({ block: 'nearest' });
   }
   function crudValues(name) {
@@ -212,10 +490,10 @@
 
   // ---------- scores ----------
   function showScores() {
-    frame('<div class="card stack"><b>Import mock test scores</b><p class="small muted" style="margin:0">Paste rows from Excel or a CSV. First line = column names. Columns: studentId, test (IELTS or TOEFL), date (YYYY-MM-DD), listening, reading, writing, speaking, overall, comment. A row with the same student, test and date replaces the old one.</p>' +
+    frame('<div class="card stack"><b>' + esc(t('importTitle')) + '</b><p class="small muted" style="margin:0">' + esc(t('importHelp')) + '</p>' +
       '<pre class="sample">studentId,test,date,listening,reading,writing,speaking,overall,comment\nP510M5TYS,IELTS,2026-11-14,6.5,7,6,6.5,6.5,Good progress in reading</pre>' +
-      '<textarea class="input" id="csv" style="min-height:160px;font-family:var(--mono);font-size:12px" placeholder="Paste here"></textarea><div class="row"><button class="btn small" id="previewCsv">Check rows</button><button class="btn small" id="importCsv" disabled>Import</button><span class="count" id="csvInfo"></span></div></div>' +
-      '<div class="card" style="margin-top:12px"><form id="scoreFind" class="filters" style="margin:0 0 8px"><input class="input" id="scoreSid" placeholder="Student ID (empty = latest 300)"><button class="btn small" type="submit">Show scores</button></form><div class="scroll" id="scoreList"></div></div>');
+      '<textarea class="input" id="csv" style="min-height:160px;font-family:var(--mono);font-size:12px" placeholder="' + esc(t('pastePh')) + '"></textarea><div class="row"><button class="btn small" id="previewCsv">' + esc(t('checkRows')) + '</button><button class="btn small" id="importCsv" disabled>' + esc(t('importBtn')) + '</button><span class="count" id="csvInfo"></span></div></div>' +
+      '<div class="card" style="margin-top:12px"><form id="scoreFind" class="filters" style="margin:0 0 8px"><input class="input" id="scoreSid" placeholder="' + esc(t('scoreSidPh')) + '"><button class="btn small" type="submit">' + esc(t('showScores')) + '</button></form><div class="scroll" id="scoreList"></div></div>');
   }
   var csvRows = [];
   function parseCsv(text) {
@@ -231,9 +509,9 @@
     });
   }
   function scoreTable(rows) {
-    return rows.length ? '<table class="tbl"><thead><tr><th>Student ID</th><th>Test</th><th>Date</th><th>L</th><th>R</th><th>W</th><th>S</th><th>Overall</th><th>Comment</th></tr></thead><tbody>' + rows.map(function (r) {
+    return rows.length ? '<table class="tbl"><thead><tr><th>' + esc(t('thStudentId')) + '</th><th>' + esc(t('thTest')) + '</th><th>' + esc(t('thDate')) + '</th><th>L</th><th>R</th><th>W</th><th>S</th><th>' + esc(t('thOverall')) + '</th><th>' + esc(t('thComment')) + '</th></tr></thead><tbody>' + rows.map(function (r) {
       return '<tr><td>' + esc(r.studentid || r.studentId) + '</td><td>' + esc(r.test) + '</td><td>' + esc(r.test_date || r.date) + '</td><td>' + esc(r.listening) + '</td><td>' + esc(r.reading) + '</td><td>' + esc(r.writing) + '</td><td>' + esc(r.speaking) + '</td><td><b>' + esc(r.overall) + '</b></td><td>' + esc(r.comment || '') + '</td></tr>';
-    }).join('') + '</tbody></table>' : '<div class="empty">No scores.</div>';
+    }).join('') + '</tbody></table>' : '<div class="empty">' + esc(t('noScores')) + '</div>';
   }
 
   function show() {
@@ -250,8 +528,8 @@
     var id = e.target.id;
     if (id === 'loginForm') {
       api('POST', '/api/auth/login', { loginId: document.getElementById('lid').value.trim() }).then(function (d) {
-        if (!d.manager) throw new Error('Unknown staff ID.');
-        if (!d.access || !d.access.office) throw new Error('This account cannot use the office program.');
+        if (!d.manager) throw new Error(t('unknownStaff'));
+        if (!d.access || !d.access.office) throw new Error(t('noOffice'));
         saveSession({ token: d.token, loginId: d.manager.login_id, name: d.manager.name, position: d.manager.position, campus: d.manager.campus });
         return start();
       }).catch(function (err) { renderLogin(err.message); });
@@ -260,13 +538,20 @@
     if (id === 'crudSave') {
       var body = crudValues(editing.name);
       var p = editing.id ? api('PATCH', '/api/campus-admin/' + editing.name + '/' + editing.id, body) : api('POST', '/api/campus-admin/' + editing.name, body);
-      p.then(function () { flash('Saved.', true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
+      p.then(function () { flash(t('saved'), true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
     }
     if (id === 'scoreFind') {
       api('GET', '/api/campus-admin/scores?studentId=' + encodeURIComponent(document.getElementById('scoreSid').value.trim())).then(function (d) { document.getElementById('scoreList').innerHTML = scoreTable(d.scores); }).catch(function (err) { flash(err.message); });
     }
   });
   document.addEventListener('change', function (e) {
+    if (e.target.id === 'langSel') {
+      setLang(e.target.value);
+      if (!session) return renderLogin(loginMsg);
+      // keep what the staff typed in the request search box
+      var fs = document.getElementById('fSearch'); if (fs) state.search = fs.value.trim();
+      return show();
+    }
     if (e.target.id === 'fStatus') { state.status = e.target.value; loadRequests(); }
     if (e.target.id === 'fType') { state.type = e.target.value; loadRequests(); }
   });
@@ -279,39 +564,39 @@
     if (b.hasAttribute('data-decide')) {
       var rid = b.getAttribute('data-decide'), st = b.getAttribute('data-status');
       var note = (document.getElementById('note' + rid) || {}).value || '';
-      if (st === 'rejected' && !note.trim()) return flash('Write the reason for the student before rejecting.');
+      if (st === 'rejected' && !note.trim()) return flash(t('rejectNeedsNote'));
       b.disabled = true;
       return api('POST', '/api/campus-admin/requests/' + rid, { status: st, note: note }).then(function (d) {
-        flash('Request #' + rid + ' → ' + d.request.status + (d.request.charged && st === 'approved' ? ' (charged ' + peso(d.request.fee) + ')' : '') + '.', true); loadRequests();
+        flash(t('decided')(rid, statusName(d.request.status), d.request.charged && st === 'approved' ? peso(d.request.fee) : ''), true); loadRequests();
       }).catch(function (err) { b.disabled = false; flash(err.message); });
     }
     if (b.hasAttribute('data-code')) {
       var pid = b.getAttribute('data-code');
       b.disabled = true;
       return api('POST', '/api/campus-admin/students/' + pid + '/activation', {}).then(function (d) {
-        document.getElementById('code' + pid).innerHTML = '<div style="margin-top:8px"><span class="codebox">' + esc(d.code) + '</span><div class="small muted">Give this to ' + esc(d.name) + ' (' + esc(d.studentId) + '). Valid until ' + esc(d.expires) + '. In the app: First time here → Use an office code.</div></div>';
+        document.getElementById('code' + pid).innerHTML = '<div style="margin-top:8px"><span class="codebox">' + esc(d.code) + '</span><div class="small muted">' + esc(t('codeGiven')(d.name, d.studentId, d.expires)) + '</div></div>';
       }).catch(function (err) { b.disabled = false; flash(err.message); });
     }
     if (b.hasAttribute('data-unfreeze')) {
-      return api('POST', '/api/campus-admin/students/' + b.getAttribute('data-unfreeze') + '/unfreeze', {}).then(function () { flash('Card unfrozen and sign-in unlocked.', true); searchStudents(document.getElementById('stuSearch').value.trim()); }).catch(function (err) { flash(err.message); });
+      return api('POST', '/api/campus-admin/students/' + b.getAttribute('data-unfreeze') + '/unfreeze', {}).then(function () { flash(t('unfrozen'), true); searchStudents(document.getElementById('stuSearch').value.trim()); }).catch(function (err) { flash(err.message); });
     }
     if (b.hasAttribute('data-add')) return crudForm(b.getAttribute('data-add'), null);
     if (b.hasAttribute('data-edit')) { var row = crudRows.filter(function (r) { return String(r.id) === b.getAttribute('data-edit'); })[0]; return crudForm(tab, row); }
     if (b.hasAttribute('data-cancelform')) { document.getElementById('crudForm').innerHTML = ''; return; }
     if (b.hasAttribute('data-delete')) {
-      if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = 'Click again to delete'; return; }
-      return api('DELETE', '/api/campus-admin/' + editing.name + '/' + b.getAttribute('data-delete')).then(function () { flash('Deleted.', true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
+      if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('delSure'); return; }
+      return api('DELETE', '/api/campus-admin/' + editing.name + '/' + b.getAttribute('data-delete')).then(function () { flash(t('deleted'), true); document.getElementById('crudForm').innerHTML = ''; loadCrud(editing.name); }).catch(function (err) { flash(err.message); });
     }
     if (b.id === 'previewCsv') {
       csvRows = parseCsv(document.getElementById('csv').value);
-      document.getElementById('csvInfo').textContent = csvRows.length ? csvRows.length + ' rows ready. Check the table below, then Import.' : 'No rows found. The first line must be the column names.';
+      document.getElementById('csvInfo').textContent = csvRows.length ? t('rowsReady')(csvRows.length) : t('noRows');
       document.getElementById('importCsv').disabled = !csvRows.length;
       document.getElementById('scoreList').innerHTML = scoreTable(csvRows);
     }
     if (b.id === 'importCsv') {
       b.disabled = true;
       return api('POST', '/api/campus-admin/scores', { rows: csvRows }).then(function (d) {
-        flash('Imported ' + d.saved + ' rows.' + (d.unknownStudentIds.length ? ' Not found in e-money (check the ID): ' + d.unknownStudentIds.join(', ') : ''), !d.unknownStudentIds.length);
+        flash(t('imported')(d.saved) + (d.unknownStudentIds.length ? ' ' + t('notFoundIds') + d.unknownStudentIds.join(', ') : ''), !d.unknownStudentIds.length);
         document.getElementById('csv').value = ''; csvRows = [];
       }).catch(function (err) { b.disabled = false; flash(err.message); });
     }

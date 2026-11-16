@@ -29,7 +29,7 @@ const STORES = {
     key: "cafe",
     navLabel: "SMEAG Cafe",
     eyebrow: "SMEAG CAFE",
-    title: "카페 판매",
+    title: "Cafe Sales",
     campuses: ["Capital", "Encanto", "Tarlac"],
     defaultCampus: "Capital",
   },
@@ -37,7 +37,7 @@ const STORES = {
     key: "mart",
     navLabel: "PUSAN Mart",
     eyebrow: "PUSAN MART",
-    title: "마트 판매",
+    title: "Mart Sales",
     campuses: ["Pusan Mart"],
     defaultCampus: "Pusan Mart",
   },
@@ -46,9 +46,9 @@ const STORES = {
 const NAV_LABELS = {
   cafe: STORES.cafe.navLabel,
   mart: STORES.mart.navLabel,
-  buyer: "구매자",
-  "pusan-pay": "부산페이",
-  settings: "설정",
+  buyer: "Buyer",
+  "pusan-pay": "Pusan Pay",
+  settings: "Settings",
 };
 
 // Material icon paths (same icon family as the Android app's bottom NavigationBar).
@@ -61,18 +61,18 @@ const NAV_ICONS = {
 };
 
 const DISCOUNTS = [
-  { label: "No Discount", text: "할인 없음", rate: 0 },
+  { label: "No Discount", text: "No Discount", rate: 0 },
   { label: "Teacher 10%", text: "Teacher 10%", rate: 0.1 },
   { label: "Manager 15%", text: "Manager 15%", rate: 0.15 },
 ];
 
-const ALL = "전체";
+const ALL = "All";
 const CHARGE_PRESETS = [100, 500, 1000, 2000];
 const READER_FORMAT_TEXT = {
-  auto: "자동 (10자리 숫자는 10진수·역순, 그 외 HEX)",
-  hex: "HEX 그대로",
-  "dec-reversed": "10진수 (바이트 역순)",
-  dec: "10진수 (바이트 순서 그대로)",
+  auto: "Auto (10-digit number = decimal, reversed; otherwise HEX)",
+  hex: "HEX as is",
+  "dec-reversed": "Decimal (bytes reversed)",
+  dec: "Decimal (byte order as is)",
 };
 
 function newStoreState(store) {
@@ -101,7 +101,7 @@ const state = {
   demoMode: false,
   stores: { cafe: newStoreState(STORES.cafe), mart: newStoreState(STORES.mart) },
   nfcMode: "idle",
-  status: "로그인하거나 데모 화면을 여세요.",
+  status: "Log in or open the demo.",
   buyer: null,
   pusanAmount: "",
   manualUid: "",
@@ -124,7 +124,7 @@ listenForNfc(async ({ uid, source }) => {
   const mode = state.nfcMode === "idle" ? idleLookupStore() : state.nfcMode;
   if (!mode) return;
   state.busy = true;
-  state.status = `NFC 수신: ${source} / ${uid}`;
+  state.status = `NFC read: ${source} / ${uid}`;
   render();
 
   try {
@@ -133,7 +133,7 @@ listenForNfc(async ({ uid, source }) => {
     else if (mode === "cafe-charge") await handleCharge(uid);
     else if (STORES[mode]) await handleCheckout(mode, uid);
   } catch (error) {
-    state.status = error instanceof Error ? error.message : "NFC 작업에 실패했습니다.";
+    state.status = error instanceof Error ? error.message : "NFC failed.";
   } finally {
     state.busy = false;
     state.nfcMode = "idle";
@@ -147,12 +147,12 @@ enableKeyboardReader(() => !state.busy && (state.nfcMode !== "idle" || !!idleLoo
 
 window.addEventListener("nfc-error", (event) => {
   if (state.nfcMode === "idle") return;
-  state.status = event.detail?.message || "카드를 읽지 못했습니다.";
+  state.status = event.detail?.message || "Could not read the card.";
   render();
 });
 
 setUnauthorizedHandler((message) => {
-  logout(message || "로그인이 만료되었습니다. 다시 로그인하세요.");
+  logout(message || "Your login has expired. Please log in again.");
 });
 
 window.addEventListener("hashchange", () => {
@@ -222,7 +222,7 @@ async function loadProducts(storeKey, { quiet = false } = {}) {
   const requestId = (store.requestId || 0) + 1;
   store.requestId = requestId;
   if (!quiet) {
-    state.status = "상품을 불러오는 중입니다...";
+    state.status = "Loading products...";
     render();
   }
   try {
@@ -235,10 +235,10 @@ async function loadProducts(storeKey, { quiet = false } = {}) {
     store.cart = store.cart
       .map((line) => ({ ...line, product: store.products.find((p) => p.id === line.product.id) }))
       .filter((line) => line.product);
-    if (!quiet) state.status = `${STORES[storeKey].navLabel} · ${store.campus}: 상품 ${store.products.length}개`;
+    if (!quiet) state.status = `${STORES[storeKey].navLabel} · ${store.campus}: ${store.products.length} products`;
   } catch (error) {
     if (store.requestId !== requestId) return;
-    state.status = `상품 조회 실패: ${error instanceof Error ? error.message : error}`;
+    state.status = `Could not load products: ${error instanceof Error ? error.message : error}`;
   }
   render();
 }
@@ -297,7 +297,7 @@ async function handleCheckout(storeKey, uid) {
   };
   store.cart = [];
   store.lastLookup = null; // its balance is stale after a payment
-  state.status = `결제 완료: ${checkout.buyerName || uid} · ${money(checkout.finalTotal)} · 잔액 ${money(checkout.remainingBalance)}`;
+  state.status = `Paid: ${checkout.buyerName || uid} · ${money(checkout.finalTotal)} · Balance ${money(checkout.remainingBalance)}`;
   // Refresh stock without replacing the payment result message.
   if (!state.demoMode) await loadProducts(storeKey, { quiet: true });
 }
@@ -307,37 +307,37 @@ async function handleLookup(storeKey, uid) {
   store.lastLookup = null;
   if (state.demoMode) {
     store.lastLookup = { name: "Demo Buyer", uid, campus: store.campus, totalMoney: 1000 };
-    state.status = `조회: Demo Buyer · 잔액 ${money(1000)}`;
+    state.status = `Found: Demo Buyer · Balance ${money(1000)}`;
     return;
   }
   const person = (await apiPersonByNfc(uid)).person;
   if (!person) {
-    state.status = `등록되지 않은 카드입니다. (${uid})`;
+    state.status = `This card is not registered. (${uid})`;
     return;
   }
   store.lastLookup = person;
-  state.status = `조회: ${person.name || uid} · 잔액 ${money(person.totalMoney)}`;
+  state.status = `Found: ${person.name || uid} · Balance ${money(person.totalMoney)}`;
 }
 
 async function handleBuyer(uid) {
   if (state.demoMode) {
     state.buyer = { name: "Demo Buyer", uid, campus: "Pusan Mart", totalMoney: 1000 };
-    state.status = "데모 구매자 정보입니다.";
+    state.status = "Demo buyer info.";
     return;
   }
   const result = await apiPersonByNfc(uid);
   state.buyer = result.person;
-  state.status = result.person ? "구매자 정보를 불러왔습니다." : `등록되지 않은 카드입니다. (${uid})`;
+  state.status = result.person ? "Buyer info loaded." : `This card is not registered. (${uid})`;
 }
 
 async function handlePusanPay(uid) {
   const totalAmount = Number(state.pusanAmount);
-  if (!(totalAmount > 0)) throw new Error("먼저 유효한 금액을 입력하세요.");
+  if (!(totalAmount > 0)) throw new Error("Enter a valid amount first.");
   if (state.demoMode) {
-    state.status = `부산페이 저장(데모): ${uid} / ${money(totalAmount)}`;
+    state.status = `Pusan Pay saved (demo): ${uid} / ${money(totalAmount)}`;
   } else {
     const result = await apiPusanPayment({ uid, totalAmount });
-    state.status = `부산페이 저장 완료: ${result.payment.name || uid} / ${money(result.payment.allPayments)}`;
+    state.status = `Pusan Pay saved: ${result.payment.name || uid} / ${money(result.payment.allPayments)}`;
   }
   state.pusanAmount = "";
 }
@@ -345,7 +345,7 @@ async function handlePusanPay(uid) {
 async function handleCharge(uid) {
   const store = state.stores.cafe;
   const amount = Number(store.chargeAmount);
-  if (!(amount > 0)) throw new Error("먼저 충전 금액을 입력하세요.");
+  if (!(amount > 0)) throw new Error("Enter the recharge amount first.");
   let charge;
   if (state.demoMode) {
     charge = { uid, buyerName: "Demo Buyer", amount, beforeAmount: 1000, totalMoney: 1000 + amount };
@@ -358,7 +358,7 @@ async function handleCharge(uid) {
   }
   store.lastCharge = { ...charge, campus: store.campus, at: new Date() };
   store.chargeAmount = "";
-  state.status = `충전 완료: ${charge.buyerName || uid} · +${money(charge.amount)} · 잔액 ${money(charge.totalMoney)}`;
+  state.status = `Recharged: ${charge.buyerName || uid} · +${money(charge.amount)} · Balance ${money(charge.totalMoney)}`;
 }
 
 // ---------- views ----------
@@ -413,10 +413,10 @@ function loginView() {
   return `
     <form class="panel login" data-form="login">
       <p class="eyebrow">SMEAG CAFE · PUSAN MART</p>
-      <h1>POS 로그인</h1>
-      <label>매니저 ID<input name="loginId" autocomplete="username" required /></label>
-      <button class="primary" type="submit" ${state.busy ? "disabled" : ""}>로그인</button>
-      <button class="secondary wide" type="button" data-demo-login>데모 화면 보기</button>
+      <h1>POS Login</h1>
+      <label>Manager ID<input name="loginId" autocomplete="username" required /></label>
+      <button class="primary" type="submit" ${state.busy ? "disabled" : ""}>Log in</button>
+      <button class="secondary wide" type="button" data-demo-login>Open demo</button>
     </form>
   `;
 }
@@ -448,14 +448,14 @@ function salesView(storeKey) {
         <h1>${def.title}</h1>
       </div>
       <div class="filters">
-        ${campusesFor(storeKey).length > 1 ? selectField("캠퍼스", "campus", campusesFor(storeKey), store.campus) : `<span class="campus-fixed">${escapeHtml(store.campus)}</span>`}
-        ${selectField("분류", "category", categories, store.category)}
-        <label>검색<input data-search placeholder="상품명" value="${escapeHtml(store.search)}" /></label>
+        ${campusesFor(storeKey).length > 1 ? selectField("Campus", "campus", campusesFor(storeKey), store.campus) : `<span class="campus-fixed">${escapeHtml(store.campus)}</span>`}
+        ${selectField("Category", "category", categories, store.category)}
+        <label>Search<input data-search placeholder="Product name" value="${escapeHtml(store.search)}" /></label>
       </div>
     </section>
     <section class="grid-layout">
       <section class="products">
-        ${!store.loaded ? emptyProducts("상품을 불러오는 중이거나 API에 연결되지 않았습니다.") : visible.length ? visible.map((p) => productCard(storeKey, p)).join("") : emptyProducts("조건에 맞는 상품이 없습니다.")}
+        ${!store.loaded ? emptyProducts("Loading products, or the API is not connected.") : visible.length ? visible.map((p) => productCard(storeKey, p)).join("") : emptyProducts("No matching products.")}
       </section>
       <aside class="cart panel" id="cart">
         ${storeKey === "cafe" && state.access?.canCharge ? panelToggle(store) : ""}
@@ -463,8 +463,8 @@ function salesView(storeKey) {
       </aside>
     </section>
     <div class="cart-bar">
-      <span>${itemCount}개 · <strong>${money(cartTotal(store))}</strong></span>
-      <button class="primary" data-scroll-cart ${itemCount ? "" : "disabled"}>장바구니 · 결제</button>
+      <span>${itemCount} items · <strong>${money(cartTotal(store))}</strong></span>
+      <button class="primary" data-scroll-cart ${itemCount ? "" : "disabled"}>Cart · Pay</button>
     </div>
   `;
 }
@@ -479,8 +479,8 @@ function campusesFor(storeKey) {
 function panelToggle(store) {
   return `
     <div class="segmented">
-      <button class="${store.panel === "sale" ? "selected" : ""}" data-panel="sale" ${state.nfcMode !== "idle" ? "disabled" : ""}>결제</button>
-      <button class="${store.panel === "charge" ? "selected" : ""}" data-panel="charge" ${state.nfcMode !== "idle" ? "disabled" : ""}>이머니 충전</button>
+      <button class="${store.panel === "sale" ? "selected" : ""}" data-panel="sale" ${state.nfcMode !== "idle" ? "disabled" : ""}>Pay</button>
+      <button class="${store.panel === "charge" ? "selected" : ""}" data-panel="charge" ${state.nfcMode !== "idle" ? "disabled" : ""}>E-money Recharge</button>
     </div>
   `;
 }
@@ -488,15 +488,15 @@ function panelToggle(store) {
 function chargePanel(store) {
   const waiting = state.nfcMode === "cafe-charge";
   return `
-    <h2>이머니 충전 · ${escapeHtml(store.campus)}</h2>
-    <label>충전 금액<input data-charge-amount inputmode="decimal" placeholder="0.00" value="${escapeHtml(store.chargeAmount)}" ${waiting ? "disabled" : ""} /></label>
+    <h2>E-money Recharge · ${escapeHtml(store.campus)}</h2>
+    <label>Recharge Amount<input data-charge-amount inputmode="decimal" placeholder="0.00" value="${escapeHtml(store.chargeAmount)}" ${waiting ? "disabled" : ""} /></label>
     <div class="discounts">
       ${CHARGE_PRESETS.map((v) => `<button data-charge-preset="${v}" ${waiting ? "disabled" : ""}>+${v}</button>`).join("")}
     </div>
-    <div class="total"><span>충전액</span><strong>${money(store.chargeAmount)}</strong></div>
+    <div class="total"><span>Recharge</span><strong>${money(store.chargeAmount)}</strong></div>
     ${waiting
-      ? `<button class="secondary wide" data-cancel-nfc>NFC 대기 취소</button>`
-      : `<button class="primary" data-nfc="cafe-charge" ${Number(store.chargeAmount) > 0 && !state.busy ? "" : "disabled"}>카드 태그로 충전</button>`}
+      ? `<button class="secondary wide" data-cancel-nfc>Cancel NFC</button>`
+      : `<button class="primary" data-nfc="cafe-charge" ${Number(store.chargeAmount) > 0 && !state.busy ? "" : "disabled"}>Tap card to recharge</button>`}
     ${nfcHint()}
     ${manualNfcPanel("cafe-charge", !(Number(store.chargeAmount) > 0))}
     ${store.lastCharge ? chargeCard(store.lastCharge) : ""}
@@ -506,24 +506,24 @@ function chargePanel(store) {
 function chargeCard(c) {
   return `
     <article class="receipt">
-      <h3>최근 충전</h3>
+      <h3>Last Recharge</h3>
       <p>${escapeHtml(c.buyerName || c.uid)} · ${escapeHtml(c.campus)} · ${c.at.toLocaleString()}</p>
-      <p>충전 <strong>+${money(c.amount)}</strong> · ${money(c.beforeAmount)} → <strong>${money(c.totalMoney)}</strong></p>
+      <p>Recharge <strong>+${money(c.amount)}</strong> · ${money(c.beforeAmount)} → <strong>${money(c.totalMoney)}</strong></p>
     </article>
   `;
 }
 
 function salePanel(storeKey, store, waiting) {
   return `
-        <h2>장바구니 · ${escapeHtml(store.campus)}</h2>
-        ${store.cart.length ? store.cart.map(cartRow).join("") : `<p class="muted">상품을 선택하세요.</p>`}
+        <h2>Cart · ${escapeHtml(store.campus)}</h2>
+        ${store.cart.length ? store.cart.map(cartRow).join("") : `<p class="muted">Select products.</p>`}
         <div class="discounts">
           ${DISCOUNTS.map((d) => `<button class="${store.discountLabel === d.label ? "selected" : ""}" data-discount="${d.rate}" data-label="${d.label}">${d.text}</button>`).join("")}
         </div>
-        <div class="total"><span>합계</span><strong>${money(cartTotal(store))}</strong></div>
+        <div class="total"><span>Total</span><strong>${money(cartTotal(store))}</strong></div>
         ${waiting
-          ? `<button class="secondary wide" data-cancel-nfc>NFC 대기 취소</button>`
-          : `<button class="primary" data-nfc="${storeKey}" ${state.busy ? "disabled" : ""}>${!store.cart.length ? "카드 태그로 잔액 조회" : storeKey === "mart" ? "폰 NFC로 이머니 결제" : "카드 태그로 결제"}</button>`}
+          ? `<button class="secondary wide" data-cancel-nfc>Cancel NFC</button>`
+          : `<button class="primary" data-nfc="${storeKey}" ${state.busy ? "disabled" : ""}>${!store.cart.length ? "Tap card to check balance" : storeKey === "mart" ? "Pay with phone NFC" : "Tap card to pay"}</button>`}
         ${nfcHint()}
         ${manualNfcPanel(storeKey)}
         ${store.lastLookup ? buyerCard(store.lastLookup) : ""}
@@ -534,12 +534,12 @@ function salePanel(storeKey, store, waiting) {
 // Which tap inputs this device offers: phone NFC (native bridge / Web NFC) and keyboard readers.
 function nfcHint() {
   const phone = {
-    "android-native": "폰 NFC 사용 가능 (앱)",
-    "web-nfc": "폰 NFC 사용 가능 (Chrome)",
-    "web-nfc-insecure": "폰 NFC: HTTPS 주소에서만 동작",
-    none: "폰 NFC 미지원 브라우저",
+    "android-native": "Phone NFC available (app)",
+    "web-nfc": "Phone NFC available (Chrome)",
+    "web-nfc-insecure": "Phone NFC: HTTPS only",
+    none: "Browser has no phone NFC",
   }[phoneNfcSupport()];
-  return `<p class="muted nfc-hint">${escapeHtml(phone)} · USB/블루투스 리더기 사용 가능</p>`;
+  return `<p class="muted nfc-hint">${escapeHtml(phone)} · USB/Bluetooth reader available</p>`;
 }
 
 function categoryKey(value) {
@@ -565,7 +565,7 @@ function productCard(storeKey, product) {
       <span class="product-img">${initial(product.sMenu)}${inCart ? `<span class="badge">${inCart}</span>` : ""}</span>
       <strong>${escapeHtml(product.sMenu || "-")}</strong>
       <small>${escapeHtml(product.mMenu || "-")}</small>
-      <span class="product-meta">${money(product.payment)} · ${soldOut ? "품절" : `재고 ${product.stock}${low ? " (부족)" : ""}`}</span>
+      <span class="product-meta">${money(product.payment)} · ${soldOut ? "Sold out" : `Stock ${product.stock}${low ? " (low)" : ""}`}</span>
     </button>
   `;
 }
@@ -586,10 +586,10 @@ function cartRow(line) {
 function receiptCard(r) {
   return `
     <article class="receipt">
-      <h3>최근 결제</h3>
+      <h3>Last Payment</h3>
       <p>${escapeHtml(r.buyerName || r.uid)} · ${escapeHtml(r.campus)} · ${r.at.toLocaleString()}</p>
       ${r.items.map((i) => `<p>${escapeHtml(i.name)} × ${i.quantity}</p>`).join("")}
-      <p>${escapeHtml(r.discountLabel)} · 결제 <strong>${money(r.finalTotal)}</strong> · 잔액 ${money(r.remainingBalance)}</p>
+      <p>${escapeHtml(r.discountLabel)} · Paid <strong>${money(r.finalTotal)}</strong> · Balance ${money(r.remainingBalance)}</p>
     </article>
   `;
 }
@@ -598,10 +598,10 @@ function buyerView() {
   return `
     <section class="panel">
       <p class="eyebrow">BUYER INFO</p>
-      <h1>구매자 조회</h1>
-      ${state.nfcMode === "buyer" ? `<button class="secondary wide" data-cancel-nfc>NFC 대기 취소</button>` : `<button class="primary" data-nfc="buyer">NFC 태그로 조회</button>`}
+      <h1>Buyer Info</h1>
+      ${state.nfcMode === "buyer" ? `<button class="secondary wide" data-cancel-nfc>Cancel NFC</button>` : `<button class="primary" data-nfc="buyer">Tap card to look up</button>`}
       ${manualNfcPanel("buyer")}
-      ${state.buyer ? buyerCard(state.buyer) : `<p class="muted">아직 조회된 구매자가 없습니다.</p>`}
+      ${state.buyer ? buyerCard(state.buyer) : `<p class="muted">No buyer looked up yet.</p>`}
     </section>
   `;
 }
@@ -611,10 +611,10 @@ function buyerCard(person) {
     <article class="buyer-card">
       <h2>${escapeHtml(person.name || "-")}</h2>
       <p>UID ${escapeHtml(person.uid)}</p>
-      ${person.studentId ? `<p>학번 ${escapeHtml(person.studentId)}</p>` : ""}
-      <p>캠퍼스 ${escapeHtml(person.campus || "-")}</p>
-      ${person.endDate ? `<p>기간 ${escapeHtml(person.startDate || "-")} ~ ${escapeHtml(person.endDate)}</p>` : ""}
-      <p>잔액 <strong>${money(person.totalMoney)}</strong></p>
+      ${person.studentId ? `<p>Student ID ${escapeHtml(person.studentId)}</p>` : ""}
+      <p>Campus ${escapeHtml(person.campus || "-")}</p>
+      ${person.endDate ? `<p>Period ${escapeHtml(person.startDate || "-")} ~ ${escapeHtml(person.endDate)}</p>` : ""}
+      <p>Balance <strong>${money(person.totalMoney)}</strong></p>
     </article>
   `;
 }
@@ -623,9 +623,9 @@ function pusanPayView() {
   return `
     <form class="panel" data-form="pusan-pay">
       <p class="eyebrow">PUSAN PAY</p>
-      <h1>부산페이 결제 기록</h1>
-      <label>총 결제 금액<input name="amount" inputmode="decimal" value="${escapeHtml(state.pusanAmount)}" placeholder="0.00" required /></label>
-      ${state.nfcMode === "pusan-pay" ? `<button class="secondary wide" type="button" data-cancel-nfc>NFC 대기 취소</button>` : `<button class="primary" data-nfc="pusan-pay" type="button">NFC 태그로 저장</button>`}
+      <h1>Pusan Pay</h1>
+      <label>Total Amount<input name="amount" inputmode="decimal" value="${escapeHtml(state.pusanAmount)}" placeholder="0.00" required /></label>
+      ${state.nfcMode === "pusan-pay" ? `<button class="secondary wide" type="button" data-cancel-nfc>Cancel NFC</button>` : `<button class="primary" data-nfc="pusan-pay" type="button">Tap card to pay</button>`}
       ${manualNfcPanel("pusan-pay")}
     </form>
   `;
@@ -635,21 +635,21 @@ function settingsView() {
   return `
     <section class="panel">
       <p class="eyebrow">SETTINGS</p>
-      <h1>연결 설정</h1>
-      <p class="muted">로그인: ${escapeHtml(state.manager?.name || state.manager?.login_id || "-")} (${escapeHtml(state.manager?.position || "-")} · ${escapeHtml(state.manager?.campus || "-")})${state.demoMode ? " · 데모 모드" : ""}</p>
-      <p class="muted">사용 가능: ${escapeHtml(accessSummary())}</p>
+      <h1>Settings</h1>
+      <p class="muted">Logged in: ${escapeHtml(state.manager?.name || state.manager?.login_id || "-")} (${escapeHtml(state.manager?.position || "-")} · ${escapeHtml(state.manager?.campus || "-")})${state.demoMode ? " · Demo mode" : ""}</p>
+      <p class="muted">Access: ${escapeHtml(accessSummary())}</p>
       <label>API Base URL<input data-setting="api-base" value="${escapeHtml(getApiBase())}" /></label>
-      <button class="secondary wide" data-save-api>API URL 저장</button>
-      <h2>NFC 리더기</h2>
-      <p class="muted">USB/블루투스 리더기는 키보드 모드로 연결하세요. 카드 UID가 기존 앱과 다르게 읽히면 형식을 바꾸고 구매자 조회 화면에서 확인하세요.</p>
-      <label>리더기 UID 형식
+      <button class="secondary wide" data-save-api>Save API URL</button>
+      <h2>NFC Reader</h2>
+      <p class="muted">Connect a USB/Bluetooth reader in keyboard mode. If a card UID reads differently from the old app, change the format and check it on Buyer Info.</p>
+      <label>Reader UID format
         <select data-reader-format>
           ${READER_FORMATS.map((f) => `<option value="${f}" ${getReaderFormat() === f ? "selected" : ""}>${escapeHtml(READER_FORMAT_TEXT[f])}</option>`).join("")}
         </select>
       </label>
-      <label>변환 미리보기<input data-reader-preview placeholder="리더기 출력값 (예: 2864434397)" /></label>
+      <label>Preview<input data-reader-preview placeholder="Reader output (e.g. 2864434397)" /></label>
       <p class="muted" data-reader-preview-out>&nbsp;</p>
-      <button class="secondary wide" data-logout>로그아웃</button>
+      <button class="secondary wide" data-logout>Log out</button>
     </section>
   `;
 }
@@ -657,8 +657,8 @@ function settingsView() {
 function manualNfcPanel(mode, disabled = false) {
   return `
     <div class="manual-nfc">
-      <input data-manual placeholder="테스트 UID 직접 입력" value="${escapeHtml(state.manualUid)}" />
-      <button class="secondary" type="button" data-manual-send="${mode}" ${disabled || state.busy ? "disabled" : ""}>UID 전송</button>
+      <input data-manual placeholder="Type a test UID" value="${escapeHtml(state.manualUid)}" />
+      <button class="secondary" type="button" data-manual-send="${mode}" ${disabled || state.busy ? "disabled" : ""}>Send UID</button>
     </div>
   `;
 }
@@ -667,16 +667,16 @@ function emptyProducts(message) {
   return `
     <div class="empty-products">
       <p class="muted">${escapeHtml(message)}</p>
-      <button class="secondary wide" data-load-products>상품 다시 불러오기</button>
+      <button class="secondary wide" data-load-products>Reload products</button>
     </div>
   `;
 }
 
 function statusBar() {
   const message = state.busy
-    ? "처리 중..."
+    ? "Processing..."
     : state.nfcMode !== "idle"
-      ? `${state.nfcMode === "cafe-charge" ? "충전할" : ""} 카드를 폰 뒷면이나 리더기에 대주세요...`.trim()
+      ? `Tap the card${state.nfcMode === "cafe-charge" ? " to recharge" : ""} on the back of the phone or the reader...`
       : state.status;
   return `<div class="status ${state.nfcMode !== "idle" || state.busy ? "waiting" : ""}">${escapeHtml(message)}</div>`;
 }
@@ -696,20 +696,20 @@ function bindEvents() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     state.busy = true;
-    state.status = "로그인 중...";
+    state.status = "Logging in...";
     render();
     try {
       const result = await apiLogin(String(form.get("loginId")).trim());
-      if (!result.manager) throw new Error("등록되지 않은 아이디입니다.");
+      if (!result.manager) throw new Error("This ID is not registered.");
       setAuthToken(result.token);
       state.manager = result.manager;
       state.access = result.access;
       state.demoMode = false;
       resetStores();
-      state.status = `${result.manager.name || result.manager.login_id}님 로그인 · ${accessSummary()}`;
+      state.status = `Logged in: ${result.manager.name || result.manager.login_id} · ${accessSummary()}`;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "로그인 실패";
-      state.status = /cannot use the POS/.test(message) ? "이 계정은 POS를 사용할 수 없습니다. (Admin 또는 매장 Manager 계정만 가능)" : message;
+      const message = error instanceof Error ? error.message : "Login failed";
+      state.status = /cannot use the POS/.test(message) ? "This account cannot use the POS. (Admin or store Manager accounts only)" : message;
     } finally {
       state.busy = false;
     }
@@ -724,7 +724,7 @@ function bindEvents() {
       const store = currentStore();
       if (!store) return;
       if (select.dataset.select === "campus") {
-        if (store.cart.length && !confirm("캠퍼스를 바꾸면 장바구니가 비워집니다. 계속할까요?")) {
+        if (store.cart.length && !confirm("Changing the campus empties the cart. Continue?")) {
           render();
           return;
         }
@@ -778,7 +778,7 @@ function bindEvents() {
         // Phone NFC is optional: without it the USB/Bluetooth reader still works.
         await startNfcScan();
       } catch (error) {
-        state.status = `폰 NFC 시작 실패: ${error instanceof Error ? error.message : error} (리더기는 계속 사용 가능)`;
+        state.status = `Phone NFC failed to start: ${error instanceof Error ? error.message : error} (the reader still works)`;
       }
       render();
     };
@@ -787,7 +787,7 @@ function bindEvents() {
   app.querySelector("[data-cancel-nfc]")?.addEventListener("click", () => {
     state.nfcMode = "idle";
     stopNfcScan();
-    state.status = "NFC 대기를 취소했습니다.";
+    state.status = "NFC cancelled.";
     render();
   });
 
@@ -801,7 +801,7 @@ function bindEvents() {
     button.onclick = () => {
       const mode = button.dataset.manualSend;
       if (!state.manualUid.trim()) {
-        state.status = "테스트 UID를 입력하세요.";
+        state.status = "Enter a test UID.";
         render();
         return;
       }
@@ -843,7 +843,7 @@ function bindEvents() {
   app.querySelector("[data-reader-format]")?.addEventListener("change", (event) => {
     setReaderFormat(event.target.value);
     updateReaderPreview();
-    state.status = `리더기 형식: ${READER_FORMAT_TEXT[getReaderFormat()]}`;
+    state.status = `Reader format: ${READER_FORMAT_TEXT[getReaderFormat()]}`;
   });
 
   app.querySelector("[data-reader-preview]")?.addEventListener("input", updateReaderPreview);
@@ -856,12 +856,12 @@ function bindEvents() {
     if (STORES[state.route]) loadProducts(state.route);
   });
 
-  app.querySelector("[data-logout]")?.addEventListener("click", () => logout("로그아웃했습니다."));
+  app.querySelector("[data-logout]")?.addEventListener("click", () => logout("Logged out."));
 
   app.querySelector("[data-save-api]")?.addEventListener("click", () => {
     const input = app.querySelector("[data-setting='api-base']");
     if (input) setApiBase(input.value);
-    state.status = `API URL 저장: ${getApiBase()}`;
+    state.status = `API URL saved: ${getApiBase()}`;
     resetStoresLoaded();
     render();
   });
@@ -879,7 +879,7 @@ function capturePusanAmount() {
   const amountInput = app.querySelector('input[name="amount"]');
   state.pusanAmount = amountInput?.value || "";
   if (!(Number(state.pusanAmount) > 0)) {
-    state.status = "먼저 유효한 금액을 입력하세요.";
+    state.status = "Enter a valid amount first.";
     render();
     return false;
   }
@@ -904,9 +904,9 @@ function accessSummary() {
   const access = state.access;
   if (!access) return "-";
   const parts = [];
-  if (access.stores.includes("cafe")) parts.push(`카페(${access.cafeCampuses.join("/")})${access.canCharge ? " 결제·충전" : " 결제"}`);
-  if (access.stores.includes("mart")) parts.push("부산마트 결제");
-  if (access.canPusanPay) parts.push("부산페이");
+  if (access.stores.includes("cafe")) parts.push(`Cafe (${access.cafeCampuses.join("/")})${access.canCharge ? " pay·recharge" : " pay"}`);
+  if (access.stores.includes("mart")) parts.push("Pusan Mart pay");
+  if (access.canPusanPay) parts.push("Pusan Pay");
   return parts.join(", ");
 }
 
@@ -915,7 +915,7 @@ function enterDemo() {
   state.access = { stores: ["cafe", "mart"], cafeCampuses: [...STORES.cafe.campuses], canCharge: false, canPusanPay: true };
   state.demoMode = true;
   resetStores();
-  state.status = "데모 모드입니다. 실제 DB에는 저장되지 않습니다.";
+  state.status = "Demo mode. Nothing is saved to the real DB.";
   go(normalizeRoute(location.hash.replace("#/", "")));
 }
 
@@ -940,12 +940,12 @@ function addToCart(productId) {
   const existing = store.cart.find((line) => line.product.id === productId);
   const qty = (existing?.quantity || 0) + 1;
   if (Number(product.stock) <= 0) {
-    state.status = "재고가 없습니다";
+    state.status = "Out of stock";
     render();
     return;
   }
   if (qty > Number(product.stock)) {
-    state.status = `재고 부족: ${product.sMenu} (재고 ${product.stock})`;
+    state.status = `Not enough stock: ${product.sMenu} (in stock ${product.stock})`;
     render();
     return;
   }

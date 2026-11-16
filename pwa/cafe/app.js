@@ -265,7 +265,7 @@ function renderProducts() {
   $('productCount').textContent = list.length;
   $('productGrid').innerHTML = list.length ? list.map(function (p) {
     var out = p.stock <= 0;
-    var badge = out ? '<span class="badge out">품절</span>' : '<span class="badge ' + (p.stock <= 10 ? 'low' : '') + '">' + p.stock + '</span>';
+    var badge = out ? '<span class="badge out">Sold out</span>' : '<span class="badge ' + (p.stock <= 10 ? 'low' : '') + '">' + p.stock + '</span>';
     return '<div class="product-card ' + (out ? 'out' : '') + '" data-id="' + p.id + '" title="' + esc(p.category) + ' / ' + esc(p.sub) + '">' +
       badge +
       '<div class="name">' + esc(p.name) + '</div>' +
@@ -327,7 +327,7 @@ function addToCart(id) {
   if (!p) return;
   var line = state.cart.find(function (l) { return l.id === id; });
   var inCart = line ? line.qty : 0;
-  if (p.stock <= 0) { beep('error'); return toast('재고가 없습니다', true); }
+  if (p.stock <= 0) { beep('error'); return toast('Out of stock', true); }
   if (inCart + 1 > p.stock) { beep('error'); return toast('Not enough stock: ' + p.name + ' (in stock: ' + p.stock + ')', true); }
   if (line) line.qty++; else state.cart.push({ id: id, qty: 1 });
   state.error = '';

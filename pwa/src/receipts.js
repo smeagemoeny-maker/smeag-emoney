@@ -15,7 +15,7 @@
     var v = Number(n || 0);
     return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  var DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   function dayLabel(date) {
     var d = String(date || '').slice(0, 10);
     var t = new Date(d + 'T00:00:00Z');
@@ -68,29 +68,29 @@
     var label = store === 'cafe' ? 'CAFE' : store === 'mart' ? 'MART' : 'STORE';
     var time = String(r.date || '').slice(11, 16);
     var who = opts.showBuyer ? (r.name || '') + (r.studentId ? ' · ' + r.studentId : '') : '';
-    var first = r.items.length ? r.items[0].name + (r.items.length > 1 ? ' 외 ' + (r.items.length - 1) + '건' : '') : '결제 금액만 기록됨';
+    var first = r.items.length ? r.items[0].name + (r.items.length > 1 ? ' +' + (r.items.length - 1) + ' more' : '') : 'Amount only';
     var sub = [time, opts.showBuyer ? who : first].filter(Boolean).join(' · ');
     var body;
     if (r.items.length) {
       body = '<table class="pv-items">' + r.items.map(function (i) {
         return '<tr><td>' + esc(i.name) + '</td><td class="q">' + money(i.unitPrice) + ' × ' + i.quantity + '</td><td class="n">' + money(i.amount) + '</td></tr>';
-      }).join('') + '<tr class="pv-sum"><td>합계</td><td class="q">' + (r.itemCount || '') + '개</td><td class="n">₱' + money(r.total) + '</td></tr></table>';
+      }).join('') + '<tr class="pv-sum"><td>Total</td><td class="q">' + (r.itemCount || '') + '</td><td class="n">₱' + money(r.total) + '</td></tr></table>';
     } else {
-      body = '<div class="pv-none">이 매장(Pusan Mart 결제)은 품목 없이 결제 금액만 기록됩니다.</div>';
+      body = '<div class="pv-none">This store (Pusan Mart payment) records only the amount, not the items.</div>';
     }
     var meta = [
-      ['일시', r.date],
-      ['캠퍼스', r.campus],
-      ['매장', r.storeName],
-      opts.showBuyer ? ['구매자', who] : null,
-      r.discount ? ['할인', r.discount] : null,
-      r.balanceBefore != null ? ['잔액', '₱' + money(r.balanceBefore) + ' → ₱' + money(r.balanceAfter)] : null,
-      opts.showBuyer && r.source ? ['단말', r.source] : null
+      ['Date', r.date],
+      ['Campus', r.campus],
+      ['Store', r.storeName],
+      opts.showBuyer ? ['Buyer', who] : null,
+      r.discount ? ['Discount', r.discount] : null,
+      r.balanceBefore != null ? ['Balance', '₱' + money(r.balanceBefore) + ' → ₱' + money(r.balanceAfter)] : null,
+      opts.showBuyer && r.source ? ['Terminal', r.source] : null
     ].filter(Boolean).map(function (m) { return '<span>' + m[0] + ' <b>' + esc(m[1]) + '</b></span>'; }).join('');
     return '<details class="pv-r"><summary>' +
       '<span class="pv-badge ' + store + '">' + label + '</span>' +
       '<span class="pv-main"><div class="pv-store">' + esc(storeTitle(r)) + '</div><div class="pv-sub">' + esc(sub) + '</div></span>' +
-      '<span class="pv-total">₱' + money(r.total) + (r.itemCount ? '<small>' + r.itemCount + '개</small>' : '') + '</span>' +
+      '<span class="pv-total">₱' + money(r.total) + (r.itemCount ? '<small>' + r.itemCount + ' items</small>' : '') + '</span>' +
       '</summary>' + body + '<div class="pv-meta">' + meta + '</div></details>';
   }
 

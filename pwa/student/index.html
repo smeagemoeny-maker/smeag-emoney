@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#e85a24" />
 <link rel="icon" href="../icons/icon.svg" type="image/svg+xml" />
-<title>SMEAG 내 구매내역</title>
+<title>SMEAG My Purchases</title>
 <style>
   :root { color-scheme: light; --bg:#f1efea; --card:#fff; --ink:#1d1d1b; --ink2:#6b655c; --line:#dedad1; --accent:#e85a24; --bad:#c62828;
           --pv-card:#fff; --pv-line:#dedad1; --pv-ink:#1d1d1b; --pv-ink2:#6b655c; }
@@ -62,8 +62,8 @@
 <body>
 <main>
   <header>
-    <h1>내 구매내역</h1>
-    <a href="../">SMEAG 프로그램</a>
+    <h1>My Purchases</h1>
+    <a href="../">SMEAG Programs</a>
   </header>
 
   <section class="card" id="tap">
@@ -72,37 +72,37 @@
         <rect x="3" y="6" width="14" height="12" rx="2" /><path d="M7 10h6M7 14h3" /><path d="M19.5 8.5a5 5 0 0 1 0 7M21.5 6.5a8 8 0 0 1 0 11" />
       </svg>
     </div>
-    <h2>학생카드를 대주세요</h2>
-    <p>휴대폰(Android Chrome) 뒷면이나 카드 리더기에 학생카드를 대면 캠퍼스 카페·마트·Pusan Mart에서 구매한 내역이 표시됩니다.</p>
+    <h2>Tap your student card</h2>
+    <p>Tap your student card on the back of the phone (Android Chrome) or on the card reader to see your purchases at the campus cafe, mart and Pusan Mart.</p>
     <details id="manual">
-      <summary>카드를 읽을 수 없나요? UID 직접 입력</summary>
+      <summary>Card not reading? Enter the UID</summary>
       <form id="manualForm" autocomplete="off">
-        <input id="uid" placeholder="카드 UID (예: 04A1B2C3D4E5F6)" autocapitalize="characters" spellcheck="false" inputmode="text" />
-        <button type="submit">조회</button>
+        <input id="uid" placeholder="Card UID (e.g. 04A1B2C3D4E5F6)" autocapitalize="characters" spellcheck="false" inputmode="text" />
+        <button type="submit">Search</button>
       </form>
     </details>
     <div class="err" id="err" role="alert"></div>
-    <div class="busy" id="busy" hidden>불러오는 중…</div>
+    <div class="busy" id="busy" hidden>Loading…</div>
   </section>
 
   <section id="result" hidden>
     <div class="card" id="who"></div>
-    <div class="chips" id="periods" role="group" aria-label="기간">
-      <button type="button" class="chip" data-days="7">최근 7일</button>
-      <button type="button" class="chip" data-days="30" aria-pressed="true">최근 30일</button>
-      <button type="button" class="chip" data-days="90">최근 3개월</button>
-      <button type="button" class="chip" data-days="0">전체</button>
+    <div class="chips" id="periods" role="group" aria-label="Period">
+      <button type="button" class="chip" data-days="7">Last 7 days</button>
+      <button type="button" class="chip" data-days="30" aria-pressed="true">Last 30 days</button>
+      <button type="button" class="chip" data-days="90">Last 3 months</button>
+      <button type="button" class="chip" data-days="0">All</button>
     </div>
-    <div class="chips" id="storesFilter" role="group" aria-label="매장">
-      <button type="button" class="chip" data-store="" aria-pressed="true">전체 매장</button>
-      <button type="button" class="chip" data-store="cafe">카페</button>
-      <button type="button" class="chip" data-store="mart">마트</button>
+    <div class="chips" id="storesFilter" role="group" aria-label="Store">
+      <button type="button" class="chip" data-store="" aria-pressed="true">All stores</button>
+      <button type="button" class="chip" data-store="cafe">Cafe</button>
+      <button type="button" class="chip" data-store="mart">Mart</button>
     </div>
     <div class="sum" id="sum"></div>
     <div class="card stores" id="stores" hidden></div>
     <div id="list"></div>
-    <div class="bottom"><button type="button" class="ghost" id="close">닫기 · 다른 카드 조회</button></div>
-    <div class="note">개인정보 보호를 위해 3분 동안 사용하지 않으면 화면이 자동으로 닫힙니다.</div>
+    <div class="bottom"><button type="button" class="ghost" id="close">Close · Look up another card</button></div>
+    <div class="note">For privacy, this screen closes automatically after 3 minutes without use.</div>
   </section>
 </main>
 
@@ -134,7 +134,7 @@
       body: JSON.stringify({ uid: uid })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (d) {
-        if (!res.ok) throw new Error(res.status === 404 ? '등록되지 않은 카드입니다. 오피스에 문의하세요.' : (d.error || '조회하지 못했습니다. (' + res.status + ')'));
+        if (!res.ok) throw new Error(res.status === 404 ? 'This card is not registered. Please ask the office.' : (d.error || 'Could not load. (' + res.status + ')'));
         return d;
       });
     }).then(function (d) {
@@ -147,7 +147,7 @@
       window.scrollTo(0, 0);
       bump();
     }).catch(function (e) {
-      $('err').textContent = e.message === 'Failed to fetch' ? '서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.' : e.message;
+      $('err').textContent = e.message === 'Failed to fetch' ? 'Could not connect to the server. Check the internet connection.' : e.message;
     }).then(function () { loading = false; $('busy').hidden = true; });
   }
 
@@ -160,7 +160,7 @@
     var p = data.person;
     $('who').innerHTML =
       '<div><div class="name">' + esc(p.name) + '</div><div class="sid">' + esc([p.studentId, p.campus].filter(Boolean).join(' · ')) + '</div></div>' +
-      '<div class="bal"><small>현재 잔액</small><b>₱' + money(p.balance) + '</b></div>';
+      '<div class="bal"><small>Current balance</small><b>₱' + money(p.balance) + '</b></div>';
 
     var from = cutoff();
     var rows = data.receipts.filter(function (r) {
@@ -168,8 +168,8 @@
     });
     var total = rows.reduce(function (s, r) { return s + r.total; }, 0);
     $('sum').innerHTML =
-      '<div class="stat"><span>구매 건수</span><b>' + rows.length + '건</b></div>' +
-      '<div class="stat"><span>사용 금액</span><b>₱' + money(total) + '</b></div>';
+      '<div class="stat"><span>Purchases</span><b>' + rows.length + '</b></div>' +
+      '<div class="stat"><span>Amount spent</span><b>₱' + money(total) + '</b></div>';
 
     var by = {};
     rows.forEach(function (r) {
@@ -181,12 +181,12 @@
     $('stores').hidden = list.length < 2;
     $('stores').innerHTML = list.map(function (s) {
       var pct = total ? Math.max(2, Math.round(s.t / total * 100)) : 0;
-      return '<div class="srow"><span>' + esc(s.name) + ' <span style="color:var(--ink2)">' + s.n + '건</span></span><b>₱' + money(s.t) + '</b>' +
+      return '<div class="srow"><span>' + esc(s.name) + ' <span style="color:var(--ink2)">' + s.n + '</span></span><b>₱' + money(s.t) + '</b>' +
         '<span class="bar"><i style="width:' + pct + '%"></i></span></div>';
     }).join('');
 
     $('list').innerHTML = rows.length ? PV.list(rows) :
-      '<div class="empty">' + (data.receipts.length ? '이 기간에 구매한 내역이 없습니다.' : '아직 매장에서 구매한 내역이 없습니다.') + '</div>';
+      '<div class="empty">' + (data.receipts.length ? 'No purchases in this period.' : 'No store purchases yet.') + '</div>';
   }
 
   function close() {

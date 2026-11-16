@@ -527,8 +527,30 @@
     return sub == null ? null : sub - sub * vm.pz.rate;
   }
   // Pusan Pay: amount typed by the cashier + card tap = paid from the student's e-money right away.
+  // Before paying, look at the server's payments: the same card + same amount within 10 minutes is most likely
+  // a second tap (e.g. the first answer was slow or lost), so ask before charging again.
+  var PZ_DUP_WINDOW_MS = 10 * 60 * 1000;
   function submitPusanmartPayment(uidStr, amount) {
     vm.pz.error = null; vm.pz.success = null; vm.pz.submitting = true; render();
+    var today = ymd(new Date()), card = String(uidStr).toLowerCase(), cents = Math.round(amount * 100);
+    repo.fetchPusanmartPayments(today, today).then(function (rows) {
+      var now = Date.now();
+      return rows.filter(function (r) {
+        var t = Date.parse(String(r.date || '').replace(' ', 'T') + '+08:00'); // Philippine time
+        return String(r.nfcid || '').toLowerCase() === card && Math.round(r.allPayments * 100) === cents &&
+          !(now - t > PZ_DUP_WINDOW_MS);
+      })[0] || null;
+    }, function () { return null; }).then(function (dup) {
+      if (dup) {
+        beep('error');
+        var ok = window.confirm('This payment was already made.\n' + (dup.name || uidStr) + ' — ₱' + money(dup.allPayments) +
+          ' (' + String(dup.date || '').slice(11, 19) + ')\n\nCharge this card again?');
+        if (!ok) { vm.pz.submitting = false; vm.pz.error = 'Duplicate payment cancelled.'; render(); return; }
+      }
+      payPusanmart(uidStr, amount);
+    });
+  }
+  function payPusanmart(uidStr, amount) {
     var key = 'pz-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     repo.createPusanmartPayment(uidStr, amount, vm.pz.label, key).then(function (p) {
       beep('ok');
@@ -585,7 +607,7 @@
     filtered.forEach(function (p) {
       var out = p.stock <= 0;
       h += '<div class="pcell' + (out ? ' soldout' : '') + '" data-act="' + act(function () { addToCart(p); }) + '">' + thumb(p) + spacer(6) +
-        '<div class="pname">' + esc(p.sMenu || '-') + '</div><div class="pprice">₱' + money(p.payment) + (out ? ' · <span style="color:var(--out)">품절</span>' : '') + '</div></div>';
+        '<div class="pname">' + esc(p.sMenu || '-') + '</div><div class="pprice">₱' + money(p.payment) + (out ? ' · <span style="color:var(--out)">Sold out</span>' : '') + '</div></div>';
     });
     h += '</div>';
     // Wide screen: products scroll on the left, cart + pay stay visible in a right column.
@@ -662,7 +684,7 @@
     var q = (idx >= 0 ? vm.cart[idx].quantity : 0) + 1;
     if (q > p.stock) {
       beep('error');
-      toast(p.stock <= 0 ? '재고가 없습니다' : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
+      toast(p.stock <= 0 ? 'Out of stock' : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
       return;
     }
     if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q };
@@ -960,11 +982,11 @@
   function runPayList() {
     if (S.view === 'daily') {
       screenLoad(repo.fetchPusanmartDaily(S.start, S.end), function (r) { S.daily = r; syncCostInput(); },
-        function (e) { S.daily = null; S.error = '조회에 실패했습니다: ' + e.message; });
+        function (e) { S.daily = null; S.error = 'Search failed: ' + e.message; });
       return;
     }
     screenLoad(repo.fetchPusanmartPayments(S.start, S.end), function (rows) { S.results = rows; },
-      function (e) { S.results = []; S.error = '조회에 실패했습니다: ' + e.message; });
+      function (e) { S.results = []; S.error = 'Search failed: ' + e.message; });
   }
 
   // ----- daily summary: sales (PusanmartPayments) / cost (entered from the POS report) / net
@@ -977,16 +999,16 @@
   }
   function saveCost() {
     var raw = String(S.costInput || '').replace(/,/g, '').trim();
-    if (raw !== '' && !(Number(raw) >= 0)) { S.costMsg = { err: true, text: '매입가는 0 이상의 숫자로 입력하세요.' }; return; }
+    if (raw !== '' && !(Number(raw) >= 0)) { S.costMsg = { err: true, text: 'Enter a cost of 0 or more.' }; return; }
     var s = S, date = S.costDate;
     s.costSaving = true; s.costMsg = null;
     repo.savePusanmartCost(date, raw === '' ? null : Number(raw)).then(function () {
       if (S !== s) return;
-      s.costMsg = { err: false, text: date + (raw === '' ? ' 매입가를 지웠습니다.' : ' 매입가 ₱' + money(Number(raw)) + ' 저장했습니다.') };
+      s.costMsg = { err: false, text: date + (raw === '' ? ' cost cleared.' : ' cost ₱' + money(Number(raw)) + ' saved.') };
       if (date < s.start || date > s.end) { if (date < s.start) s.start = date; else s.end = date; }
       runPayList();
     }, function (e) {
-      if (S === s) s.costMsg = { err: true, text: '저장 실패: ' + e.message };
+      if (S === s) s.costMsg = { err: true, text: 'Save failed: ' + e.message };
     }).then(function () { if (S === s) { s.costSaving = false; render(); } });
   }
   function downloadDailyCsv() {
@@ -1002,11 +1024,11 @@
     rows.push(['Days without cost', r.totals.daysMissingCost]);
     var name = 'pusanmart_daily_' + S.start + '_' + S.end + '.csv';
     downloadFile(name, 'text/csv;charset=utf-8', '\ufeff' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
-    toast('Downloads 폴더에 저장되었습니다: ' + name, 3500);
+    toast('Saved to Downloads: ' + name, 3500);
   }
   function payListTabs() {
     var h = '<div class="chips" style="padding-bottom:11px">';
-    [['daily', '일별 매출·매입·순이익'], ['list', '결제 내역']].forEach(function (c) {
+    [['daily', 'Daily Sales / Cost / Net'], ['list', 'Payments']].forEach(function (c) {
       h += '<div class="chip' + (S.view === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (S.view === c[0]) return; S.view = c[0]; S.error = null; runPayList();
       }) + '">' + c[1] + '</div>';
@@ -1022,27 +1044,27 @@
     var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) + '<div class="vscroll fill">' + errorLine();
-    if (!r) { h += loadingOr('조회 결과가 없습니다.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
+    if (!r) { h += loadingOr('No results.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
     var t = r.totals;
-    var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (입력된 ' + t.daysWithCost + '일)' : '매입가 입력 필요';
-    h += '<div class="row" style="gap:8px">' + stat('매출 Net Sales', '₱' + money(t.sales), null, t.count + '건') +
-      stat('매입가 Cost', '₱' + money(t.cost), 'var(--low)', t.daysMissingCost ? '미입력 ' + t.daysMissingCost + '일' : null) + '</div>' + spacer(8) +
-      '<div class="row" style="gap:8px">' + stat('순이익 Net', '₱' + money(t.net), t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) + '</div>' + spacer(12);
+    var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (' + t.daysWithCost + ' days with cost)' : 'Enter cost';
+    h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + money(t.sales), null, t.count + ' trans.') +
+      stat('Cost', '₱' + money(t.cost), 'var(--low)', t.daysMissingCost ? t.daysMissingCost + ' days missing' : null) + '</div>' + spacer(8) +
+      '<div class="row" style="gap:8px">' + stat('Net Profit', '₱' + money(t.net), t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) + '</div>' + spacer(12);
 
-    if (r.costTableMissing) h += txt('매입가 저장용 테이블이 아직 없습니다 (관리자: supabase_pusanmart_daily_cost.sql 실행 필요).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
+    if (r.costTableMissing) h += txt('The cost table is not set up yet (admin: run supabase_pusanmart_daily_cost.sql).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
     // cost entry (Cost Exp. from the PusanMart POS Daily Sales Report)
     var cd = dailyRow(S.costDate);
     h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
-      '<div style="font-size:12px;font-weight:800;padding-bottom:8px">매입가 입력 <span style="font-weight:400;color:var(--ink3)">· 영수증의 Cost Exp.</span></div>' +
+      '<div style="font-size:12px;font-weight:800;padding-bottom:8px">Enter Cost <span style="font-weight:400;color:var(--ink3)">· Cost Exp. on the report</span></div>' +
       half(dateField('Date', S.costDate, function (v) { S.costDate = v; S.costMsg = null; syncCostInput(); }),
         labeledField('pl_cost', 'Cost (PHP)', S.costInput, function (v) { S.costInput = v; S.costMsg = null; }, '0.00', 'decimal'));
     if (cd) {
       var raw = String(S.costInput || '').replace(/,/g, '').trim();
-      var preview = raw !== '' && Number(raw) >= 0 ? '  →  순이익 ₱' + money(cd.sales - Number(raw)) : '';
-      h += txt('이 날 매출 ₱' + money(cd.sales) + ' (' + cd.count + '건)' + preview, 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
+      var preview = raw !== '' && Number(raw) >= 0 ? '  →  Net ₱' + money(cd.sales - Number(raw)) : '';
+      h += txt('Sales this day ₱' + money(cd.sales) + ' (' + cd.count + ' trans.)' + preview, 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
     }
     if (S.costMsg) h += txt(S.costMsg.text, 'font-size:12px;padding-bottom:8px;color:' + (S.costMsg.err ? 'var(--out)' : 'var(--ok)'));
-    h += primaryBtn(S.costSaving ? '저장 중...' : '저장', saveCost, S.costSaving || !S.costDate) + '</div>';
+    h += primaryBtn(S.costSaving ? 'Saving...' : 'Save', saveCost, S.costSaving || !S.costDate) + '</div>';
 
     h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length) + spacer(10);
     r.days.forEach(function (d) {
@@ -1050,11 +1072,11 @@
       h += '<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer' + (sel ? ';border-color:var(--brand)' : '') + '" data-act="' +
         act(function () { S.costDate = d.date; S.costMsg = null; syncCostInput(); }) + '">' +
         '<div class="sb"><span style="font-size:12.5px;font-weight:700">' + esc(d.date) + '</span>' +
-        '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + '건</span></div>' +
+        '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + ' trans.</span></div>' +
         '<div class="sb" style="padding-top:4px;font-size:11.5px">' +
-        '<span>매출 <b>₱' + money(d.sales) + '</b></span>' +
-        '<span>매입 ' + (d.cost == null ? '<b style="color:var(--out)">미입력</b>' : '<b>₱' + money(d.cost) + '</b>') + '</span>' +
-        '<span>순이익 ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + money(d.net) + '</b>') + '</span>' +
+        '<span>Sales <b>₱' + money(d.sales) + '</b></span>' +
+        '<span>Cost ' + (d.cost == null ? '<b style="color:var(--out)">missing</b>' : '<b>₱' + money(d.cost) + '</b>') + '</span>' +
+        '<span>Net ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + money(d.net) + '</b>') + '</span>' +
         '</div></div>';
     });
     h += '</div></div>';
@@ -1071,7 +1093,7 @@
     rows.push(['Total Amount Earned (PHP)', money(total)]);
     var name = 'pusanmart_paylist_' + Date.now() + '.csv';
     downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (r) { return r.map(cell).join(','); }).join('\r\n'));
-    toast('Downloads 폴더에 저장되었습니다: ' + name, 3500);
+    toast('Saved to Downloads: ' + name, 3500);
   }
   function payListScreen() {
     if (S.view === 'daily') return dailyScreen();
@@ -1079,10 +1101,10 @@
     var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) +
-      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + '건</span>' +
-      '<span style="font-size:13px;font-weight:700">합계 ₱' + money(total) + '</span></div>' +
+      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + ' payments</span>' +
+      '<span style="font-size:13px;font-weight:700">Total ₱' + money(total) + '</span></div>' +
       primaryBtn('⬇ Download Excel', downloadPayListCsv, !S.results.length) + spacer(10) + '<div class="vscroll fill">' + errorLine();
-    if (!S.results.length && !S.error) h += loadingOr('해당 기간의 PusanMart 결제 내역이 없습니다.', 'font-size:12px;color:var(--ink3)');
+    if (!S.results.length && !S.error) h += loadingOr('No PusanMart payments in this period.', 'font-size:12px;color:var(--ink3)');
     S.results.forEach(function (r) {
       h += '<div class="card sb" style="margin-bottom:8px;padding:10px"><div>' +
         '<div style="font-size:12.5px;font-weight:700">' + esc(r.name || '-') + '</div>' +

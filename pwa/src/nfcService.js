@@ -61,7 +61,7 @@
   }
 
   function dispatchNfcTag(detail) {
-    flashPhoneBadge(`✓ 카드 읽음 ${normalizeUid(detail?.uid)}`, "#1565C0");
+    flashPhoneBadge(`✓ Card read ${normalizeUid(detail?.uid)}`, "#1565C0");
     window.dispatchEvent(new CustomEvent(eventName, { detail }));
   }
 
@@ -86,7 +86,7 @@
     }
 
     if ("NDEFReader" in window && window.NDEFReader) {
-      if (!window.isSecureContext) return { mode: "unsupported", reason: "Web NFC는 HTTPS 주소에서만 동작합니다." };
+      if (!window.isSecureContext) return { mode: "unsupported", reason: "Web NFC works only on an HTTPS address." };
       stopWebNfc();
       const controller = new AbortController();
       webNfcAbort = controller;
@@ -103,8 +103,8 @@
       reader.addEventListener(
         "readingerror",
         () => {
-          flashPhoneBadge("✕ 카드를 읽지 못했습니다. 다시 대주세요.", "#C62828");
-          window.dispatchEvent(new CustomEvent("nfc-error", { detail: { message: "카드를 읽지 못했습니다. 다시 대주세요." } }));
+          flashPhoneBadge("✕ Could not read the card. Tap again.", "#C62828");
+          window.dispatchEvent(new CustomEvent("nfc-error", { detail: { message: "Could not read the card. Tap again." } }));
         },
         { signal: controller.signal },
       );
@@ -113,10 +113,10 @@
       } catch (error) {
         stopWebNfc();
         if (error?.name === "NotAllowedError") {
-          throw new Error("NFC 권한이 거부되었습니다. 브라우저 사이트 설정에서 NFC를 허용하세요.");
+          throw new Error("NFC permission was denied. Allow NFC in the browser's site settings.");
         }
         if (error?.name === "NotReadableError") {
-          throw new Error("폰의 NFC가 꺼져 있습니다. 설정에서 NFC를 켜세요.");
+          throw new Error("The phone's NFC is off. Turn on NFC in Settings.");
         }
         throw error;
       }
@@ -181,25 +181,25 @@
     let text;
     let color;
     if (support === "none") {
-      text = "✕ 이 브라우저는 NFC를 지원하지 않습니다. Android Chrome으로 여세요.";
+      text = "✕ This browser does not support NFC. Open in Android Chrome.";
       color = "#C62828";
     } else if (support === "web-nfc-insecure") {
-      text = "✕ NFC는 HTTPS 주소에서만 동작합니다.";
+      text = "✕ NFC works only on an HTTPS address.";
       color = "#C62828";
     } else if (!phoneWanted()) {
       phoneBadge.hidden = true;
       return;
     } else if (phoneState === "on") {
-      text = "● NFC 대기 중";
+      text = "● NFC ready";
       color = "#2E7D32";
     } else if (phoneState === "starting") {
-      text = "… NFC 켜는 중";
+      text = "… Turning on NFC";
       color = "#757575";
     } else if (phoneState === "error") {
-      text = `✕ ${phoneMessage || "NFC를 켜지 못했습니다."} (터치해서 다시 시도)`;
+      text = `✕ ${phoneMessage || "Could not turn on NFC."} (tap to retry)`;
       color = "#C62828";
     } else {
-      text = "○ 화면을 터치하면 NFC가 켜집니다";
+      text = "○ Tap the screen to turn on NFC";
       color = "#E65100";
     }
     phoneBadge.hidden = false;
@@ -229,20 +229,20 @@
     setPhoneState("starting");
     startNfcScan()
       .then((result) => {
-        if (result.mode === "unsupported") setPhoneState("error", result.reason || "NFC를 사용할 수 없습니다.");
+        if (result.mode === "unsupported") setPhoneState("error", result.reason || "NFC is not available.");
         else setPhoneState("on");
       })
       .catch((error) => {
         // NotAllowedError without a "denied" setting means the browser did not count it as a user tap:
         // wait for the next tap instead of telling the user to change settings.
-        if (error?.name === "NotAllowedError" || /권한/.test(error?.message || "")) {
+        if (error?.name === "NotAllowedError" || /permission|권한/i.test(error?.message || "")) {
           if (nfcPermission !== "denied") return setPhoneState("off");
           return setPhoneState(
             "error",
-            "이 사이트의 NFC가 차단되어 있습니다. 주소창 왼쪽 아이콘 → 권한 → NFC 허용 후 새로고침하세요.",
+            "NFC is blocked for this site. Tap the icon left of the address bar → Permissions → allow NFC, then reload.",
           );
         }
-        setPhoneState("error", error?.message || "NFC를 켜지 못했습니다.");
+        setPhoneState("error", error?.message || "Could not turn on NFC.");
       });
   }
 
@@ -382,16 +382,16 @@
         // The page cannot open PowerShell itself (browsers forbid it): the closest is a downloaded install.cmd
         // that opens its own window and waits for Enter. The copy line stays as the fallback.
         download: base + "/install.cmd",
-        steps: ["[설치 파일 받기]를 누릅니다", "브라우저의 다운로드 목록에서 install.cmd를 엽니다", "검은 창이 뜨면 Enter만 누르세요"],
-        note: "Windows가 경고하면 [추가 정보] → [실행]을 누르세요. 브라우저가 파일을 막으면 [유지]를 누르세요.",
-        fallbackSteps: ["[명령 복사]를 누릅니다", "Windows 키 + R", "Ctrl + V 붙여넣기 후 Enter"],
+        steps: ["Press [Download installer]", "Open install.cmd from the browser's download list", "When the black window opens, just press Enter"],
+        note: "If Windows warns you, press [More info] → [Run anyway]. If the browser blocks the file, press [Keep].",
+        fallbackSteps: ["Press [Copy command]", "Press Windows key + R", "Paste with Ctrl + V, then press Enter"],
       };
     }
     // iPadOS also says "Macintosh"; it has touch points, a real Mac does not.
     if (/Macintosh|Mac OS X/i.test(ua) && !(navigator.maxTouchPoints > 1)) {
       return {
         cmd: `curl -fsSL ${base}/install.sh | B=${base} sh`,
-        steps: ["아래 [명령 복사]를 누릅니다", "터미널 앱을 엽니다 (Cmd + Space → 터미널)", "Cmd + V 붙여넣기 후 Enter"],
+        steps: ["Press [Copy command] below", "Open the Terminal app (Cmd + Space → Terminal)", "Paste with Cmd + V, then press Enter"],
       };
     }
     return null;
@@ -421,10 +421,10 @@
         "font:14px/1.5 system-ui,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;",
     );
     box.setAttribute("role", "dialog");
-    box.setAttribute("aria-label", "카드 리더 프로그램 설치");
-    box.appendChild(el("div", "font-weight:700;font-size:15px;margin-bottom:4px", "카드 리더 프로그램이 꺼져 있습니다"));
+    box.setAttribute("aria-label", "Install the card reader program");
+    box.appendChild(el("div", "font-weight:700;font-size:15px;margin-bottom:4px", "The card reader program is not running"));
     box.appendChild(
-      el("div", "color:#5a6762;font-size:13px;margin-bottom:10px", "이 PC에서 한 번만 설치하면, 앞으로는 PC를 켤 때 자동으로 켜집니다."),
+      el("div", "color:#5a6762;font-size:13px;margin-bottom:10px", "Install it once on this PC and it will start automatically whenever the PC starts."),
     );
     const ol = el("ol", "margin:0 0 10px;padding-left:20px");
     info.steps.forEach((s) => ol.appendChild(el("li", "", s)));
@@ -434,13 +434,13 @@
         "a",
         "display:block;text-align:center;text-decoration:none;font-weight:700;font-size:15px;padding:11px 12px;border-radius:8px;" +
           "background:#0f7a5c;color:#fff;margin-bottom:8px;",
-        "⬇ 설치 파일 받기",
+        "⬇ Download installer",
       );
       dl.href = info.download;
       dl.setAttribute("download", "install.cmd");
       box.appendChild(dl);
       if (info.note) box.appendChild(el("div", "color:#5a6762;font-size:12px;margin-bottom:10px", info.note));
-      box.appendChild(el("div", "font-weight:600;font-size:13px;margin:4px 0", "또는 직접 붙여넣기"));
+      box.appendChild(el("div", "font-weight:600;font-size:13px;margin:4px 0", "Or paste it yourself"));
       const ol2 = el("ol", "margin:0 0 8px;padding-left:20px;font-size:13px");
       info.fallbackSteps.forEach((s) => ol2.appendChild(el("li", "", s)));
       box.appendChild(ol2);
@@ -461,10 +461,10 @@
           (primary ? "background:#0f7a5c;color:#fff;border:1px solid #0f7a5c;" : "background:#fff;color:#17201d;border:1px solid #cfd8d4;"),
         label,
       );
-    const copy = btn("명령 복사", !info.download);
+    const copy = btn("Copy command", !info.download);
     copy.type = "button";
     copy.addEventListener("click", () => {
-      const done = () => (copy.textContent = "복사됨 ✓");
+      const done = () => (copy.textContent = "Copied ✓");
       const fallback = () => {
         code.focus();
         code.select();
@@ -478,7 +478,7 @@
     row.append(copy);
     box.appendChild(row);
     box.appendChild(
-      el("div", "color:#5a6762;font-size:12px;margin-top:8px", "카드 리더를 쓰려면 설치가 필요합니다. 설치가 끝나면 이 안내는 저절로 사라집니다. 브라우저가 기기 접근을 물으면 [허용]을 누르세요."),
+      el("div", "color:#5a6762;font-size:12px;margin-top:8px", "The card reader needs this install. This notice goes away by itself when the install is done. If the browser asks for device access, press [Allow]."),
     );
     bridgeHint = box;
     document.body.appendChild(box);

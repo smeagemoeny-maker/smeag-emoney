@@ -770,16 +770,67 @@
     document.querySelector('.titlebar').appendChild(b);
   }
 
+  /* ================= zoom (title bar  -  100%  +) ================= */
+  // The window is auto-fitted to the screen, so the browser's own Ctrl +/- would be undone on every resize.
+  // This zoom multiplies the auto fit instead and is remembered per machine (localStorage officeZoom).
+  // Ctrl/Cmd + / - / 0 and Ctrl + mouse wheel use it too.
+  var ZOOM_MIN = 0.5, ZOOM_MAX = 2, ZOOM_STEP = 0.1;
+  function getZoom() {
+    var z = 1;
+    try { z = parseFloat(window.localStorage.getItem('officeZoom')) || 1; } catch (e) { /* ignore */ }
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  }
+  function setZoom(z) {
+    z = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) * 10) / 10;
+    try { window.localStorage.setItem('officeZoom', String(z)); } catch (e) { /* ignore */ }
+    fit();
+  }
+  function addZoomControls() {
+    var box = document.createElement('div');
+    box.className = 'tb-zoom';
+    box.innerHTML = '<button type="button" data-z="-1" title="Zoom out (Ctrl -)">\u2212</button>' +
+      '<button type="button" data-z="0" class="tb-zoom-val" title="Reset to fit screen (Ctrl 0)">100%</button>' +
+      '<button type="button" data-z="1" title="Zoom in (Ctrl +)">+</button>';
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var d = Number(b.getAttribute('data-z'));
+      setZoom(d === 0 ? 1 : getZoom() + d * ZOOM_STEP);
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('button'), function (b) { b.tabIndex = -1; });
+    document.querySelector('.titlebar').appendChild(box);
+    window.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (e.key === '+' || e.key === '=') setZoom(getZoom() + ZOOM_STEP);
+      else if (e.key === '-' || e.key === '_') setZoom(getZoom() - ZOOM_STEP);
+      else if (e.key === '0') setZoom(1);
+      else return;
+      e.preventDefault();
+    });
+    window.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey) return;            // Ctrl + wheel (and trackpad pinch) zooms the console, not the browser
+      e.preventDefault();
+      setZoom(getZoom() + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    }, { passive: false });
+  }
+  function showZoom(z) {
+    var v = document.querySelector('.tb-zoom-val');
+    if (v) v.textContent = Math.round(z * 100) + '%';
+  }
+
   /* ================= fit-to-width scaling ================= */
   function fit() {
     applyViewMode();
     var win = el('win'), stage = el('stage');
+    var zoom = getZoom();
+    showZoom(zoom);
     if (mobileOn) {
       win.style.transform = ''; win.style.left = '';
       stage.style.width = ''; stage.style.height = '';
-      document.body.style.overflowY = '';
+      document.body.style.overflowY = ''; document.body.style.overflowX = '';
+      stage.style.zoom = zoom === 1 ? '' : String(zoom);   // phone layout: CSS zoom (text + controls)
       return;
     }
+    stage.style.zoom = '';
     var vw = document.documentElement.clientWidth || window.innerWidth;
     var vh = window.innerHeight || document.documentElement.clientHeight;
     // Every machine (1366x768 laptop, 1920x1080 / 4K monitor, landscape tablet): the whole window fits the
@@ -790,6 +841,7 @@
     var sw = vw / WIN_W, sh = vh / WIN_H;
     var scale = Math.min(sw, sh, 1.6);
     if (scale < MIN_SCALE) scale = Math.max(Math.min(sw, 1.6), Math.min(MIN_SCALE, 1));
+    scale = scale * zoom;   // staff zoom (100% = fit the screen); above 100% the page scrolls
     var w = Math.ceil(WIN_W * scale), h = Math.ceil(WIN_H * scale);
     var left = Math.max(0, Math.floor((vw - w) / 2));
     win.style.transform = 'scale(' + scale + ')';
@@ -797,6 +849,7 @@
     stage.style.width = Math.max(vw, w) + 'px';
     stage.style.height = Math.max(h, vh) + 'px';
     document.body.style.overflowY = h > vh ? 'auto' : 'hidden';
+    document.body.style.overflowX = w > vw ? 'auto' : 'hidden';
   }
 
   /* ================= NFC: one reader for every tab ================= */
@@ -856,6 +909,7 @@
     var page = createOfficeMenu(api);
     wireNfc(api, page);
     addViewToggle();
+    addZoomControls();
     showPage(OFFICE_MENU_INDEX);
     fit();
     window.addEventListener('resize', fit);

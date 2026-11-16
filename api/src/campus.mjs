@@ -14,6 +14,7 @@ import "./env.mjs";
 import { normalizeUid } from "./db.mjs";
 import { httpError } from "./repository.mjs";
 import { q, rest } from "./supabaseRepository.mjs";
+import { APP_LANGS, withExtraLanguages } from "./campusI18n.mjs";
 
 const enc = encodeURIComponent;
 const PH_MS = 8 * 3600e3;
@@ -231,6 +232,32 @@ export async function login({ studentId, pin }) {
   return sessionResult(person, saved);
 }
 
+// "Forgot your student ID?" on the sign-in screen: full name + first day of the course -> student ID.
+// The ID alone does not sign anyone in (a PIN, card or office code is still needed). To stop someone listing
+// IDs by name, both the name and the course start date must match, and each address may try a few times only.
+const FIND_LIMIT = 8;
+const FIND_WINDOW_MS = 15 * 60e3;
+const findTries = new Map(); // ip -> [timestamps]; per server instance, which is enough to slow guessing down
+const nameWords = (s) => String(s || "").toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join(" ");
+
+export async function findStudentId({ name, startDate }, ip = "") {
+  const now = Date.now();
+  const tries = (findTries.get(ip) || []).filter((t) => now - t < FIND_WINDOW_MS);
+  if (tries.length >= FIND_LIMIT) throw httpError(429, "Too many tries. Wait 15 minutes or ask the SMEAG office.");
+  tries.push(now); findTries.set(ip, tries);
+  if (findTries.size > 5000) findTries.clear();
+
+  const wanted = nameWords(clean(name, 120));
+  const day = clean(startDate, 10);
+  if (!wanted || wanted.replace(/ /g, "").length < 2) throw httpError(400, "Enter your full name.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw httpError(400, "Enter the first day of your course.");
+
+  const rows = await rest(`person?select=studentid,name,campus,uid,e_date&s_date=eq.${day}&studentid=not.is.null&limit=500`);
+  const hits = rows.filter((p) => !isReleased(p) && p.studentid && nameWords(p.name) === wanted);
+  if (!hits.length) throw httpError(404, "No student matches that name and start date. Check them, or ask the SMEAG office.");
+  return { students: hits.slice(0, 3).map((p) => ({ studentId: p.studentid, campus: p.campus || "" })) };
+}
+
 export async function changePin({ account }, { oldPin, newPin }) {
   if (!checkPin(String(oldPin ?? ""), account.pin_hash)) {
     await recordFailure(account);
@@ -242,8 +269,11 @@ export async function changePin({ account }, { oldPin, newPin }) {
 }
 
 export async function setLang({ account }, { lang }) {
-  if (lang !== "en" && lang !== "ko") throw httpError(400, "lang must be 'en' or 'ko'.");
-  await patchAccount(account.person_id, { lang });
+  if (!APP_LANGS.includes(lang)) throw httpError(400, `lang must be one of ${APP_LANGS.join(", ")}.`);
+  // ja/zh/vi/ru need the wider lang check from supabase_campus_app.sql; until it is run, the phone keeps the choice.
+  try { await patchAccount(account.person_id, { lang }); } catch (error) {
+    if (lang === "en" || lang === "ko") throw error;
+  }
   return { lang };
 }
 
@@ -494,7 +524,7 @@ export const REQUEST_TYPES = {
 };
 
 export function config() {
-  return {
+  return withExtraLanguages({
     groups: [
       { key: "life", en: "Campus life", ko: "생활" },
       { key: "departure", en: "Departure", ko: "퇴실" },
@@ -505,7 +535,7 @@ export function config() {
       submitted: { en: "Sent", ko: "접수" }, reviewing: { en: "Reviewing", ko: "검토중" }, approved: { en: "Approved", ko: "승인" },
       rejected: { en: "Rejected", ko: "반려" }, cancelled: { en: "Cancelled", ko: "취소" }, done: { en: "Done", ko: "완료" },
     },
-  };
+  });
 }
 
 function validatePayload(type, input, ctx) {

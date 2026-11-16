@@ -258,6 +258,11 @@ const routes = [
   ["GET", /^\/api\/campus\/config$/, async () => campus.config()],
   ["POST", /^\/api\/campus\/activate$/, async ({ body }) => { supabaseOnly(); return campus.activate(body || {}); }],
   ["POST", /^\/api\/campus\/login$/, async ({ body }) => { supabaseOnly(); return campus.login(body || {}); }],
+  ["POST", /^\/api\/campus\/find-id$/, async ({ req, body }) => {
+    supabaseOnly();
+    const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").split(",")[0].trim();
+    return campus.findStudentId(body || {}, ip);
+  }],
   studentRoute("GET", /^\/api\/campus\/me$/, ({ student }) => campus.me(student)),
   studentRoute("POST", /^\/api\/campus\/pin$/, ({ student, body }) => campus.changePin(student, body)),
   studentRoute("POST", /^\/api\/campus\/lang$/, ({ student, body }) => campus.setLang(student, body)),

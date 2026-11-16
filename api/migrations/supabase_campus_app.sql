@@ -20,10 +20,13 @@ create table if not exists public.campus_accounts (
   token_version      integer not null default 1,   -- bumped on PIN change/reset: old sessions stop working
   card_frozen        boolean not null default false,
   frozen_at          timestamptz,
-  lang               text not null default 'en' check (lang in ('en', 'ko')),
+  lang               text not null default 'en' check (lang in ('en', 'ko', 'ja', 'zh', 'vi', 'ru', 'cn', 'es')),
   created_at         timestamptz not null default now(),
   last_login_at      timestamptz
 );
+-- App languages (2026-11-16): English, Korean, Japanese, Traditional Chinese, Vietnamese, Russian.
+alter table public.campus_accounts drop constraint if exists campus_accounts_lang_check;
+alter table public.campus_accounts add constraint campus_accounts_lang_check check (lang in ('en', 'ko', 'ja', 'zh', 'vi', 'ru', 'cn', 'es'));
 
 -- ---------- notices ----------
 create table if not exists public.campus_notices (
