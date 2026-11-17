@@ -77,7 +77,7 @@
       },
       personByUid: function (uid) { return request('GET', '/api/people/by-nfc/' + encodeURIComponent(uid)); },
       menus: function (campus) { return request('GET', '/api/office/menus?campus=' + encodeURIComponent(campus || '')); },
-      saveTransaction: function (uid, lines) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines }); },
+      saveTransaction: function (uid, lines, clientKey) { return request('POST', '/api/office/transactions', { uid: uid, lines: lines, clientKey: clientKey }); },
       // Generic call for the other tabs (tabs/*.js): request('GET', '/api/...', body?)
       request: function (method, path, body) { return request(method, path, body); }
     };
@@ -620,6 +620,14 @@
       txtUid.readOnly = on;
     }
 
+    // Idempotency key for CONFIRM: the same cart (same student + same lines) keeps the same key until it
+    // succeeds, so pressing Confirm again after an error/timeout never charges a second time.
+    var pendingConfirm = null; // { sig, key }
+    function newClientKey() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+
     function confirmTransaction() {
       if (saving) return;
       if (!student) { warn('Please scan/enter UID first.'); return; }
@@ -633,13 +641,16 @@
         var payload = lines.map(function (l) {
           return { type: l.type, mMenu: l.mainMenu, sMenu: l.subMenu, unitPrice: l.unitPrice / 100, qty: l.qty };
         });
-        return api.saveTransaction(uid, payload).then(function (res) {
+        var sig = uid.toUpperCase() + '|' + JSON.stringify(payload);
+        if (!pendingConfirm || pendingConfirm.sig !== sig) pendingConfirm = { sig: sig, key: newClientKey() };
+        return api.saveTransaction(uid, payload, pendingConfirm.key).then(function (res) {
+          pendingConfirm = null;
           var txn = res.transaction;
           if (student && student.uid === uid) student.balance = toCents(txn.balanceAfter);
           updateStudentLabels();
           resetForm();
           setSaving(false);
-          return messageBox('Transaction completed.\n\nNo. ' + txn.id + '\nBalance: ' + money(toCents(txn.balanceAfter)) + ' PHP', 'SMEAG', 'OK', 'info');
+          return messageBox((txn.repeated ? 'This transaction was already completed (not charged again).' : 'Transaction completed.') + '\n\nNo. ' + txn.id + '\nBalance: ' + money(toCents(txn.balanceAfter)) + ' PHP', 'SMEAG', 'OK', 'info');
         }, function (ex) {
           setSaving(false);
           return messageBox('Transaction failed.\n\n' + ex.message, 'SMEAG', 'OK', 'error');

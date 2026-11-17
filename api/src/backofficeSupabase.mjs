@@ -388,7 +388,7 @@ export async function listOfficeMenus({ campus }) {
   return rows.map((r) => ({ id: r.id, campus: r.Campus, mMenu: r.m_menu, sMenu: r.s_menu, payment: Number(r.payment || 0) }));
 }
 
-export async function createOfficeTransaction({ uid, lines }, staffLoginId) {
+export async function createOfficeTransaction({ uid, lines, clientKey }, staffLoginId) {
   const normalized = normalizeUid(uid);
   if (!normalized) throw httpError(400, "UID is required.");
   if (!staffLoginId) throw httpError(401, "Staff login is required.");
@@ -405,10 +405,13 @@ export async function createOfficeTransaction({ uid, lines }, staffLoginId) {
         qty: Number(line.qty),
       })),
       p_staff_id: String(staffLoginId),
+      // One key per cart on the office screen: a repeated Confirm returns the first result, no second charge.
+      p_client_key: typeof clientKey === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(clientKey) ? clientKey : null,
     },
   });
   return {
     id: Number(result.id),
+    repeated: result.repeated === true,
     bankIds: (result.bankIds || []).map(Number),
     balanceBefore: Number(result.balanceBefore),
     balanceAfter: Number(result.balanceAfter),
