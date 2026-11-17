@@ -403,3 +403,19 @@ button, input { font-family: inherit; }
   .fab { bottom: 128px; }
 }
 @media (max-width: 370px) { .navitem .lab { font-size: 9px; } }
+
+/* Pusan Mart barcode counter: cart header with scan mode, line totals, remove button, last-scanned highlight */
+.carthead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
+.carthead .eyebrow { flex: 1; min-width: 120px; }
+.scanmode { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; font-size: 11px; font-weight: 700; }
+.scanmode span { padding: 5px 10px; cursor: pointer; color: var(--ink2); user-select: none; }
+.scanmode span.on { background: var(--brand); color: #fff; }
+.scanmode span.on.rm { background: var(--out); }
+.cartclear { font-size: 11px; font-weight: 700; color: var(--out); cursor: pointer; padding: 5px 4px; user-select: none; }
+.rmnote { margin-top: 6px; padding: 6px 8px; border-radius: 8px; font-size: 11px; color: var(--out); border: 1px solid var(--out); }
+.cartsub { font-size: 10.5px; font-weight: 400; color: var(--ink2); padding-top: 2px; }
+.cartsub b { color: var(--ink); }
+.cartdel { width: 28px; height: 28px; margin-left: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--out); cursor: pointer; flex: none; user-select: none; }
+.cartdel:hover { background: rgba(0, 0, 0, .06); }
+.cartrow.scanned { background: rgba(31, 143, 87, .10); border-radius: 8px; }

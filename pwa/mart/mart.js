@@ -99,7 +99,8 @@
     return {
       id: Number(p.id), campus: p.campus || '', mMenu: p.mMenu, sMenu: p.sMenu, imagePath: p.imagePath,
       image: resolveImage(p.imagePath), payment: num(p.payment), stock: Math.trunc(num(p.stock)),
-      salesNumber: Math.trunc(num(p.salesNumber)), minStock: Math.trunc(num(p.minStock))
+      salesNumber: Math.trunc(num(p.salesNumber)), minStock: Math.trunc(num(p.minStock)),
+      barcode: p.barcode ? String(p.barcode).trim().toUpperCase() : '', itemCode: p.itemCode || ''
     };
   }
   function normPerson(p) {
@@ -233,6 +234,54 @@
       vm.products = []; S.error = 'Failed to load products: ' + e.message;
     });
   }
+  // ----- barcode scanning (Pusan Mart counter only; products come from the POS import with barcodes)
+  function isPusan(campus) { return String(campus || '').toUpperCase() === MART_CAMPUS.toUpperCase(); }
+  function cleanCode(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase(); }
+  // Exact barcode first; then the forms scanners send differently: Codabar start/stop letters
+  // ("A4897001196414967A"), UPC-A (12) vs EAN-13 with a leading 0, and the POS item code ("000124").
+  function findByCode(raw) {
+    var code = cleanCode(raw);
+    if (!code) return null;
+    var tries = [code, code.replace(/^[A-D]|[A-D]$/g, ''), '0' + code, code.replace(/^0/, '')];
+    for (var i = 0; i < tries.length; i++) {
+      var t = tries[i];
+      if (!t) continue;
+      var hit = vm.products.filter(function (p) {
+        return p.barcode && (p.barcode === t || p.barcode.replace(/^[A-D]|[A-D]$/g, '') === t);
+      })[0];
+      if (hit) return hit;
+    }
+    return vm.products.filter(function (p) { return p.itemCode && p.itemCode === code; })[0] || null;
+  }
+  // Called by nfcService for every fast keyboard burst (scanner or keyboard-mode card reader) and by Enter in
+  // the search box. Returns true when the code was handled as a product, false to let it be a card tap.
+  function onBarcode(raw, fromSearch) {
+    if (!session.manager || route !== 'sales' || !isPusan(S.campus)) return false;
+    var code = cleanCode(raw);
+    var p = findByCode(code);
+    // 12/13-digit codes are retail barcodes, never a card UID: say it is unknown instead of "card not registered".
+    if (!p && !fromSearch && !/^\d{12,13}$/.test(code)) return false;
+    if (S.paying) { beep('error'); toast('Processing payment... please wait.', 1600); return true; }
+    if (!p) { beep('error'); toast('Barcode not registered: ' + code, 2600); return true; }
+    if (S.scanRemove) removeOne(p); else addToCart(p);
+    S.lastScanId = p.id;
+    render();
+    return true;
+  }
+  function removeOne(p) {
+    var line = vm.cart.filter(function (c) { return c.product.id === p.id; })[0];
+    if (!line) { beep('error'); toast('Not in the list: ' + (p.sMenu || '-'), 1800); return; }
+    changeQty(p, -1);
+    beep('ok');
+    toast('Removed: ' + (p.sMenu || '-') + (line.quantity > 1 ? ' (left ' + (line.quantity - 1) + ')' : ''), 1400);
+  }
+  function removeLine(p) { vm.cart = vm.cart.filter(function (c) { return c.product.id !== p.id; }); }
+  function clearCart() {
+    if (!vm.cart.length) return;
+    if (!window.confirm('Remove all ' + vm.cart.length + ' items from the list?')) return;
+    vm.cart = []; S.confirm = null; S.lastScanId = null;
+  }
+
   function cartSubtotal() { return vm.cart.reduce(function (a, i) { return a + i.product.payment * i.quantity; }, 0); }
   function cartTotalAfterDiscount() { var s = cartSubtotal(); return s - s * vm.discountRate; }
 
@@ -360,7 +409,7 @@
         S = { campus: campus, awaitingTap: false, paying: false, confirm: null, category: 'All', subcategory: 'All' };
         loadProducts(S.campus); break;
       case 'register':
-        S = { campus: campus, photo: null, name: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
+        S = { campus: campus, photo: null, name: '', barcode: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
         vm.products = []; loadProducts(S.campus); break;
       case 'modify':
         S = { campus: campus, category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
@@ -583,7 +632,8 @@
     var q = (S.search || '').trim().toLowerCase();
     var filtered = vm.products.filter(function (p) {
       return (S.category === allLabel || p.mMenu === S.category) && (S.subcategory === allLabel || p.sMenu === S.subcategory) &&
-        (!q || String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || String(p.mMenu || '').toLowerCase().indexOf(q) >= 0);
+        (!q || String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || String(p.mMenu || '').toLowerCase().indexOf(q) >= 0 ||
+          (p.barcode && p.barcode.toLowerCase().indexOf(q) >= 0));
     });
     actions.in_s_search = function (v) { S.search = v; };
 
@@ -591,7 +641,7 @@
     var wide = isWide();
     var h = '<div class="screen' + (wide ? ' wide' : '') + '">' +
       '<div class="sb salesHead"><div class="title" style="padding:0">Sales</div>' +
-      '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="🔍 Search product" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">' +
+      '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="' + (isPusan(S.campus) ? '🔍 Search or scan barcode' : '🔍 Search product') + '" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">' +
       '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
       // Tapped card's student info gets its own row under "Sales" so product search stays available.
       (S.confirm ? '<div class="buyerrow">' + buyerChip() + '</div>' : '') +
@@ -612,14 +662,21 @@
     });
     h += '</div>';
     // Wide screen: products scroll on the left, cart + pay stay visible in a right column.
-    if (wide) h += '</div><div class="cartPane"><div class="vscroll fill">' + eyebrow('CART') + spacer(8);
-    else h += '<div class="divider" style="margin:14px 0"></div>' + eyebrow('CART') + spacer(8);
-    if (!vm.cart.length) h += txt('Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
+    var scan = isPusan(S.campus);
+    var cartHead = scan ? cartScanHeader() : eyebrow('CART');
+    if (wide) h += '</div><div class="cartPane"><div class="vscroll fill">' + cartHead + spacer(8);
+    else h += '<div class="divider" style="margin:14px 0"></div>' + cartHead + spacer(8);
+    if (!vm.cart.length) h += txt(scan ? 'Scan a barcode or select a product ' + (wide ? 'on the left.' : 'above.') :
+      'Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
     vm.cart.forEach(function (it) {
-      h += '<div class="cartrow">' + thumb(it.product, 40) + '<div class="cartname">' + esc(it.product.sMenu || '-') + '</div>' +
-        '<div class="stepper"><div class="stepbtn" data-act="' + act(function () { changeQty(it.product, -1); }) + '">−</div>' +
+      var p = it.product;
+      h += '<div class="cartrow' + (scan && S.lastScanId === p.id ? ' scanned' : '') + '">' + thumb(p, 40) +
+        '<div class="cartname">' + esc(p.sMenu || '-') +
+        (scan ? '<div class="cartsub">₱' + money(p.payment) + ' × ' + it.quantity + ' = <b>₱' + money(p.payment * it.quantity) + '</b></div>' : '') + '</div>' +
+        '<div class="stepper"><div class="stepbtn" data-act="' + act(function () { changeQty(p, -1); }) + '">−</div>' +
         '<div class="stepqty">' + it.quantity + '</div>' +
-        '<div class="stepbtn" data-act="' + act(function () { changeQty(it.product, 1); }) + '">+</div></div></div>';
+        '<div class="stepbtn" data-act="' + act(function () { changeQty(p, 1); }) + '">+</div></div>' +
+        (scan ? '<div class="cartdel" title="Remove from list" data-act="' + act(function () { removeLine(p); }) + '">✕</div>' : '') + '</div>';
     });
     h += spacer(4) + '<div class="chips">';
     [['No Discount', 0], ['Manager 15%', 0.15], ['Teacher 10%', 0.10]].forEach(function (c) {
@@ -685,7 +742,7 @@
     var q = (idx >= 0 ? vm.cart[idx].quantity : 0) + 1;
     if (q > p.stock) {
       beep('error');
-      toast(p.stock <= 0 ? 'Out of stock' : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
+      toast(p.stock <= 0 ? 'Out of stock: ' + (p.sMenu || '-') : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
       return;
     }
     if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q };
@@ -702,6 +759,17 @@
     if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = { product: vm.cart[idx].product, quantity: q2 };
   }
 
+  // Pusan Mart cart header: item count, scan mode (Add / Remove) and Clear.
+  function cartScanHeader() {
+    var qty = vm.cart.reduce(function (a, i) { return a + i.quantity; }, 0);
+    var rm = !!S.scanRemove;
+    return '<div class="carthead' + (rm ? ' removing' : '') + '"><div class="eyebrow" style="padding:0">CART · ' + vm.cart.length + ' items / ' + qty + ' pcs</div>' +
+      '<div class="scanmode"><span class="' + (rm ? '' : 'on') + '" data-act="' + act(function () { S.scanRemove = false; }) + '">＋ Scan adds</span>' +
+      '<span class="' + (rm ? 'on rm' : '') + '" data-act="' + act(function () { S.scanRemove = true; }) + '">− Scan removes</span></div>' +
+      (vm.cart.length ? '<span class="cartclear" data-act="' + act(clearCart) + '">Clear</span>' : '') + '</div>' +
+      (rm ? '<div class="rmnote">Remove mode: each scan takes 1 off the list. Switch back to “Scan adds” when done.</div>' : '');
+  }
+
   function registerScreen() {
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Product Register') + title('Register Product') +
       campusDropdown('r_campus', function (v) { S.campus = v; S.category = null; vm.products = []; loadProducts(v); }) +
@@ -712,6 +780,7 @@
       '<div class="row" style="padding:6px 0 8px"><div class="half l">' + secondaryBtn('📷 Take Photo', function () { pickImage(true, function (u) { S.photo = u; }); }) +
       '</div><div class="half r">' + secondaryBtn('🖼 Choose from Gallery', function () { pickImage(false, function (u) { S.photo = u; }); }) + '</div></div>' + spacer(14) +
       labeledField('r_name', 'Product Name', S.name, function (v) { S.name = v; }, 'e.g. Coke Zero 245ml') +
+      (isPusan(S.campus) ? labeledField('r_barcode', 'Barcode (scan into this box)', S.barcode, function (v) { S.barcode = v; }, 'e.g. 8801382147503') : '') +
       half(
         labeledField('r_price', 'Product Price (PHP)', S.price, function (v) { S.price = v; }, '0.00', 'decimal'),
         labeledField('r_qty', 'Quantity', S.qty, function (v) { S.qty = v; }, '0', 'numeric')
@@ -751,12 +820,15 @@
     var dup = vm.products.filter(function (p) { return String(p.sMenu || '').trim().replace(/\s+/g, ' ').toUpperCase() === wanted; })[0];
     if (dup && !window.confirm('"' + dup.sMenu + '" is already registered (' + (dup.mMenu || '-') + ', stock ' + dup.stock + ').\n' +
         'Use Edit Products to change its stock or price.\n\nRegister it again anyway?')) return;
+    var bc = isPusan(S.campus) ? cleanCode(S.barcode) : '';
+    var bcDup = bc && vm.products.filter(function (p) { return p.barcode === bc; })[0];
+    if (bcDup) { S.message = 'Barcode ' + bc + ' is already used by "' + (bcDup.sMenu || '-') + '".'; return; }
     var s = S, hadPhoto = !!S.photo;
     s.saving = true; s.message = null;
     // Same row as DbRepository.insertProduct: Campus upper-cased, m_menu = the chosen category. The Android app
     // uploads the photo by SFTP first; a browser cannot, so the product is saved without an image.
     var regName = s.name.trim();
-    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.category, sMenu: regName, payment: price, stock: qty, minStock: min })
+    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.category, sMenu: regName, payment: price, stock: qty, minStock: min, barcode: bc || undefined })
       .then(function (product) {
         s.message = 'Registered: ' + regName + ' (' + s.category + ')';
         if (product) vm.products.push(normProduct(product));
@@ -789,16 +861,17 @@
       h += '<div class="mitem ' + (isSel ? 'sel' : st.toLowerCase()) + '">' +
         '<div class="mhead" data-act="' + act(function () {
           if (isSel) S.selected = null;
-          else { S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.message = null; }
+          else { S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || ''; S.message = null; }
         }) + '">' + thumb(p, 40) + '<div class="info"><div style="font-size:12.5px;font-weight:700">' + esc(p.sMenu || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">Stock ' + p.stock + ' · Threshold ' + p.minStock + '</div></div>' + stockBadge(st) + '</div>';
+        '<div style="font-size:10.5px;color:var(--ink2)">Stock ' + p.stock + ' · Threshold ' + p.minStock + (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div>';
       if (isSel) {
         h += '<div class="divider" style="background:' + bc + '"></div><div style="padding:10px">' +
           half(
             labeledField('m_stock', 'Stock Quantity', S.stock, function (v) { S.stock = v; }, '', 'numeric'),
             labeledField('m_min', 'Minimum Stock Threshold', S.minStock, function (v) { S.minStock = v; }, '', 'numeric')
           ) +
-          labeledField('m_price', 'Price (PHP)', S.price, function (v) { S.price = v; }, '', 'decimal');
+          labeledField('m_price', 'Price (PHP)', S.price, function (v) { S.price = v; }, '', 'decimal') +
+          (isPusan(S.campus) ? labeledField('m_barcode', 'Barcode', S.barcode, function (v) { S.barcode = v; }, 'Scan or type') : '');
         if (S.message) h += txt(S.message, 'color:var(--brand);font-size:12px;padding-bottom:8px');
         h += primaryBtn(S.saving ? 'Saving...' : 'Save Changes', function () { saveModify(p); }, S.saving) + spacer(8) +
           '<button class="btn-text" style="color:var(--out)" data-act="' + act(function () { S.pendingDelete = p; }) + '">Delete Product</button></div>';
@@ -821,6 +894,12 @@
     if (ns == null || nm == null) { S.message = 'Please enter a valid stock quantity.'; return; }
     var s = S, changes = { stock: ns, minStock: nm };
     if (np != null) changes.payment = np;
+    if (isPusan(S.campus) && cleanCode(S.barcode) !== (p.barcode || '')) {
+      var nb = cleanCode(S.barcode);
+      var used = nb && vm.products.filter(function (x) { return x.barcode === nb && x.id !== p.id; })[0];
+      if (used) { S.message = 'Barcode ' + nb + ' is already used by "' + (used.sMenu || '-') + '".'; return; }
+      changes.barcode = nb;
+    }
     s.saving = true; s.message = null;
     repo.updateProduct(p.id, changes).then(function (row) {
       var np2 = normProduct(row);
@@ -1363,6 +1442,17 @@
     if (k && actions[k]) { actions[k](e.target.value); render(); }
   }
   function onKeyDown(e) {
+    // Pusan Mart: a code typed (or a short code scanned) into the search box + Enter adds that product.
+    if (e.key === 'Enter' && route === 'sales' && e.target && e.target.id === 's_search' && isPusan(S.campus)) {
+      var typed = cleanCode(e.target.value);
+      if (typed && findByCode(typed)) {
+        e.preventDefault();
+        S.search = '';
+        onBarcode(typed, true);
+        var box = document.getElementById('s_search'); if (box) box.value = '';
+        return;
+      }
+    }
     // Enter in the login form submits, like the IME action on the phone.
     if (e.key === 'Enter' && !session.manager && S.login && e.target && (e.target.id === 'l_id' || e.target.id === 'l_pw')) {
       if (!S.login.loading) { doLogin(S.login); render(); }
@@ -1401,6 +1491,8 @@
       window.PusanNfc.listenForNfc(function (d) { onNfc(d.uid); });
       // USB keyboard-mode reader: only while a screen is waiting for a card.
       window.PusanNfc.enableKeyboardReader(wantsNfc);
+      // Barcode scanner at the Pusan Mart counter: product codes go to the cart, everything else stays a card tap.
+      if (window.PusanNfc.setScanInterceptor) window.PusanNfc.setScanInterceptor(function (raw) { return onBarcode(raw, false); });
       window.addEventListener('nfc-error', function (e) { toast((e.detail && e.detail.message) || 'NFC read error', 3000); });
       // ACR122U on a PC: taps come from desktop-bridge (127.0.0.1:47321), not as keystrokes.
       if (window.PusanNfc.connectPcReader && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')) {

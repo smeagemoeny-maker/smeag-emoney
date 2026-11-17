@@ -6,7 +6,7 @@
 // Philippine time (UTC+8, no DST). PostgREST returns at most 1000 rows per request.
 import { normalizeUid } from "./db.mjs";
 import { httpError } from "./repository.mjs";
-import { escapeLike, q, rest } from "./supabaseRepository.mjs";
+import { cleanBarcode, escapeLike, q, rest, withProductColumns } from "./supabaseRepository.mjs";
 import { validateOfficeLines } from "./backoffice.mjs";
 
 const PAGE_SIZE = 1000;
@@ -16,26 +16,41 @@ const PERSON_SELECT = "id,uid,studentid,name,age,gender,campus,s_date,e_date,tot
 
 // ---------- products (store_menus) ----------
 
-export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, stock, minStock }, staffLoginId) {
+export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, stock, minStock, barcode }, staffLoginId) {
   if (!campus) throw httpError(400, "Campus is required.");
   if (!String(sMenu || "").trim()) throw httpError(400, "Product name is required.");
   const price = Number(payment);
   if (!(price >= 0)) throw httpError(400, "Price must be 0 or more.");
-  const [row] = await rest(`store_menus?select=${PRODUCT_SELECT}`, {
-    method: "POST",
-    headers: { prefer: "return=representation" },
-    body: {
-      Campus: campus,
-      m_menu: mMenu || null,
-      s_menu: String(sMenu).trim(),
-      image_path: imagePath || null,
-      payment: price,
-      stock: toInt(stock, 0),
-      min_stock: toInt(minStock, 5),
-      manager: staffLoginId || null,
-    },
+  const code = cleanBarcode(barcode);
+  if (code) await assertBarcodeFree(campus, code);
+  const body = {
+    Campus: campus,
+    m_menu: mMenu || null,
+    s_menu: String(sMenu).trim(),
+    image_path: imagePath || null,
+    payment: price,
+    stock: toInt(stock, 0),
+    min_stock: toInt(minStock, 5),
+    manager: staffLoginId || null,
+  };
+  const [row] = await withProductColumns((columns, extras) => {
+    if (code && !extras) throw httpError(503, "Barcodes are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
+    return rest(`store_menus?select=${columns}`, {
+      method: "POST",
+      headers: { prefer: "return=representation" },
+      body: code ? { ...body, barcode: code } : body,
+    });
   });
   return mapProduct(row);
+}
+
+// One barcode = one product per campus, so a scan at the counter always finds exactly one item.
+async function assertBarcodeFree(campus, code, exceptId) {
+  const rows = await withProductColumns((_, extras) => (extras
+    ? rest(`store_menus?select=id,s_menu&barcode=eq.${encodeURIComponent(q(code))}&Campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}&limit=2`)
+    : []));
+  const other = rows.find((r) => Number(r.id) !== Number(exceptId));
+  if (other) throw httpError(409, `Barcode ${code} is already used by ${other.s_menu || `product ${other.id}`}.`);
 }
 
 const PRODUCT_FIELDS = {
@@ -46,6 +61,7 @@ const PRODUCT_FIELDS = {
   payment: "payment",
   stock: "stock",
   minStock: "min_stock",
+  barcode: "barcode",
 };
 
 export async function updateProduct(id, changes) {
@@ -59,16 +75,25 @@ export async function updateProduct(id, changes) {
     } else if (key === "stock" || key === "minStock") {
       value = toInt(value, NaN);
       if (!(value >= 0)) throw httpError(400, `${key === "stock" ? "Stock" : "Minimum stock"} must be 0 or more.`);
+    } else if (key === "barcode") {
+      value = cleanBarcode(value);
     } else if (key === "sMenu" && !String(value || "").trim()) {
       throw httpError(400, "Product name is required.");
     }
     body[column] = value === "" ? null : value;
   }
   if (!Object.keys(body).length) throw httpError(400, "Nothing to update.");
-  const rows = await rest(`store_menus?id=eq.${productId(id)}&select=${PRODUCT_SELECT}`, {
-    method: "PATCH",
-    headers: { prefer: "return=representation" },
-    body,
+  if (body.barcode) {
+    const [current] = await rest(`store_menus?id=eq.${productId(id)}&select=Campus`);
+    if (current) await assertBarcodeFree(current.Campus, body.barcode, id);
+  }
+  const rows = await withProductColumns((columns, extras) => {
+    if ("barcode" in body && !extras) throw httpError(503, "Barcodes are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
+    return rest(`store_menus?id=eq.${productId(id)}&select=${columns}`, {
+      method: "PATCH",
+      headers: { prefer: "return=representation" },
+      body,
+    });
   });
   if (!rows.length) throw httpError(404, "Product not found.");
   return mapProduct(rows[0]);
@@ -84,7 +109,7 @@ export async function deleteProduct(id) {
 }
 
 export async function getProduct(id) {
-  const rows = await rest(`store_menus?id=eq.${productId(id)}&select=${PRODUCT_SELECT}`);
+  const rows = await withProductColumns((columns) => rest(`store_menus?id=eq.${productId(id)}&select=${columns}`));
   if (!rows[0]) throw httpError(404, "Product not found.");
   return mapProduct(rows[0]);
 }
@@ -438,6 +463,9 @@ function mapProduct(row) {
     stock: Number(row.stock || 0),
     salesNumber: Number(row.sales_number || 0),
     minStock: Number(row.min_stock || 0),
+    barcode: row.barcode ?? null,
+    itemCode: row.item_code ?? null,
+    cost: row.cost == null ? null : Number(row.cost),
   };
 }
 

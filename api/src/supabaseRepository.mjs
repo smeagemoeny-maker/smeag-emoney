@@ -52,22 +52,54 @@ export async function login({ loginId }) {
   return rows[0] || null;
 }
 
+// store_menus barcode / item_code / cost / unit / sub_category come from
+// migrations/supabase_pusanmart_products_import.sql. Until that is run the columns do not exist: the calls
+// below retry once with the old column list, so product screens keep working either way.
+export const PRODUCT_BASE_COLUMNS = "id,Campus,m_menu,s_menu,image_path,payment,stock,sales_number,min_stock";
+const PRODUCT_EXTRA_COLUMNS = "barcode,item_code,cost,unit,sub_category";
+let extraColumns = true;
+
+function missingExtraColumn(e) {
+  return /barcode|item_code|cost|unit|sub_category/.test(String(e?.message || "")) &&
+    /does not exist|Could not find|schema cache/i.test(String(e?.message || ""));
+}
+
+// run(selectList, extrasOn) performs the request; it is repeated without the new columns if they are missing.
+export async function withProductColumns(run) {
+  if (extraColumns) {
+    try {
+      return await run(`${PRODUCT_BASE_COLUMNS},${PRODUCT_EXTRA_COLUMNS}`, true);
+    } catch (e) {
+      if (!missingExtraColumn(e)) throw e;
+      extraColumns = false;
+    }
+  }
+  return run(PRODUCT_BASE_COLUMNS, false);
+}
+
+// "8801382147503", " 8801382147503 " -> "8801382147503"; letters upper-cased; empty -> null.
+export function cleanBarcode(value) {
+  const code = String(value ?? "").replace(/\s+/g, "").toUpperCase();
+  return code ? code.slice(0, 64) : null;
+}
+
 export async function listProducts({ campus }) {
   const hasCampus = campus && campus !== "All Campuses";
-  const select = "select=id,Campus,m_menu,s_menu,image_path,payment,stock,sales_number,min_stock";
   // ilike without wildcards = case-insensitive equality (MySQL compared with UPPER()).
   const filter = hasCampus
     ? `&or=${encodeURIComponent(`(Campus.ilike.${q(escapeLike(campus))},Campus.ilike.all)`)}`
     : "";
   const order = hasCampus ? "&order=m_menu.asc,s_menu.asc,id.asc" : "&order=Campus.asc,m_menu.asc,s_menu.asc,id.asc";
 
-  const rows = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const page = await rest(`store_menus?${select}${filter}${order}&offset=${offset}&limit=${PAGE_SIZE}`);
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-  }
-  return rows.map(mapProduct);
+  return withProductColumns(async (columns) => {
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const page = await rest(`store_menus?select=${columns}${filter}${order}&offset=${offset}&limit=${PAGE_SIZE}`);
+      rows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+    return rows.map(mapProduct);
+  });
 }
 
 export async function findPersonByUid(uid) {
@@ -183,6 +215,11 @@ function mapProduct(row) {
     stock: row.stock,
     salesNumber: row.sales_number,
     minStock: row.min_stock,
+    barcode: row.barcode ?? null,
+    itemCode: row.item_code ?? null,
+    cost: row.cost ?? null,
+    unit: row.unit ?? null,
+    subCategory: row.sub_category ?? null,
   };
 }
 

@@ -310,6 +310,14 @@
     readerEnabled = isActive;
   }
 
+  // Barcode scanners type the same way (fast digits + Enter). A screen that sells by barcode registers a
+  // function here: it gets every fast burst first and returns true when it was a product barcode, so that
+  // burst is NOT treated as a card. Anything it returns false for goes on to the card reader as before.
+  let scanInterceptor = null;
+  function setScanInterceptor(fn) {
+    scanInterceptor = typeof fn === "function" ? fn : null;
+  }
+
   document.addEventListener(
     "keydown",
     (event) => {
@@ -337,6 +345,13 @@
             target.value = target.value.slice(0, -raw.length);
             target.dispatchEvent(new Event("input", { bubbles: true }));
           }
+          let isBarcode = false;
+          try {
+            isBarcode = !!(scanInterceptor && scanInterceptor(raw));
+          } catch (error) {
+            console.warn("barcode scan handler failed", error);
+          }
+          if (isBarcode) return;
           dispatchNfcTag({ uid: readerUidToHex(raw), raw, source: "usb-reader", timestamp: Date.now() });
         }
         return;
@@ -524,6 +539,7 @@
     dispatchManualUid,
     dispatchNfcTag,
     enableKeyboardReader,
+    setScanInterceptor,
     getReaderFormat,
     keepPhoneNfc,
     listenForNfc,
