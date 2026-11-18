@@ -323,7 +323,23 @@
   }
 
   function cartSubtotal() { return vm.cart.reduce(function (a, i) { return a + i.product.payment * i.quantity; }, 0); }
-  function cartTotalAfterDiscount() { var s = cartSubtotal(); return s - s * vm.discountRate; }
+  // Per-item discount: it.disc = { rate: 0..1 } or { amount: pesos off the line }. It REPLACES the cart-wide
+  // discount for that line (same rule as pos_checkout, supabase_pos_checkout_item_discount.sql).
+  function r2(n) { return Math.round(n * 100) / 100; }
+  function lineNet(it, cartRate) {
+    var gross = it.product.payment * it.quantity, d = it.disc;
+    if (d && d.amount != null) return r2(gross - Math.min(d.amount, gross));
+    return r2(gross - gross * (d ? d.rate : (cartRate == null ? vm.discountRate : cartRate)));
+  }
+  function discTag(d) {
+    if (!d) return '';
+    if (d.amount != null) return '−₱' + money(d.amount);
+    return d.rate === 0 ? 'No disc.' : '−' + Math.round(d.rate * 10000) / 100 + '%';
+  }
+  function cartTotalAfterDiscount() { return r2(vm.cart.reduce(function (a, it) { return a + lineNet(it); }, 0)); }
+  function setLineDisc(p, d) {
+    vm.cart.forEach(function (c, i) { if (c.product.id === p.id) vm.cart[i] = { product: c.product, quantity: c.quantity, disc: d }; });
+  }
 
   function toast(msg, ms) {
     ui.toast = msg;
@@ -546,7 +562,12 @@
     s.paying = true; vm.checkoutError = null; render();
     repo.checkout({
       uid: uidStr, store: storeFor(), campus: campus,
-      cart: cart.map(function (it) { return { productId: it.product.id, quantity: it.quantity }; }),
+      cart: cart.map(function (it) {
+        var line = { productId: it.product.id, quantity: it.quantity };
+        if (it.disc && it.disc.amount != null) line.discountAmount = it.disc.amount;
+        else if (it.disc) line.discountRate = it.disc.rate;
+        return line;
+      }),
       discountLabel: label, discountRate: rate
     }).then(function (c) {
       vm.last = { cart: cart, label: label, rate: rate, finalTotal: num(c.finalTotal), remaining: num(c.remainingBalance),
@@ -722,20 +743,27 @@
     if (!vm.cart.length) h += txt(scan ? 'Scan a barcode or select a product ' + (wide ? 'on the left.' : 'above.') :
       'Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
     vm.cart.forEach(function (it) {
-      var p = it.product;
+      var p = it.product, gross = p.payment * it.quantity, net = lineNet(it);
+      var editing = S.discEdit === p.id;
       h += '<div class="cartrow' + (scan && S.lastScanId === p.id ? ' scanned' : '') + '">' + thumb(p, 40) +
         '<div class="cartname">' + esc(p.sMenu || '-') +
-        (scan ? '<div class="cartsub">₱' + money(p.payment) + ' × ' + it.quantity + ' = <b>₱' + money(p.payment * it.quantity) + '</b></div>' : '') + '</div>' +
+        '<div class="cartsub">' + (scan ? '₱' + money(p.payment) + ' × ' + it.quantity + ' = ' : '') +
+        (net !== r2(gross) ? '<s>₱' + money(gross) + '</s> <b>₱' + money(net) + '</b>' : '<b>₱' + money(gross) + '</b>') + '</div></div>' +
+        '<div class="disctag' + (it.disc ? ' on' : '') + (editing ? ' open' : '') + '" title="Item discount" data-act="' + act(function () {
+          S.discEdit = editing ? null : p.id; S.discInput = ''; S.discMode = (it.disc && it.disc.amount != null) ? 'amount' : 'rate';
+        }) + '">' + (it.disc ? esc(discTag(it.disc)) : '%') + '</div>' +
         '<div class="stepper"><div class="stepbtn" data-act="' + act(function () { changeQty(p, -1); }) + '">−</div>' +
         '<div class="stepqty">' + it.quantity + '</div>' +
         '<div class="stepbtn" data-act="' + act(function () { changeQty(p, 1); }) + '">+</div></div>' +
         (scan ? '<div class="cartdel" title="Remove from list" data-act="' + act(function () { removeLine(p); }) + '">✕</div>' : '') + '</div>';
+      if (editing) h += itemDiscEditor(it);
     });
     h += spacer(4) + '<div class="chips">';
     [['No Discount', 0], ['Manager 15%', 0.15], ['Teacher 10%', 0.10]].forEach(function (c) {
       h += '<div class="chip' + (vm.discountLabel === c[0] ? ' sel' : '') + '" data-act="' + act(function () { vm.discountLabel = c[0]; vm.discountRate = c[1]; }) + '">' + c[0] + '</div>';
     });
     h += '</div>' + spacer(10) +
+      (vm.cart.some(function (it) { return it.disc; }) ? txt('Items with their own discount (%-tag) ignore the cart discount above.', 'font-size:10.5px;color:var(--ink3);padding-top:6px') : '') +
       '<div class="sb" style="padding-top:10px"><span style="font-size:12px;color:var(--ink2)">Total</span>' +
       '<span style="font-size:13px;font-weight:700">₱' + money(cartTotalAfterDiscount()) + '</span></div>';
     if (vm.checkoutError) h += txt(vm.checkoutError, 'color:var(--out);font-size:12px;padding-top:8px');
@@ -798,7 +826,7 @@
       toast(p.stock <= 0 ? 'Out of stock: ' + (p.sMenu || '-') : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
       return;
     }
-    if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q };
+    if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q, disc: vm.cart[idx].disc };
     else vm.cart.push({ product: p, quantity: 1 });
     beep('ok');
     toast('Added: ' + (p.sMenu || '-') + (q > 1 ? ' ×' + q : ''), 1200);
@@ -809,7 +837,33 @@
     if (idx < 0) return;
     var q2 = vm.cart[idx].quantity + d;
     if (d > 0 && q2 > p.stock) { beep('error'); toast('Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600); return; }
-    if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = { product: vm.cart[idx].product, quantity: q2 };
+    if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = { product: vm.cart[idx].product, quantity: q2, disc: vm.cart[idx].disc };
+  }
+
+  // Item discount editor under a cart line: presets, or a custom % / ₱ amount. "Cart" = use the cart-wide discount.
+  function itemDiscEditor(it) {
+    var p = it.product, d = it.disc, mode = S.discMode || 'rate', gross = p.payment * it.quantity;
+    function close() { S.discEdit = null; S.discInput = ''; }
+    var h = '<div class="discedit"><div class="chips">';
+    [['Cart', null], ['0%', 0], ['10%', 0.1], ['20%', 0.2], ['30%', 0.3], ['50%', 0.5]].forEach(function (c) {
+      var sel = c[1] === null ? !d : (d && d.amount == null && d.rate === c[1]);
+      h += '<div class="chip' + (sel ? ' sel' : '') + '" data-act="' + act(function () {
+        setLineDisc(p, c[1] === null ? null : { rate: c[1] }); close();
+      }) + '">' + c[0] + '</div>';
+    });
+    h += '</div><div class="discrow">' +
+      '<div class="scanmode"><span class="' + (mode === 'rate' ? 'on' : '') + '" data-act="' + act(function () { S.discMode = 'rate'; S.discInput = ''; }) + '">%</span>' +
+      '<span class="' + (mode === 'amount' ? 'on' : '') + '" data-act="' + act(function () { S.discMode = 'amount'; S.discInput = ''; }) + '">₱</span></div>';
+    actions.in_discinput = function (v) { S.discInput = v; };
+    var v = parseNum(S.discInput || ''), bad = S.discInput && (v == null || v < 0 || (mode === 'rate' ? v > 100 : v > gross));
+    h += '<input class="tf discinput" id="discinput" data-in="in_discinput" value="' + esc(S.discInput || '') + '" placeholder="' +
+      (mode === 'rate' ? 'e.g. 25 (%)' : 'e.g. 10 (₱ off this line)') + '" inputmode="decimal" type="text" autocomplete="off">' +
+      '<button class="btn btn-primary discapply"' + (v == null || bad ? ' disabled' : ' data-act="' + act(function () {
+        setLineDisc(p, mode === 'rate' ? { rate: Math.round(v * 100) / 10000 } : { amount: r2(v) }); close();
+      }) + '"') + '>Apply</button></div>' +
+      (bad ? '<div style="color:var(--out);font-size:11px;padding-top:4px">' + (mode === 'rate' ? 'Enter 0 – 100.' : 'Enter 0 – ₱' + money(gross) + '.') + '</div>' : '') +
+      '</div>';
+    return h;
   }
 
   // Pusan Mart cart header: item count, scan mode (Add / Remove) and Clear.
@@ -1011,7 +1065,98 @@
     screenLoad(repo.fetchWeeklyReport(S.campus, S.start, S.end), function (r) { S.report = r; },
       function (e) { S.error = 'Failed to load report: ' + e.message; });
   }
+
+  // ----- drill-down: tapping a sales number on Summary / Pay List opens the rows behind it
+  // kind 'sales': bank sale rows (same rows /api/reports/sales sums: transaction_type decrease)
+  // kind 'pay':   PusanmartPayments rows, with unit price (before discount) / discount / paid
+  function openDetail(kind, label, from, to, item) {
+    var s = S, d = { kind: kind, label: label, from: from, to: to, item: item || null, rows: null, loading: true, error: null };
+    s.detail = d;
+    var p = kind === 'pay' ? repo.fetchPusanmartPayments(from, to) : repo.fetchHistory(s.campus, from, to).then(function (rows) {
+      return rows.filter(function (t) { return (!t.type || t.type === 'decrease') && (!d.item || t.subcategory === d.item); });
+    });
+    p.then(function (rows) { d.rows = rows; }, function (e) { d.rows = []; d.error = 'Failed to load details: ' + e.message; })
+      .then(function () { d.loading = false; if (S === s && s.detail === d) render(); });
+  }
+  function rangeText(from, to) { return from === to ? from : from + ' ~ ' + to; }
+  function csvDownload(name, rows) {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Saved to Downloads: ' + name, 3500);
+  }
+  function payUnit(r) { return r.unitPrice != null ? num(r.unitPrice) : r.allPayments; }
+  // Pusan Pay export: unit price (amount typed before the discount), discount, paid amount per payment.
+  function downloadPayCsv(list, from, to) {
+    var tUnit = 0, tDisc = 0, tPaid = 0;
+    var rows = [['No', 'Date', 'Name', 'NFC ID', 'Unit Price (PHP)', 'Discount', 'Discount Amount (PHP)', 'Paid Amount (PHP)', 'Memo', 'Staff']];
+    list.forEach(function (r, i) {
+      var unit = payUnit(r), disc = unit - r.allPayments;
+      tUnit += unit; tDisc += disc; tPaid += r.allPayments;
+      rows.push([i + 1, r.date || '-', r.name || '-', r.nfcid, money(unit), r.discountLabel || 'No Discount', money(disc), money(r.allPayments), r.memo || '', r.staff || '']);
+    });
+    rows.push([]);
+    rows.push(['', 'Total', '', list.length + ' payments', money(tUnit), '', money(tDisc), money(tPaid)]);
+    rows.push(['Search Range', rangeText(from, to)]);
+    csvDownload('pusanpay_' + from + '_' + to + '.csv', rows);
+  }
+  function downloadSalesCsv(d) {
+    var tQty = 0, tAmt = 0;
+    var rows = [['No', 'Date', 'Buyer', 'Student ID', 'Campus', 'Category', 'Item', 'Qty', 'Unit Price (PHP)', 'Amount (PHP)', 'Discount / Remark', 'Source', 'Order']];
+    d.rows.forEach(function (t, i) {
+      var qty = num(t.quantity), amt = num(t.payment);
+      tQty += qty; tAmt += amt;
+      rows.push([i + 1, t.date || '', t.name || '', t.studentId || '', t.campus || '', t.category || '', t.subcategory || '', qty,
+        qty ? money(amt / qty) : '', money(amt), t.remark || '', t.source || '', t.order || '']);
+    });
+    rows.push([]);
+    rows.push(['', 'Total', '', '', '', '', d.rows.length + ' rows', tQty, '', money(tAmt)]);
+    rows.push(['Search Range', rangeText(d.from, d.to)]);
+    csvDownload('sales_' + String(S.campus).replace(/\s+/g, '') + '_' + d.from + '_' + d.to + '.csv', rows);
+  }
+  function payCard(r) {
+    var unit = payUnit(r), disc = unit - r.allPayments;
+    return '<div class="card sb" style="margin-bottom:8px;padding:10px"><div style="min-width:0">' +
+      '<div style="font-size:12.5px;font-weight:700">' + esc(r.name || '-') + '</div>' +
+      '<div style="font-size:10.5px;color:var(--ink2)">NFC ' + esc(r.nfcid) + '</div>' +
+      '<div style="font-size:10px;color:var(--ink3)">' + esc(r.date || '') + '</div>' +
+      (r.memo ? '<div style="font-size:10.5px;color:var(--ink2);padding-top:2px">📝 ' + esc(r.memo) + '</div>' : '') + '</div>' +
+      '<div style="text-align:right;flex:none">' +
+      (disc > 0.004 ? '<div style="font-size:10.5px;color:var(--ink3)">₱' + money(unit) + ' · ' + esc(r.discountLabel || '') + '</div>' : '') +
+      '<div style="font-size:12px;font-weight:700">₱' + money(r.allPayments) + '</div></div></div>';
+  }
+  function detailScreen() {
+    var d = S.detail, rows = d.rows || [];
+    var total = rows.reduce(function (a, t) { return a + (d.kind === 'pay' ? t.allPayments : num(t.payment)); }, 0);
+    var h = '<div class="screen">' + eyebrow('Report · Details') + title(d.label) +
+      '<div style="padding-bottom:10px">' + secondaryBtn('← Back', function () { S.detail = null; }) + '</div>' +
+      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + esc(rangeText(d.from, d.to)) +
+      (d.kind === 'sales' ? ' · ' + esc(S.campus) : '') + ' · ' + rows.length + (d.kind === 'pay' ? ' payments' : ' rows') + '</span>' +
+      '<span style="font-size:13px;font-weight:700">Total ₱' + money(total) + '</span></div>';
+    if (d.kind === 'pay') {
+      var unitTotal = rows.reduce(function (a, r) { return a + payUnit(r); }, 0);
+      if (unitTotal - total > 0.004) h += txt('Unit price total ₱' + money(unitTotal) + ' · discount ₱' + money(unitTotal - total), 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
+    }
+    h += primaryBtn('⬇ Download Excel', function () { if (d.kind === 'pay') downloadPayCsv(rows, d.from, d.to); else downloadSalesCsv(d); }, !rows.length) +
+      spacer(10) + '<div class="vscroll fill">';
+    if (d.error) h += txt(d.error, 'color:var(--out);font-size:12px;padding-bottom:8px');
+    if (!rows.length && !d.error) h += txt(d.loading ? 'Loading...' : 'No sales in this period.', 'font-size:12px;color:var(--ink3)');
+    rows.forEach(function (t) {
+      if (d.kind === 'pay') { h += payCard(t); return; }
+      var qty = num(t.quantity);
+      h += '<div class="card sb" style="margin-bottom:8px;padding:10px"><div style="min-width:0">' +
+        '<div style="font-size:12.5px;font-weight:700">' + esc((t.subcategory || '-') + (qty > 1 ? ' × ' + qty : '')) + '</div>' +
+        '<div style="font-size:10.5px;color:var(--ink2)">Buyer: ' + esc(t.name || '-') + '</div>' +
+        '<div style="font-size:10.5px;color:var(--ink2)">' + esc((t.campus || '-') + ' · ' + (t.remark || t.source || 'office')) + '</div>' +
+        '<div style="font-size:10px;color:var(--ink3)">' + esc(t.date || '') + '</div></div>' +
+        '<div style="text-align:right;flex:none">' + (qty > 1 ? '<div style="font-size:10.5px;color:var(--ink3)">₱' + money(num(t.payment) / qty) + ' ea</div>' : '') +
+        '<div style="font-size:12px;font-weight:700">₱' + money(t.payment) + '</div></div></div>';
+    });
+    h += '</div></div>';
+    return h;
+  }
+  function tapAttr(fn) { return ' data-act="' + act(fn) + '"'; }
   function reportScreen() {
+    if (S.detail) return detailScreen();
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Report') + reportTabs() +
       campusDropdown('rp_campus', function (v) { S.campus = v; runReport(); }) +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
@@ -1019,24 +1164,27 @@
     var r = S.report;
     if (!r && S.loading) h += txt('Loading...', 'font-size:12px;color:var(--ink3)');
     if (r) {
-      var stat = function (label, value, color) {
-        return '<div class="stat"><div class="lab">' + esc(label) + '</div><div class="val" style="color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div></div>';
+      var stat = function (label, value, color, onTap) {
+        return '<div class="stat' + (onTap ? ' tap' : '') + '"' + (onTap ? tapAttr(onTap) : '') + '><div class="lab">' + esc(label) + '</div><div class="val" style="color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div></div>';
       };
+      var from = S.start, to = S.end;
+      var allSales = function () { openDetail('sales', 'Sales Details', from, to); };
       h += primaryBtn('⬇ Download Report PDF', notInBrowser) + spacer(14) +
-        '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + comma(Math.round(r.totalRevenue))) + stat('Transactions', comma(r.transactionCount)) + '</div>' + spacer(8) +
+        '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + comma(Math.round(r.totalRevenue)), null, allSales) + stat('Transactions', comma(r.transactionCount), null, allSales) + '</div>' + spacer(8) +
         '<div class="row" style="gap:8px">' + stat('Avg. Order Value', '₱' + comma(r.avgOrderValue, 2)) + stat('Low Stock Alerts', String(r.lowStock.length), 'var(--low)') + '</div>' +
         spacer(16) + eyebrow('Daily Sales') + spacer(8);
       var maxVal = Math.max(1, r.dailyTotals.reduce(function (m, d) { return Math.max(m, d[1]); }, 0));
       h += '<div class="bars">';
       r.dailyTotals.forEach(function (d) {
         var f = Math.min(1, Math.max(0.04, d[1] / maxVal));
-        h += '<div class="col"><div class="bar" style="height:' + (f * 100) + '%"></div></div>';
+        h += '<div class="col tap" title="' + esc(d[0] + ' ₱' + money(d[1])) + '"' + tapAttr(function () { openDetail('sales', 'Sales ' + d[0], d[0], d[0]); }) +
+          '><div class="bar" style="height:' + (f * 100) + '%"></div></div>';
       });
       h += '</div><div class="barlabels">';
-      r.dailyTotals.forEach(function (d) { h += '<div>' + esc(d[0].slice(-2)) + '</div>'; });
+      r.dailyTotals.forEach(function (d) { h += '<div class="tap"' + tapAttr(function () { openDetail('sales', 'Sales ' + d[0], d[0], d[0]); }) + '>' + esc(d[0].slice(-2)) + '</div>'; });
       h += '</div>' + spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Top Sellers (by Quantity)') + spacer(8);
       r.topProducts.forEach(function (tp, idx) {
-        h += '<div class="listrow"><div class="rank" style="background:' + (idx === 0 ? 'var(--brand)' : 'var(--ink)') + '">' + (idx + 1) + '</div>' +
+        h += '<div class="listrow tap"' + tapAttr(function () { openDetail('sales', tp[0], from, to, tp[0]); }) + '><div class="rank" style="background:' + (idx === 0 ? 'var(--brand)' : 'var(--ink)') + '">' + (idx + 1) + '</div>' +
           '<div style="font-size:12px;flex:1;min-width:0;padding-left:8px">' + esc(tp[0]) + '</div>' +
           '<div style="font-size:12px;font-weight:700">' + tp[1] + '</div></div>';
       });
@@ -1173,17 +1321,17 @@
   }
   function dailyScreen() {
     var r = S.daily;
-    var stat = function (label, value, color, sub) {
-      return '<div class="stat"><div class="lab">' + esc(label) + '</div><div class="val" style="font-size:15px;color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div>' +
+    var stat = function (label, value, color, sub, onTap) {
+      return '<div class="stat' + (onTap ? ' tap' : '') + '"' + (onTap ? tapAttr(onTap) : '') + '><div class="lab">' + esc(label) + '</div><div class="val" style="font-size:15px;color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div>' +
         (sub ? '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + esc(sub) + '</div>' : '') + '</div>';
     };
     var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) + '<div class="vscroll fill">' + errorLine();
     if (!r) { h += loadingOr('No results.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
-    var t = r.totals;
+    var t = r.totals, from = S.start, to = S.end;
     var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (' + t.daysWithCost + ' days with cost)' : 'Enter cost';
-    h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + money(t.sales), null, t.count + ' trans.') +
+    h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + money(t.sales), null, t.count + ' trans.', function () { openDetail('pay', 'Pusan Pay Details', from, to); }) +
       stat('Cost', '₱' + money(t.cost), 'var(--low)', t.daysMissingCost ? t.daysMissingCost + ' days missing' : null) + '</div>' + spacer(8) +
       '<div class="row" style="gap:8px">' + stat('Net Profit', '₱' + money(t.net), t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) + '</div>' + spacer(12);
 
@@ -1210,7 +1358,8 @@
         '<div class="sb"><span style="font-size:12.5px;font-weight:700">' + esc(d.date) + '</span>' +
         '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + ' trans.</span></div>' +
         '<div class="sb" style="padding-top:4px;font-size:11.5px">' +
-        '<span>Sales <b>₱' + money(d.sales) + '</b></span>' +
+        '<span class="tap salesnum"' + tapAttr(function () { S.costDate = d.date; syncCostInput(); openDetail('pay', 'Pusan Pay ' + d.date, d.date, d.date); }) +
+        '>Sales <b>₱' + money(d.sales) + '</b> ›</span>' +
         '<span>Cost ' + (d.cost == null ? '<b style="color:var(--out)">missing</b>' : '<b>₱' + money(d.cost) + '</b>') + '</span>' +
         '<span>Net ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + money(d.net) + '</b>') + '</span>' +
         '</div></div>';
@@ -1218,20 +1367,9 @@
     h += '</div></div>';
     return h;
   }
-  function downloadPayListCsv() {
-    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
-    var rows = [['No', 'Name', 'NFCID', 'Date', 'Amount (PHP)', 'Memo']];
-    S.results.forEach(function (r, i) { rows.push([i + 1, r.name || '-', r.nfcid, r.date || '-', money(r.allPayments), r.memo || '']); });
-    rows.push([]);
-    rows.push(['Search Range', S.start + ' ~ ' + S.end]);
-    rows.push(['Transaction Count', S.results.length]);
-    rows.push(['Total Amount Earned (PHP)', money(total)]);
-    var name = 'pusanmart_paylist_' + Date.now() + '.csv';
-    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (r) { return r.map(cell).join(','); }).join('\r\n'));
-    toast('Saved to Downloads: ' + name, 3500);
-  }
+  function downloadPayListCsv() { downloadPayCsv(S.results, S.start, S.end); }
   function payListScreen() {
+    if (S.detail) return detailScreen();
     if (S.view === 'daily') return dailyScreen();
     var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
     var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
@@ -1241,23 +1379,20 @@
       '<span style="font-size:13px;font-weight:700">Total ₱' + money(total) + '</span></div>' +
       primaryBtn('⬇ Download Excel', downloadPayListCsv, !S.results.length) + spacer(10) + '<div class="vscroll fill">' + errorLine();
     if (!S.results.length && !S.error) h += loadingOr('No PusanMart payments in this period.', 'font-size:12px;color:var(--ink3)');
-    S.results.forEach(function (r) {
-      h += '<div class="card sb" style="margin-bottom:8px;padding:10px"><div>' +
-        '<div style="font-size:12.5px;font-weight:700">' + esc(r.name || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">NFC ' + esc(r.nfcid) + '</div>' +
-        '<div style="font-size:10px;color:var(--ink3)">' + esc(r.date || '') + '</div>' +
-        (r.memo ? '<div style="font-size:10.5px;color:var(--ink2);padding-top:2px">📝 ' + esc(r.memo) + '</div>' : '') + '</div>' +
-        '<div style="font-size:12px;font-weight:700">₱' + money(r.allPayments) + '</div></div>';
-    });
+    S.results.forEach(function (r) { h += payCard(r); });
     h += '</div></div>';
     return h;
   }
 
   function receiptText(L) {
-    var sub = L.cart.reduce(function (a, i) { return a + i.product.payment * i.quantity; }, 0);
-    var lines = ['SMEAG Mobile Mart - ' + L.campus, ''];
-    L.cart.forEach(function (it) { lines.push(it.product.sMenu + ' × ' + it.quantity + '  ₱' + money(it.product.payment * it.quantity)); });
-    lines.push(L.label + '  −₱' + money(sub * L.rate));
+    var disc = 0, lines = ['SMEAG Mobile Mart - ' + L.campus, ''];
+    L.cart.forEach(function (it) {
+      var gross = it.product.payment * it.quantity;
+      lines.push(it.product.sMenu + ' × ' + it.quantity + '  ₱' + money(gross));
+      if (it.disc) lines.push('  Item discount ' + discTag(it.disc) + '  −₱' + money(gross - lineNet(it, L.rate)));
+      else disc += gross - lineNet(it, L.rate);
+    });
+    if (L.cart.some(function (it) { return !it.disc; })) lines.push(L.label + '  −₱' + money(disc));
     lines.push('Final Total  ₱' + money(L.finalTotal));
     lines.push('Remaining NFC Balance  ₱' + money(L.remaining));
     return lines.join('\n');
@@ -1270,8 +1405,8 @@
   }
   function receiptScreen() {
     var L = vm.last;
-    var sub = L.cart.reduce(function (a, i) { return a + i.product.payment * i.quantity; }, 0);
-    var disc = sub * L.rate;
+    // Cart-wide discount only on lines without their own item discount.
+    var disc = L.cart.reduce(function (a, i) { return i.disc ? a : a + (i.product.payment * i.quantity - lineNet(i, L.rate)); }, 0);
     var h = '<div class="screen" style="align-items:center">' +
       '<div style="width:56px;height:56px;border-radius:50%;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;flex:none">' +
       '<span style="color:var(--ok);font-size:26px;line-height:normal">✓</span></div>' + spacer(12) +
@@ -1286,11 +1421,17 @@
       '<div style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px">' +
       '<div class="eyebrow" style="padding-bottom:4px">Purchase</div>';
     L.cart.forEach(function (it) {
+      var gross = it.product.payment * it.quantity;
       h += '<div class="sb" style="padding:5px 0"><span style="font-size:12px;color:var(--ink2)">' + esc(it.product.sMenu + ' × ' + it.quantity) + '</span>' +
-        '<span style="font-size:12px;font-weight:700">₱' + money(it.product.payment * it.quantity) + '</span></div>';
+        '<span style="font-size:12px;font-weight:700">₱' + money(gross) + '</span></div>';
+      if (it.disc) {
+        h += '<div class="sb" style="padding:0 0 5px 10px"><span style="font-size:11px;color:var(--ink2)">Item discount ' + esc(discTag(it.disc)) + '</span>' +
+          '<span style="font-size:11px">−₱' + money(gross - lineNet(it, L.rate)) + '</span></div>';
+      }
     });
-    h += '<div class="sb" style="padding:5px 0"><span style="font-size:12px;color:var(--ink2)">' + esc(L.label) + '</span>' +
-      '<span style="font-size:12px;font-weight:700">−₱' + money(disc) + '</span></div>' +
+    if (L.cart.some(function (it) { return !it.disc; })) h += '<div class="sb" style="padding:5px 0"><span style="font-size:12px;color:var(--ink2)">' + esc(L.label) + '</span>' +
+      '<span style="font-size:12px;font-weight:700">−₱' + money(disc) + '</span></div>';
+    h +=
       '<div class="divider" style="margin:8px 0"></div>' +
       '<div class="sb"><span style="font-size:13px">Final Total</span><span style="font-size:15px;font-weight:700;color:var(--brand)">₱' + money(L.finalTotal) + '</span></div>' +
       '<div class="divider" style="margin:8px 0"></div>' +

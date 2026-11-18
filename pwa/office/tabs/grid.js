@@ -440,27 +440,50 @@
     });
   }
 
-  /* ---------- Excel (.xlsx) export via SheetJS (lazy-loaded from cdnjs) ---------- */
-  var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  var sheetJsPromise = null;
+  /* ---------- Excel (.xlsx) export via xlsx-js-style (SheetJS 0.18.5 + cell styles; lazy-loaded) ---------- */
+  // The plain SheetJS build cannot write colours, so the export uses the styled fork. It is a drop-in
+  // replacement (it also sets window.XLSX), so a plain copy loaded by another tab is simply superseded.
+  var SHEETJS = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+  var sheetJsPromise = null, styledXlsx = null;
   function loadSheetJs() {
-    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (styledXlsx) return Promise.resolve(styledXlsx);
     if (sheetJsPromise) return sheetJsPromise;
     sheetJsPromise = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
       s.src = SHEETJS;
-      s.onload = function () { if (window.XLSX) resolve(window.XLSX); else { sheetJsPromise = null; reject(new Error('Cannot load the Excel library.')); } };
+      s.onload = function () { if (window.XLSX) { styledXlsx = window.XLSX; resolve(styledXlsx); } else { sheetJsPromise = null; reject(new Error('Cannot load the Excel library.')); } };
       s.onerror = function () { sheetJsPromise = null; s.remove(); reject(new Error('Cannot load the Excel library (check the internet connection).')); };
       document.head.appendChild(s);
     });
     return sheetJsPromise;
   }
-  // sheets: [{ name, columns (grid column spec; format 'money' -> number cell #,##0.00), rows, title?: [lines above the table] }]
+
+  /* the same colours as the on-screen grid (.og-grid): blue header, white / #FAFAFC striped rows, light grid lines */
+  var XS = (function () {
+    function side(rgb) { return { style: 'thin', color: { rgb: rgb } }; }
+    function box(rgb) { return { top: side(rgb), bottom: side(rgb), left: side(rgb), right: side(rgb) }; }
+    function fill(rgb) { return { patternType: 'solid', fgColor: { rgb: rgb } }; }
+    var font = { name: 'Segoe UI', sz: 10, color: { rgb: '000000' } };
+    return {
+      fill: fill, box: box,
+      font: function (o) { return Object.assign({}, font, o || {}); },
+      title0: { font: { name: 'Segoe UI', sz: 16, bold: true, color: { rgb: '000080' } } },
+      title: { font: { name: 'Segoe UI', sz: 10, color: { rgb: '000000' } } },
+      head: { fill: fill('0078D7'), font: { name: 'Segoe UI', sz: 10, color: { rgb: 'FFFFFF' } }, border: box('646464'),
+              alignment: { vertical: 'center', wrapText: true } },
+      even: 'FFFFFF', odd: 'FAFAFC', line: 'E3E3E8',
+      total: { fill: fill('DCDCE1'), font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '000000' } }, border: box('C8C8CD') }
+    };
+  })();
+
+  // sheets: [{ name, columns (grid column spec; format 'money' -> number cell #,##0.00), rows, title?: [lines above the table],
+  //            totalRows?: n last rows styled as the grey TOTAL row, cellFill?: function (row, col) -> 'RRGGBB' | null }]
   function downloadXlsx(fileName, sheets) {
     return loadSheetJs().then(function (XLSX) {
       var wb = XLSX.utils.book_new();
       sheets.forEach(function (sh) {
         var aoa = (sh.title || []).map(function (t) { return [t]; });
+        var nTitle = aoa.length;
         if (aoa.length) aoa.push([]);
         var headRow = aoa.length;
         aoa.push(sh.columns.map(function (c) { return c.header || c.key; }));
@@ -476,15 +499,30 @@
           }));
         });
         var ws = XLSX.utils.aoa_to_sheet(aoa);
+        function cellAt(ri, ci) {
+          var a = XLSX.utils.encode_cell({ r: ri, c: ci });
+          return ws[a] || (ws[a] = { t: 's', v: '' });
+        }
+        for (var ti = 0; ti < nTitle; ti++) cellAt(ti, 0).s = ti === 0 ? XS.title0 : XS.title;
+        var nTot = sh.totalRows || 0, last = aoa.length - 1;
         sh.columns.forEach(function (c, ci) {
-          if (c.format !== 'money' && c.format !== 'dec2') return;
-          for (var ri = headRow + 1; ri < aoa.length; ri++) {
-            var cell = ws[XLSX.utils.encode_cell({ r: ri, c: ci })];
-            if (cell && cell.t === 'n') cell.z = '#,##0.00';
+          var h = { horizontal: c.align === 'right' ? 'right' : c.align === 'center' ? 'center' : 'left' };
+          cellAt(headRow, ci).s = Object.assign({}, XS.head, { alignment: Object.assign({}, XS.head.alignment, h) });
+          for (var ri = headRow + 1; ri <= last; ri++) {
+            var cell = cellAt(ri, ci), di = ri - headRow - 1;
+            if ((c.format === 'money' || c.format === 'dec2') && cell.t === 'n') cell.z = '#,##0.00';
+            if (ri > last - nTot) {
+              cell.s = Object.assign({}, XS.total, { alignment: h });
+            } else {
+              var bg = (sh.cellFill && sh.cellFill(sh.rows[di], c)) || (di % 2 ? XS.odd : XS.even);
+              cell.s = { fill: XS.fill(bg), font: XS.font(), border: XS.box(XS.line), alignment: h };
+            }
+            if (cell.z) cell.s.numFmt = cell.z;
           }
         });
         ws['!cols'] = sh.columns.map(function (c) { return { wch: Math.max(8, Math.round((c.width || 100) / 7)) }; });
-        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headRow, c: 0 }, e: { r: Math.max(headRow, aoa.length - 1), c: sh.columns.length - 1 } }) };
+        ws['!rows'] = []; ws['!rows'][headRow] = { hpt: 24 };
+        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headRow, c: 0 }, e: { r: Math.max(headRow, last - nTot), c: sh.columns.length - 1 } }) };
         XLSX.utils.book_append_sheet(wb, ws, String(sh.name || 'Sheet').replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31));
       });
       XLSX.writeFile(wb, fileName);

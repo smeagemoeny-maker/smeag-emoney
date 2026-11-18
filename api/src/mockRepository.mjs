@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeUid } from "./db.mjs";
-import { checkoutCategory, httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
+import { checkoutCategory, httpError, linePaymentFor, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const dbsql = path.join(root, "DBSQL");
@@ -48,7 +48,7 @@ export async function mockCreateCheckout({ uid, store, campus, cart, discountLab
     if (!product) throw httpError(404, `Product not found: ${item.productId}`);
     if (product.stock < quantity) throw httpError(409, `Insufficient stock: ${product.sMenu}`);
     const lineTotal = product.payment * quantity;
-    const linePayment = roundMoney(lineTotal - lineTotal * rate);
+    const linePayment = linePaymentFor(lineTotal, item, rate, discountLabel).payment;
     if (balance < linePayment) throw httpError(409, "Insufficient balance.");
     balance = roundMoney(balance - linePayment);
     finalTotal = roundMoney(finalTotal + linePayment);

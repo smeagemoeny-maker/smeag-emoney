@@ -3,7 +3,7 @@
 // (migrations/supabase_pos_functions.sql) so balance + stock changes stay in one transaction.
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
-import { httpError, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
+import { httpError, itemDiscount, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
 import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
@@ -127,11 +127,16 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
     if (!filterProductsForStore([product], { campus, store: sellStore }).length) {
       throw httpError(403, `${product.sMenu || product.id} is not sold at the ${campus} ${sellStore}.`);
     }
-    return {
+    const line = {
       productId: Number(item.productId),
       quantity: Number(item.quantity),
       category: checkoutCategory(sellStore, campus),
     };
+    // Per-item discount (replaces the cart-wide discount for this line) — supabase_pos_checkout_item_discount.sql.
+    const d = itemDiscount(item);
+    if (d && d.amount != null) line.discountAmount = d.amount;
+    else if (d) line.discountRate = d.rate;
+    return line;
   });
 
   return rest("rpc/pos_checkout", {
@@ -164,28 +169,37 @@ export async function createCharge({ uid, campus, amount, staffLoginId }) {
 // Pusan Mart "amount only" payment: the cashier types the total, the student taps the card and the amount is
 // paid from e-money (bank row + person.totalmoney + PusanmartPayments row, one transaction in
 // pos_pusanmart_pay — api/migrations/supabase_pusanmart_pay.sql).
-export async function createPusanmartPayment({ uid, totalAmount, discountLabel, clientKey, staffLoginId }) {
+export async function createPusanmartPayment({ uid, totalAmount, discountLabel, clientKey, staffLoginId, memo }) {
   const amount = Math.round(Number(totalAmount) * 100) / 100;
   if (!(amount > 0)) throw httpError(400, "Total amount must be greater than 0.");
   const card = normalizeUid(uid);
   if (!card) throw httpError(400, "Tap a card first.");
+  const note = String(memo || "").trim().slice(0, 200);
+  const body = {
+    p_uid: card,
+    p_amount: amount,
+    p_discount_label: String(discountLabel || "No Discount").slice(0, 40),
+    p_staff: staffLoginId ? String(staffLoginId) : null,
+    p_client_key: clientKey ? String(clientKey).slice(0, 80) : null,
+  };
+  const missingFn = (e) => /pos_pusanmart_pay/.test(String(e?.message || "")) && /schema cache|does not exist|Could not find/i.test(String(e?.message || ""));
   let r;
+  let memoSaved = !note;
   try {
-    r = await rest("rpc/pos_pusanmart_pay", {
-      method: "POST",
-      body: {
-        p_uid: card,
-        p_amount: amount,
-        p_discount_label: String(discountLabel || "No Discount").slice(0, 40),
-        p_staff: staffLoginId ? String(staffLoginId) : null,
-        p_client_key: clientKey ? String(clientKey).slice(0, 80) : null,
-      },
-    });
+    // p_memo only exists after api/migrations/supabase_pusanmart_memo.sql; without a memo use the old call shape.
+    r = await rest("rpc/pos_pusanmart_pay", { method: "POST", body: note ? { ...body, p_memo: note } : body });
+    memoSaved = true;
   } catch (e) {
-    if (/pos_pusanmart_pay/.test(String(e?.message || "")) && /schema cache|does not exist|Could not find/i.test(String(e?.message || ""))) {
-      throw httpError(503, "Pusan Mart card payment is not set up yet: run api/migrations/supabase_pusanmart_pay.sql in the Supabase SQL Editor.");
+    if (!missingFn(e)) throw e;
+    if (!note) throw httpError(503, "Pusan Mart card payment is not set up yet: run api/migrations/supabase_pusanmart_pay.sql in the Supabase SQL Editor.");
+    // Memo column/function not migrated yet: the RPC never ran, so paying without the memo is safe.
+    try {
+      r = await rest("rpc/pos_pusanmart_pay", { method: "POST", body });
+    } catch (e2) {
+      if (missingFn(e2)) throw httpError(503, "Pusan Mart card payment is not set up yet: run api/migrations/supabase_pusanmart_pay.sql in the Supabase SQL Editor.");
+      throw e2;
     }
-    throw e;
+    memoSaved = false;
   }
   return {
     id: r.id,
@@ -197,6 +211,8 @@ export async function createPusanmartPayment({ uid, totalAmount, discountLabel, 
     balanceBefore: r.balanceBefore == null ? null : Number(r.balanceBefore),
     remainingBalance: Number(r.remainingBalance),
     repeated: !!r.repeated,
+    memo: note || null,
+    memoSaved,
   };
 }
 

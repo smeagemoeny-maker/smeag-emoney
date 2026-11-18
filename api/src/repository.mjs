@@ -32,20 +32,59 @@ export async function findPersonByUid(uid) {
   return rows[0] ? mapPerson(rows[0]) : null;
 }
 
-const ALLOWED_DISCOUNTS = new Set([0, 0.1, 0.15, 0.2, 0.3]);
+// Same rule as pos_checkout in the DB: 0 / 10% / 15% everywhere; Staff 30% only at the Capital Cafe.
+const ALLOWED_DISCOUNTS = new Set([0, 0.1, 0.15]);
+const CAPITAL_CAFE_STAFF_DISCOUNT = 0.3;
+
+function discountAllowed(rate, { store, campus }) {
+  if (ALLOWED_DISCOUNTS.has(rate)) return true;
+  return rate === CAPITAL_CAFE_STAFF_DISCOUNT && store === "cafe" && String(campus).trim().toUpperCase() === "CAPITAL";
+}
 
 export function validateCheckoutInput({ uid, store, campus, cart, discountRate }) {
   if (!normalizeUid(uid)) throw httpError(400, "NFC UID is required.");
   if (!campus || typeof campus !== "string") throw httpError(400, "Campus is required.");
   if (store != null && store !== "cafe" && store !== "mart") throw httpError(400, "Store must be 'cafe' or 'mart'.");
   if (!Array.isArray(cart) || cart.length === 0) throw httpError(400, "Cart is empty.");
-  if (!ALLOWED_DISCOUNTS.has(Number(discountRate || 0))) throw httpError(400, "Invalid discount rate.");
+  if (!discountAllowed(Number(discountRate || 0), { store, campus })) throw httpError(400, "Invalid discount rate.");
   for (const item of cart) {
     const quantity = Number(item?.quantity);
     if (!Number(item?.productId) || !Number.isInteger(quantity) || quantity <= 0) {
       throw httpError(400, "Invalid cart item.");
     }
+    const hasRate = item.discountRate != null && item.discountRate !== "";
+    const hasAmount = item.discountAmount != null && item.discountAmount !== "";
+    if (hasRate && hasAmount) throw httpError(400, "Use either an item discount rate or an amount, not both.");
+    if (hasRate && !(Number(item.discountRate) >= 0 && Number(item.discountRate) <= 1)) {
+      throw httpError(400, "Invalid item discount rate.");
+    }
+    if (hasAmount && !(Number(item.discountAmount) >= 0 && Number.isFinite(Number(item.discountAmount)))) {
+      throw httpError(400, "Invalid item discount amount.");
+    }
   }
+}
+
+// Per-item discount (cart line { discountRate } or { discountAmount }) replaces the cart-wide rate for that line.
+// Same rule as pos_checkout in api/migrations/supabase_pos_checkout_item_discount.sql.
+export function itemDiscount(item) {
+  const hasRate = item.discountRate != null && item.discountRate !== "";
+  const hasAmount = item.discountAmount != null && item.discountAmount !== "";
+  if (hasAmount) return { amount: Math.round(Number(item.discountAmount) * 100) / 100 };
+  if (hasRate) return { rate: Math.round(Number(item.discountRate) * 10000) / 10000 };
+  return null;
+}
+
+export function linePaymentFor(lineTotal, item, cartRate, cartLabel) {
+  const d = itemDiscount(item);
+  if (d && d.amount != null) {
+    const off = Math.min(d.amount, lineTotal);
+    return { payment: roundMoney(lineTotal - off), remark: `Item -₱${off.toFixed(2)}` };
+  }
+  if (d) {
+    const pct = Math.round(d.rate * 10000) / 100;
+    return { payment: roundMoney(lineTotal - lineTotal * d.rate), remark: d.rate === 0 ? "No Discount" : `Item ${pct}%` };
+  }
+  return { payment: roundMoney(lineTotal - lineTotal * Number(cartRate || 0)), remark: cartLabel || "No Discount" };
 }
 
 // bank.category per campus store (same names as the store terminals) — see stores.mjs.
@@ -86,7 +125,7 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
       }
 
       const lineTotal = toMoney(product.payment) * quantity;
-      const linePayment = roundMoney(lineTotal - lineTotal * Number(discountRate || 0));
+      const { payment: linePayment, remark } = linePaymentFor(lineTotal, item, discountRate, discountLabel);
       finalTotal = roundMoney(finalTotal + linePayment);
       if (remainingBalance < linePayment) {
         throw httpError(409, "Insufficient balance.");
@@ -114,7 +153,7 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
           linePayment,
           remainingBalance,
           quantity,
-          discountLabel || "No Discount",
+          remark,
           orderId,
         ],
       );

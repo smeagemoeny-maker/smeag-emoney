@@ -277,23 +277,61 @@ export async function updatePerson(id, { name, studentId, age }) {
 export async function listPusanmartPayments({ from, to }) {
   const [start, end] = range(from, to);
   const filter = `center=eq.PusanMart&register_days=gte.${encodeURIComponent(start)}&register_days=lte.${encodeURIComponent(end)}`;
-  const rows = [];
-  for (let offset = 0; offset < 5000; offset += PAGE_SIZE) {
-    const page = await rest(
-      `PusanmartPayments?select=id,nfcid,center,name,allpayments,stock,register_days&${filter}&order=register_days.desc,id.desc&offset=${offset}&limit=${PAGE_SIZE}`,
-    );
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
+  // memo exists only after supabase_pusanmart_memo.sql: fall back to the old column list until then.
+  const load = async (cols) => {
+    const rows = [];
+    for (let offset = 0; offset < 5000; offset += PAGE_SIZE) {
+      const page = await rest(
+        `PusanmartPayments?select=${cols}&${filter}&order=register_days.desc,id.desc&offset=${offset}&limit=${PAGE_SIZE}`,
+      );
+      rows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+    return rows;
+  };
+  const baseCols = "id,nfcid,center,name,allpayments,stock,register_days";
+  let rows;
+  try {
+    rows = await load(`${baseCols},memo,bank_order,staff`);
+  } catch (e) {
+    if (!/memo|bank_order|staff/.test(String(e?.message || ""))) throw e;
+    rows = await load(baseCols);
   }
-  return rows.map((r) => ({
-    id: Number(r.id),
-    nfcid: r.nfcid,
-    center: r.center,
-    name: r.name,
-    allPayments: Number(r.allpayments || 0),
-    stock: Number(r.stock || 0),
-    date: phDateTime(r.register_days),
-  }));
+
+  // Discount label lives on the linked bank row (remark = "<label>" or "<label> · <memo>", pos_pusanmart_pay).
+  // Unit price (before discount) = paid / (1 - rate), so the export can show list price, discount and paid.
+  const labels = new Map();
+  if (rows.some((r) => r.bank_order)) {
+    const bankFilter = `category=eq.${encodeURIComponent("Pusan Mart")}&transaction_source=eq.${encodeURIComponent("PWA POS")}` +
+      `&transaction_date=gte.${encodeURIComponent(start)}&transaction_date=lte.${encodeURIComponent(end)}`;
+    for (let offset = 0; offset < 20000; offset += PAGE_SIZE) {
+      const page = await rest(`bank?select=id,order,remark&${bankFilter}&order=id.asc&offset=${offset}&limit=${PAGE_SIZE}`);
+      for (const b of page) if (b.order) labels.set(b.order, String(b.remark || "").split(" · ")[0].trim());
+      if (page.length < PAGE_SIZE) break;
+    }
+  }
+  return rows.map((r) => {
+    const paid = Number(r.allpayments || 0);
+    const label = (r.bank_order && labels.get(r.bank_order)) || "No Discount";
+    const pct = /(\d+(?:\.\d+)?)\s*%/.exec(label);
+    const rate = pct ? Math.min(0.99, Number(pct[1]) / 100) : 0;
+    const unitPrice = round(paid / (1 - rate));
+    return {
+      id: Number(r.id),
+      nfcid: r.nfcid,
+      center: r.center,
+      name: r.name,
+      allPayments: paid,
+      unitPrice,
+      discountLabel: label,
+      discountRate: rate,
+      discountAmount: round(unitPrice - paid),
+      stock: Number(r.stock || 0),
+      date: phDateTime(r.register_days),
+      memo: r.memo || "",
+      staff: r.staff || "",
+    };
+  });
 }
 
 // ---------- PusanMart daily sales / cost / net ----------

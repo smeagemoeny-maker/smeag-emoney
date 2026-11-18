@@ -395,13 +395,13 @@ $('cartList').onclick = function (e) {
 };
 
 // Discount chips depend on the campus: Capital Cafe offers Student 10% / Staff 30%;
-// the other campuses offer plain 10 / 15 / 20 / 30 %. Rebuilt whenever the campus is set or changed.
+// the other campuses offer plain 10 / 15 %. The 30% rate is accepted only for the Capital Cafe
+// (pos_checkout in the DB and validateCheckoutInput check the same). Rebuilt whenever the campus changes.
 function discountOptions() {
   if (upper(sellCampus()) === 'CAPITAL') {
     return [{ pct: 0, label: 'No Discount' }, { pct: 10, label: 'Student 10%' }, { pct: 30, label: 'Staff 30%' }];
   }
-  return [{ pct: 0, label: 'No Discount' }, { pct: 10, label: '10%' }, { pct: 15, label: '15%' },
-          { pct: 20, label: '20%' }, { pct: 30, label: '30%' }];
+  return [{ pct: 0, label: 'No Discount' }, { pct: 10, label: '10%' }, { pct: 15, label: '15%' }];
 }
 function renderDiscountChips() {
   var opts = discountOptions();
