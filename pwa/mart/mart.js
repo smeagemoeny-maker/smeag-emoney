@@ -18,6 +18,8 @@
     });
   }
   function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+  // Thousands separators: 12345.6 -> "12,345.60" (digits = decimal places).
+  function comma(n, digits) { var d = digits || 0; return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
   function parseNum(s) { s = String(s).trim(); if (!s || !/^[+-]?(\d+\.?\d*|\.\d+)$/.test(s)) return null; return Number(s); }
@@ -146,9 +148,9 @@
       });
     },
     // Pays the amount from the card's e-money (bank row + PusanmartPayments row). clientKey: one per tap.
-    createPusanmartPayment: function (uid, amount, discountLabel, clientKey) {
+    createPusanmartPayment: function (uid, amount, discountLabel, clientKey, memo) {
       return apiCall('POST', '/api/pusanmart/payments', { uid: uid, totalAmount: Math.round(amount * 100) / 100,
-        discountLabel: discountLabel, clientKey: clientKey }).then(function (r) { return r.payment; });
+        discountLabel: discountLabel, clientKey: clientKey, memo: memo || '' }).then(function (r) { return r.payment; });
     },
     fetchPusanmartDaily: function (s, e) {
       return apiCall('GET', '/api/pusanmart/daily' + q({ from: s, to: e }));
@@ -171,7 +173,7 @@
     checkoutError: null,
     last: null,
     buyerResult: null, buyerLookupError: null, buyerLoading: false,
-    pz: { store: 'PUSANMART', amount: '', label: 'No Discount', rate: 0, submitting: false, error: null, success: null }
+    pz: { store: 'PUSANMART', amount: '', memo: '', label: 'No Discount', rate: 0, submitting: false, error: null, success: null }
   };
   var route = 'sales';
   var S = {};          // screen-local `remember` state; reset whenever a destination is (re)entered
@@ -253,9 +255,47 @@
     }
     return vm.products.filter(function (p) { return p.itemCode && p.itemCode === code; })[0] || null;
   }
+  // Register / Edit Products: a scan anywhere on the screen fills the Barcode box (no need to tap it first).
+  // Register: an already-registered code is reported instead of filled. Edit: with no product open, the scan
+  // opens that product; an unknown code offers to register it.
+  function focusLater(id) { setTimeout(function () { var el = document.getElementById(id); if (el) el.focus(); }, 0); }
+  function onProductScan(raw) {
+    var code = cleanCode(raw);
+    if (!code) return;
+    var p = findByCode(code);
+    if (route === 'register') {
+      if (p) {
+        beep('error');
+        S.message = 'Barcode ' + code + ' is already registered: "' + (p.sMenu || '-') + '" (stock ' + p.stock + '). Use Edit Products to change it.';
+      } else {
+        beep('ok');
+        S.barcode = code; S.message = null;
+        focusLater(!S.name.trim() ? 'r_name' : !S.price ? 'r_price' : 'r_qty');
+      }
+    } else if (S.selected) {
+      var mine = p && p.id === S.selected;
+      if (p && !mine) { beep('error'); S.message = 'Barcode ' + code + ' is already used by "' + (p.sMenu || '-') + '".'; }
+      else { beep('ok'); S.barcode = code; S.message = null; }
+    } else if (p) {
+      beep('ok');
+      S.category = 'All'; S.subcategory = 'All';
+      S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || ''; S.message = null;
+      focusLater('m_stock');
+    } else {
+      beep('error');
+      render();
+      if (window.confirm('Barcode ' + code + ' is not registered.\n\nRegister a new product with this barcode?')) {
+        navigate('register');
+        S.barcode = code;
+        focusLater('r_name');
+      }
+    }
+    render();
+  }
   // Called by nfcService for every fast keyboard burst (scanner or keyboard-mode card reader) and by Enter in
   // the search box. Returns true when the code was handled as a product, false to let it be a card tap.
   function onBarcode(raw, fromSearch) {
+    if (session.manager && isPusan(S.campus) && (route === 'register' || route === 'modify')) { onProductScan(raw); return true; }
     if (!session.manager || route !== 'sales' || !isPusan(S.campus)) return false;
     var code = cleanCode(raw);
     var p = findByCode(code);
@@ -308,13 +348,23 @@
     { route: 'register', label: 'Register', icon: 'AddBox' },
     { route: 'modify', label: 'Modify', icon: 'Edit' },
     { route: 'sales', label: 'Sales', icon: 'ShoppingCart' },
-    { route: 'history', label: 'History', icon: 'Receipt' },
     { route: 'report', label: 'Report', icon: 'BarChart' },
     { route: 'buyer', label: 'Buyer Info', icon: 'Badge' },
-    { route: 'pusanpay', label: 'Pusan Pay', icon: 'Payments' },
-    { route: 'paylist', label: 'Pay List', icon: 'ListAlt' }
+    { route: 'pusanpay', label: 'Pusan Pay', icon: 'Payments' }
   ];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['receipt']);
+  // History and Pay List live inside the Report tab (chips at the top switch between them).
+  var REPORT_GROUP = ['report', 'history', 'paylist'];
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['history', 'paylist', 'receipt']);
+  function navSelected(t) { return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0); }
+  function reportTabs() {
+    var h = '<div class="chips" style="padding-bottom:11px">';
+    [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].forEach(function (c) {
+      h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
+        if (route !== c[0]) navigate(c[0], true);
+      }) + '">' + c[1] + '</div>';
+    });
+    return h + '</div>';
+  }
 
   // ------------------------------------------------------------------ components
   var uid = 0;
@@ -423,7 +473,7 @@
       case 'buyer':
         S = {}; break;
       case 'pusanpay':
-        S = { store: vm.pz.store, amount: vm.pz.amount, awaitingTap: false }; break;
+        S = { store: vm.pz.store, amount: vm.pz.amount, memo: vm.pz.memo, awaitingTap: false }; break;
       case 'paylist':
         S = { view: 'daily', start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
           costDate: ymd(new Date(today.getTime() - 24 * 3600 * 1000)), costInput: '', costMsg: null, costSaving: false };
@@ -478,7 +528,9 @@
   var phoneNfc = null;
   function wantsNfc() {
     // Sales always listens (a tap with an empty cart shows the student's info and balance; with items it opens Pay).
-    return !!(session.manager && (route === 'buyer' || route === 'sales' || (route === 'pusanpay' && S.awaitingTap)));
+    // Register / Modify listen too so the barcode scanner's burst is caught there (onBarcode keeps it off the card path).
+    return !!(session.manager && (route === 'buyer' || route === 'sales' || (route === 'pusanpay' && S.awaitingTap) ||
+      ((route === 'register' || route === 'modify') && isPusan(S.campus))));
   }
   function syncNfc() {
     var N = window.PusanNfc;
@@ -602,12 +654,13 @@
   }
   function payPusanmart(uidStr, amount) {
     var key = 'pz-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-    repo.createPusanmartPayment(uidStr, amount, vm.pz.label, key).then(function (p) {
+    repo.createPusanmartPayment(uidStr, amount, vm.pz.label, key, vm.pz.memo).then(function (p) {
       beep('ok');
       vm.pz.success = 'Paid ₱' + money(p.allPayments) + ' — ' + ((p && p.name) || uidStr) +
-        (p && p.studentId ? ' (' + p.studentId + ')' : '') + '. Remaining balance ₱' + money(p.remainingBalance) + '.';
-      vm.pz.amount = '';
-      if (route === 'pusanpay') S.amount = '';
+        (p && p.studentId ? ' (' + p.studentId + ')' : '') + '. Remaining balance ₱' + money(p.remainingBalance) + '.' +
+        (p && p.memo ? (p.memoSaved === false ? ' (Memo NOT saved — DB update needed)' : ' Memo: ' + p.memo) : '');
+      vm.pz.amount = ''; vm.pz.memo = '';
+      if (route === 'pusanpay') { S.amount = ''; S.memo = ''; }
     }, function (e) {
       beep('error');
       vm.pz.error = e.status === 404 ? 'This NFC card is not registered.' :
@@ -780,7 +833,7 @@
       '<div class="row" style="padding:6px 0 8px"><div class="half l">' + secondaryBtn('📷 Take Photo', function () { pickImage(true, function (u) { S.photo = u; }); }) +
       '</div><div class="half r">' + secondaryBtn('🖼 Choose from Gallery', function () { pickImage(false, function (u) { S.photo = u; }); }) + '</div></div>' + spacer(14) +
       labeledField('r_name', 'Product Name', S.name, function (v) { S.name = v; }, 'e.g. Coke Zero 245ml') +
-      (isPusan(S.campus) ? labeledField('r_barcode', 'Barcode (scan into this box)', S.barcode, function (v) { S.barcode = v; }, 'e.g. 8801382147503') : '') +
+      (isPusan(S.campus) ? labeledField('r_barcode', 'Barcode (scan anywhere on this screen)', S.barcode, function (v) { S.barcode = v; }, 'Scan with the barcode scanner or type') : '') +
       half(
         labeledField('r_price', 'Product Price (PHP)', S.price, function (v) { S.price = v; }, '0.00', 'decimal'),
         labeledField('r_qty', 'Quantity', S.qty, function (v) { S.qty = v; }, '0', 'numeric')
@@ -932,7 +985,7 @@
     var results = all.filter(function (t) {
       return (S.category === 'All' || t.category === S.category) && (S.subcategory === 'All' || t.subcategory === S.subcategory);
     });
-    var h = '<div class="screen">' + eyebrow('Sales History') + title('Sales History') +
+    var h = '<div class="screen">' + eyebrow('Report') + title('Sales History') + reportTabs() +
       campusDropdown('h_campus', function (v) { S.campus = v; runHistory(); }) +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       half(
@@ -959,7 +1012,7 @@
       function (e) { S.error = 'Failed to load report: ' + e.message; });
   }
   function reportScreen() {
-    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Report') +
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Report') + reportTabs() +
       campusDropdown('rp_campus', function (v) { S.campus = v; runReport(); }) +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runReport) + spacer(10) + errorLine();
@@ -970,8 +1023,8 @@
         return '<div class="stat"><div class="lab">' + esc(label) + '</div><div class="val" style="color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div></div>';
       };
       h += primaryBtn('⬇ Download Report PDF', notInBrowser) + spacer(14) +
-        '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + Math.round(r.totalRevenue)) + stat('Transactions', String(r.transactionCount)) + '</div>' + spacer(8) +
-        '<div class="row" style="gap:8px">' + stat('Avg. Order Value', '₱' + r.avgOrderValue) + stat('Low Stock Alerts', String(r.lowStock.length), 'var(--low)') + '</div>' +
+        '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + comma(Math.round(r.totalRevenue))) + stat('Transactions', comma(r.transactionCount)) + '</div>' + spacer(8) +
+        '<div class="row" style="gap:8px">' + stat('Avg. Order Value', '₱' + comma(r.avgOrderValue, 2)) + stat('Low Stock Alerts', String(r.lowStock.length), 'var(--low)') + '</div>' +
         spacer(16) + eyebrow('Daily Sales') + spacer(8);
       var maxVal = Math.max(1, r.dailyTotals.reduce(function (m, d) { return Math.max(m, d[1]); }, 0));
       h += '<div class="bars">';
@@ -1041,6 +1094,9 @@
         h += '<div class="chip' + (vm.pz.label === c[0] ? ' sel' : '') + '" data-act="' + act(function () { vm.pz.label = c[0]; vm.pz.rate = c[1]; }) + '">' + c[0] + '</div>';
       });
       h += '</div>';
+      h += labeledField('pz_memo', 'Memo (optional)', S.memo || '', function (v) {
+        S.memo = v.slice(0, 200); vm.pz.memo = S.memo;
+      }, 'e.g. items, reason, note');
       if (sub != null && finalTotal != null) {
         h += '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">Total after discount</span>' +
           '<span style="font-size:13px;font-weight:700">₱' + money(finalTotal) + '</span></div>';
@@ -1121,7 +1177,7 @@
       return '<div class="stat"><div class="lab">' + esc(label) + '</div><div class="val" style="font-size:15px;color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div>' +
         (sub ? '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + esc(sub) + '</div>' : '') + '</div>';
     };
-    var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
+    var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) + '<div class="vscroll fill">' + errorLine();
     if (!r) { h += loadingOr('No results.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
@@ -1165,8 +1221,8 @@
   function downloadPayListCsv() {
     var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
-    var rows = [['No', 'Name', 'NFCID', 'Date', 'Amount (PHP)']];
-    S.results.forEach(function (r, i) { rows.push([i + 1, r.name || '-', r.nfcid, r.date || '-', money(r.allPayments)]); });
+    var rows = [['No', 'Name', 'NFCID', 'Date', 'Amount (PHP)', 'Memo']];
+    S.results.forEach(function (r, i) { rows.push([i + 1, r.name || '-', r.nfcid, r.date || '-', money(r.allPayments), r.memo || '']); });
     rows.push([]);
     rows.push(['Search Range', S.start + ' ~ ' + S.end]);
     rows.push(['Transaction Count', S.results.length]);
@@ -1178,7 +1234,7 @@
   function payListScreen() {
     if (S.view === 'daily') return dailyScreen();
     var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
-    var h = '<div class="screen">' + eyebrow('PusanMart') + title('Pay List') + payListTabs() +
+    var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
       half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
       secondaryBtn('Search', runPayList) + spacer(10) +
       '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + ' payments</span>' +
@@ -1189,7 +1245,8 @@
       h += '<div class="card sb" style="margin-bottom:8px;padding:10px"><div>' +
         '<div style="font-size:12.5px;font-weight:700">' + esc(r.name || '-') + '</div>' +
         '<div style="font-size:10.5px;color:var(--ink2)">NFC ' + esc(r.nfcid) + '</div>' +
-        '<div style="font-size:10px;color:var(--ink3)">' + esc(r.date || '') + '</div></div>' +
+        '<div style="font-size:10px;color:var(--ink3)">' + esc(r.date || '') + '</div>' +
+        (r.memo ? '<div style="font-size:10.5px;color:var(--ink2);padding-top:2px">📝 ' + esc(r.memo) + '</div>' : '') + '</div>' +
         '<div style="font-size:12px;font-weight:700">₱' + money(r.allPayments) + '</div></div>';
     });
     h += '</div></div>';
@@ -1299,7 +1356,7 @@
   function navBar() {
     var h = '<nav class="navbar">';
     TABS.forEach(function (t) {
-      var sel = route === t.route;
+      var sel = navSelected(t.route);
       h += '<div class="navitem' + (sel ? ' sel' : '') + '" data-nav="' + t.route + '" title="' + esc(t.label) + '">' +
         '<div class="ind"></div><svg viewBox="0 0 24 24" aria-label="' + esc(t.label) + '"><path d="' + ICONS[t.icon] + '"/></svg>' +
         '<span class="lab">' + esc(t.label) + '</span></div>';
