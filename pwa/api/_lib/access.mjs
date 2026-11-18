@@ -6,11 +6,13 @@ import { PUSAN_MART } from "./stores.mjs";
 // mgperson.campus enum uses the typo 'Talrac'; store_menus / the PWA use 'Tarlac'.
 const CAFE_CAMPUS_BY_ACCOUNT = { CAPITAL: "Capital", ENCANTO: "Encanto", TALRAC: "Tarlac", TARLAC: "Tarlac" };
 export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
+// Campus Manager accounts that may also use PusanMart pay / Pay List (login_id, case-insensitive).
+const PUSAN_PAY_MANAGERS = new Set(["key"]);
 
 // What a manager account may do in the POS.
 //   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
 //   Admin/Manager @ Capital/Encanto/Talrac -> ONLY the own campus: cafe AND mart sales, buyer lookup, office program
-//                                        (Admin also keeps PusanMart pay)
+//                                        (Admin, and Managers in PUSAN_PAY_MANAGERS, also keep PusanMart pay)
 //   Admin @ a campus that is none of the above -> every campus (incl. the office program)
 //   martCampuses = campuses whose mart the account may sell at (each campus has its own mart).
 //   E-money is charged ONLY in the office program (OFFICE MENU -> + INCREASE), never at a POS: canCharge is false for all.
@@ -18,13 +20,14 @@ export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
 export function accessFor(manager) {
   const position = String(manager?.position || "");
   const campus = String(manager?.campus || "").toUpperCase();
+  const loginId = String(manager?.login_id ?? manager?.loginId ?? "").toLowerCase();
 
   if ((position === "Admin" || position === "Manager") && campus === "PUSAN MART") {
     return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART], canCharge: false, canPusanPay: true, office: false };
   }
   if ((position === "Admin" || position === "Manager") && CAFE_CAMPUS_BY_ACCOUNT[campus]) {
     const own = CAFE_CAMPUS_BY_ACCOUNT[campus];
-    return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: position === "Admin", office: true };
+    return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: position === "Admin" || PUSAN_PAY_MANAGERS.has(loginId), office: true };
   }
   if (position === "Admin") {
     return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, martCampuses: [...ALL_CAFE_CAMPUSES, PUSAN_MART], canCharge: false, canPusanPay: true, office: true };

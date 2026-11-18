@@ -372,6 +372,9 @@
   // Edit and Register live inside the Products tab (same chip switch as Report).
   var PRODUCT_GROUP = ['modify', 'register'];
   var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
+  // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
+  function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
+  function routeAllowed(r) { return (r !== 'pusanpay' && r !== 'paylist') || canPusanPay(); }
   function navSelected(t) {
     return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0) || (t === 'modify' && PRODUCT_GROUP.indexOf(route) >= 0);
   }
@@ -386,7 +389,7 @@
   }
   function reportTabs() {
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].forEach(function (c) {
+    [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
       }) + '">' + c[1] + '</div>';
@@ -525,6 +528,7 @@
 
   function navigate(r, replace) {
     if (ROUTES.indexOf(r) < 0) r = 'sales';
+    if (!routeAllowed(r)) r = r === 'paylist' ? 'report' : 'sales';
     if (r === 'receipt' && !vm.last) r = 'sales';
     route = r;
     ui.dropdown = null; ui.dialog = null;
@@ -1698,7 +1702,7 @@
 
   function navBar() {
     var h = '<nav class="navbar">';
-    TABS.forEach(function (t) {
+    TABS.filter(function (t) { return routeAllowed(t.route); }).forEach(function (t) {
       var sel = navSelected(t.route);
       h += '<div class="navitem' + (sel ? ' sel' : '') + '" data-nav="' + t.route + '" title="' + esc(t.label) + '">' +
         '<div class="ind"></div><svg viewBox="0 0 24 24" aria-label="' + esc(t.label) + '"><path d="' + ICONS[t.icon] + '"/></svg>' +

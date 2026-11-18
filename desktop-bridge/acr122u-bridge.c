@@ -21,6 +21,7 @@
 #include <PCSC/winscard.h>
 #include <PCSC/wintypes.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
@@ -65,6 +66,23 @@ static int send_all(int fd, const char *s, size_t n) {
   return 0;
 }
 
+/* Drops /events clients whose page has gone away (closed tab, reload, EventSource retry).
+ * Without this, dead sockets pile up while no reader is plugged in (no pings are sent then),
+ * the 32 slots fill, and every new page connection is closed at once: the page reconnects
+ * every 2 s and shows "Card reader connected" each time. Caller holds `lock`. */
+static void prune_dead_locked(void) {
+  for (int i = 0; i < nclients;) {
+    char b;
+    ssize_t r = recv(clients[i], &b, 1, MSG_PEEK | MSG_DONTWAIT);
+    if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+      close(clients[i]);
+      clients[i] = clients[--nclients];
+    } else {
+      i++;
+    }
+  }
+}
+
 /* Sends `msg` to every /events client; drops the ones that went away. */
 static void broadcast(const char *msg) {
   pthread_mutex_lock(&lock);
@@ -101,6 +119,7 @@ static void *handle_client(void *arg) {
              "retry: 2000\n\n", CORS);
     if (send_all(fd, head, strlen(head)) < 0) { close(fd); return NULL; }
     pthread_mutex_lock(&lock);
+    prune_dead_locked();
     if (nclients < MAX_CLIENTS) clients[nclients++] = fd;
     else close(fd);
     pthread_mutex_unlock(&lock);
@@ -254,6 +273,7 @@ int main(int argc, char **argv) {
     uint32_t len = sizeof readers;
     if (SCardListReaders(ctx, NULL, readers, &len) != SCARD_S_SUCCESS || len <= 1) {
       SCardReleaseContext(ctx);
+      broadcast(": ping\n\n");   /* no reader yet: still keep pages connected and drop dead ones */
       sleep(2);
       continue;
     }
