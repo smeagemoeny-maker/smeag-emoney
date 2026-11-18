@@ -427,6 +427,9 @@
   function stockBadge(status) {
     return '<span class="badge ' + status.toLowerCase() + '">' + status + '</span>';
   }
+  function datePill(label, value, onChange) {
+    return '<button class="pill" data-act="' + act(function () { openDatePicker(value, onChange); }) + '"><span class="k">' + esc(label) + '</span> ' + esc(value || '-') + '</button>';
+  }
   function half(l, r) { return '<div class="row"><div class="half l">' + l + '</div><div class="half r">' + r + '</div></div>'; }
   function spacer(h) { return '<div style="height:' + h + 'px;flex:none"></div>'; }
   function txt(t, css) { return '<div style="' + (css || '') + '">' + esc(t) + '</div>'; }
@@ -1039,23 +1042,27 @@
     var results = all.filter(function (t) {
       return (S.category === 'All' || t.category === S.category) && (S.subcategory === 'All' || t.subcategory === S.subcategory);
     });
+    // Compact filters (pills) so most of the screen is left for the transaction list.
+    var total = results.reduce(function (a, t) { return a + num(t.payment); }, 0);
     var h = '<div class="screen">' + eyebrow('Report') + title('Sales History') + reportTabs() +
-      campusDropdown('h_campus', function (v) { S.campus = v; runHistory(); }) +
-      half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
-      half(
-        dropdown('h_cat', S.category, catOpts, function (v) { S.category = v; }, 'Category'),
-        dropdown('h_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Subcategory')
-      ) +
-      secondaryBtn('Search', runHistory) + spacer(10) + '<div class="vscroll fill">' + errorLine();
+      '<div class="filterbar">' +
+      pillDropdown('h_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; runHistory(); }, '📍') + '</div>' +
+      '<div class="filterbar">' +
+      datePill('From', S.start, function (v) { S.start = v; runHistory(); }) +
+      datePill('To', S.end, function (v) { S.end = v; runHistory(); }) +
+      '<button class="pill go" data-act="' + act(runHistory) + '">Search</button></div>' +
+      '<div class="filterbar">' +
+      pillDropdown('h_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = 'All'; S.category = v; }, 'Cat') +
+      pillDropdown('h_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Sub') + '</div>' +
+      (results.length ? '<div class="sb histsum"><span>' + results.length + ' transactions</span><span>₱' + money(total) + '</span></div>' : '') +
+      '<div class="vscroll fill">' + errorLine();
     if (!results.length && !S.error) h += loadingOr('No sales history found.', 'font-size:12px;color:var(--ink3)');
     results.forEach(function (t) {
       var qty = num(t.quantity);
-      h += '<div class="card sb" style="margin-bottom:8px;padding:10px"><div>' +
-        '<div style="font-size:12.5px;font-weight:700">' + esc((t.subcategory || '-') + (qty > 1 ? ' × ' + qty : '')) + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">Buyer: ' + esc(t.name || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">' + esc((t.campus || '-') + ' · ' + (t.remark || t.source || 'office')) + '</div>' +
-        '<div style="font-size:10px;color:var(--ink3)">' + esc(t.date || '') + '</div></div>' +
-        '<div style="font-size:12px;font-weight:700">₱' + money(t.payment) + '</div></div>';
+      h += '<div class="card histrow">' +
+        '<div class="sb"><b>' + esc((t.subcategory || '-') + (qty > 1 ? ' × ' + qty : '')) + '</b><b>₱' + money(t.payment) + '</b></div>' +
+        '<div class="sb sub"><span>' + esc((t.name || '-') + ' · ' + (t.campus || '-') + ' · ' + (t.remark || t.source || 'office')) + '</span><span>' + esc(t.date || '') + '</span></div>' +
+        '</div>';
     });
     h += '</div></div>';
     return h;
