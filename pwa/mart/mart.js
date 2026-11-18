@@ -1098,7 +1098,7 @@
   }
 
   function runReport() {
-    S.catView = null; S.sales = null;
+    S.catView = null; S.itemView = false; S.sales = null;
     var sales = repo.fetchHistory(S.campus, S.start, S.end).then(function (rows) {
       return rows.filter(function (t) { return !t.type || t.type === 'decrease'; });
     }, function () { return null; });
@@ -1135,6 +1135,43 @@
     });
     h += '</div></div>';
     return h;
+  }
+  // Every item sold in the range with its quantity (most sold first); tapping an item opens its transactions.
+  function itemsByQty(rows) {
+    return groupSales(rows, function (t) { return t.subcategory; }).sort(function (a, b) { return b.qty - a.qty || b.total - a.total; });
+  }
+  function itemQtyRow(g, idx, from, to) {
+    return '<div class="listrow tap" style="justify-content:space-between"' + tapAttr(function () { openRowsDetail(g.name, from, to, g.rows); }) + '>' +
+      '<div style="display:flex;align-items:center;min-width:0;flex:1"><div class="rank" style="background:' + (idx === 0 ? 'var(--brand)' : 'var(--ink)') + '">' + (idx + 1) + '</div>' +
+      '<div style="min-width:0;padding:0 8px"><div style="font-size:12.5px;font-weight:700">' + esc(g.name) + '</div>' +
+      '<div style="font-size:10.5px;color:var(--ink3)">' + esc((g.rows[0].category || '-') + ' · ₱' + money(g.total)) + '</div></div></div>' +
+      '<div style="font-size:13px;font-weight:800;flex:none">' + comma(g.qty) + ' <span style="font-size:10.5px;font-weight:600;color:var(--ink3)">pcs</span></div></div>';
+  }
+  function itemsScreen() {
+    var from = S.start, to = S.end, items = itemsByQty(S.sales || []);
+    var tQty = items.reduce(function (a, g) { return a + g.qty; }, 0), tAmt = items.reduce(function (a, g) { return a + g.total; }, 0);
+    var h = '<div class="screen">' + eyebrow('Report · Items') + title('Sales by Item') +
+      '<div style="padding-bottom:10px">' + secondaryBtn('← Back', function () { S.itemView = false; }) + '</div>' +
+      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + esc(rangeText(from, to) + ' · ' + S.campus) + ' · ' +
+      items.length + ' items</span><span style="font-size:13px;font-weight:700">Qty ' + comma(tQty) + ' · ₱' + money(tAmt) + '</span></div>' +
+      primaryBtn('⬇ Download Excel', function () { downloadItemsCsv(items, from, to); }, !items.length) + spacer(10) +
+      '<div class="vscroll fill">';
+    if (!items.length) h += txt('No sales in this period.', 'font-size:12px;color:var(--ink3)');
+    items.forEach(function (g, i) { h += itemQtyRow(g, i, from, to); });
+    h += '</div></div>';
+    return h;
+  }
+  function downloadItemsCsv(items, from, to) {
+    var tQty = 0, tAmt = 0;
+    var rows = [['No', 'Category', 'Item', 'Qty', 'Amount (PHP)', 'Transactions']];
+    items.forEach(function (g, i) {
+      tQty += g.qty; tAmt += g.total;
+      rows.push([i + 1, g.rows[0].category || '', g.name, g.qty, money(g.total), g.count]);
+    });
+    rows.push([]);
+    rows.push(['', 'Total', items.length + ' items', tQty, money(tAmt)]);
+    rows.push(['Search Range', rangeText(from, to)]);
+    csvDownload('items_' + String(S.campus).replace(/\s+/g, '') + '_' + from + '_' + to + '.csv', rows);
   }
   function openRowsDetail(label, from, to, rows) {
     S.detail = { kind: 'sales', label: label, from: from, to: to, item: label, rows: rows, loading: false, error: null };
@@ -1232,6 +1269,7 @@
   function reportScreen() {
     if (S.detail) return detailScreen();
     if (S.catView) return categoryScreen();
+    if (S.itemView) return itemsScreen();
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Report') + reportTabs() +
       '<div class="filterbar">' + pillDropdown('rp_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; runReport(); }, '📍') + '</div>' +
       rangeBar(runReport) + errorLine();
@@ -1256,7 +1294,15 @@
       });
       h += '</div><div class="barlabels">';
       r.dailyTotals.forEach(function (d) { h += '<div class="tap"' + tapAttr(function () { openDetail('sales', 'Sales ' + d[0], d[0], d[0]); }) + '>' + esc(d[0].slice(-2)) + '</div>'; });
-      h += '</div>' + spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Sales by Category') + spacer(8);
+      h += '</div>' + spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Sales by Item (Quantity)') + spacer(8);
+      if (!S.sales) h += txt(S.loading ? 'Loading...' : 'Item breakdown unavailable.', 'font-size:12px;color:var(--ink3)');
+      else if (!S.sales.length) h += txt('No sales in this period.', 'font-size:12px;color:var(--ink3)');
+      else {
+        var items = itemsByQty(S.sales);
+        items.slice(0, 10).forEach(function (g, i) { h += itemQtyRow(g, i, from, to); });
+        h += spacer(8) + secondaryBtn('View all ' + items.length + ' items ›', function () { S.itemView = true; });
+      }
+      h += spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Sales by Category') + spacer(8);
       if (!S.sales) h += txt(S.loading ? 'Loading...' : 'Category breakdown unavailable.', 'font-size:12px;color:var(--ink3)');
       else if (!S.sales.length) h += txt('No sales in this period.', 'font-size:12px;color:var(--ink3)');
       else groupSales(S.sales, function (t) { return t.category; }).forEach(function (g) {
