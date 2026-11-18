@@ -49,6 +49,9 @@
   var CAMPUS_OPTIONS = ['Capital', 'Encanto', 'Tarlac', 'Baydream', 'Restobar', 'Pusan Mart'];
   var MART_CAMPUS = 'Pusan Mart';
   var PARAMS = new URLSearchParams(location.search);
+  // /report/ sets window.MART_REPORT_ONLY: same app, only Summary / History / Pay List, no writes.
+  var REPORT_ONLY = !!window.MART_REPORT_ONLY;
+  var HOME = REPORT_ONLY ? 'report' : 'sales';
 
   var IS_LOCAL_PAGE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
   // Hosted (Vercel): the API is served from the same domain (/api). Local dev: the Node API on :8787.
@@ -358,6 +361,7 @@
     BarChart: 'M4 9h4v11H4zM16 13h4v7h-4zM10 4h4v16h-4z',
     Badge: 'M20 7h-5V4c0-1.1-.9-2-2-2h-2c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM9 12c.83 0 1.5.67 1.5 1.5S9.83 15 9 15s-1.5-.67-1.5-1.5S8.17 12 9 12zm3 6H6v-.43c0-.6.36-1.15.92-1.39.64-.28 1.34-.43 2.08-.43s1.44.15 2.08.43c.55.24.92.78.92 1.39V18zm1-9h-2V4h2v5zm5 7.5h-4V15h4v1.5zm0-3h-4V12h4v1.5z',
     Payments: 'M19 14V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-1c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm13-6v11c0 1.1-.9 2-2 2H4v-2h17V7h2z',
+    Logout: 'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z',
     ListAlt: 'M19 5v14H5V5h14m1.1-2H3.9c-.5 0-.9.4-.9.9v16.2c0 .4.4.9.9.9h16.2c.4 0 .9-.5.9-.9V3.9c0-.5-.5-.9-.9-.9zM11 7h6v2h-6V7zm0 4h6v2h-6v-2zm0 4h6v2h-6zM7 7h2v2H7zm0 4h2v2H7zm0 4h2v2H7z'
   };
   var TABS = [
@@ -374,7 +378,10 @@
   var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
   // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
   function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
-  function routeAllowed(r) { return (r !== 'pusanpay' && r !== 'paylist') || canPusanPay(); }
+  function routeAllowed(r) {
+    if (REPORT_ONLY && REPORT_GROUP.indexOf(r) < 0) return false;
+    return (r !== 'pusanpay' && r !== 'paylist') || canPusanPay();
+  }
   function navSelected(t) {
     return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0) || (t === 'modify' && PRODUCT_GROUP.indexOf(route) >= 0);
   }
@@ -388,6 +395,7 @@
     return h + '</div>';
   }
   function reportTabs() {
+    if (REPORT_ONLY) return ''; // the nav bar already switches Summary / History / Pay List
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
     [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
@@ -527,9 +535,9 @@
   }
 
   function navigate(r, replace) {
-    if (ROUTES.indexOf(r) < 0) r = 'sales';
-    if (!routeAllowed(r)) r = r === 'paylist' ? 'report' : 'sales';
-    if (r === 'receipt' && !vm.last) r = 'sales';
+    if (ROUTES.indexOf(r) < 0) r = HOME;
+    if (!routeAllowed(r)) r = r === 'paylist' ? 'report' : HOME;
+    if (r === 'receipt' && !vm.last) r = HOME;
     route = r;
     ui.dropdown = null; ui.dialog = null;
     initScreen(r);
@@ -1546,6 +1554,7 @@
     }
 
     // Pusan Pay cost: items rung up on the Bizmatech POS, so its "Cost Exp." is typed in. Barcode sales cost is automatic.
+    if (!REPORT_ONLY) {
     h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
       '<div style="font-size:12px;font-weight:800;padding-bottom:8px">Pusan Pay Cost <span style="font-weight:400;color:var(--ink3)">· Cost Exp. on the Bizmatech report</span></div>' +
       half(dateField('Date', S.costDate, function (v) { S.costDate = v; S.costMsg = null; syncCostInput(); }),
@@ -1556,6 +1565,7 @@
     }
     if (S.costMsg) h += txt(S.costMsg.text, 'font-size:12px;padding-bottom:8px;color:' + (S.costMsg.err ? 'var(--out)' : 'var(--ok)'));
     h += primaryBtn(S.costSaving ? 'Saving...' : 'Save', saveCost, S.costSaving || !S.costDate) + '</div>';
+    }
 
     h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length, ' style="height:38px"') + spacer(10);
     r.days.forEach(function (d) {
@@ -1659,8 +1669,8 @@
     var h = '<div class="screen vscroll" style="padding:24px;justify-content:safe center;display:flex"><div style="display:flex;flex-direction:column;align-items:center;width:100%;margin:auto 0">' +
       '<div style="width:60px;height:60px;background:var(--brand);border-radius:16px;display:flex;align-items:center;justify-content:center;flex:none">' +
       '<span style="color:#fff;font-size:26px;font-weight:800">S</span></div>' + spacer(16) +
-      '<div style="font-size:19px;font-weight:800">SMEAG Mobile Mart</div>' +
-      '<div style="font-size:12.5px;color:var(--ink2);padding-top:2px">Admin (Manager) Login Only</div>' + spacer(22) +
+      '<div style="font-size:19px;font-weight:800">' + (REPORT_ONLY ? 'Pusan Mart Report' : 'SMEAG Mobile Mart') + '</div>' +
+      '<div style="font-size:12.5px;color:var(--ink2);padding-top:2px">' + (REPORT_ONLY ? 'View-only sales reports · Manager login' : 'Admin (Manager) Login Only') + '</div>' + spacer(22) +
       // ID only: the campus comes from the account (only that campus is shown after login).
       labeledField('l_id', 'ID', L.id, function (v) { L.id = v; }, 'Manager account (staff ID / email)') +
       '<div style="display:flex;align-items:center;width:100%;padding-bottom:4px">' +
@@ -1669,7 +1679,7 @@
       '<span style="font-size:12.5px;color:var(--ink2);padding-left:2px">Remember me</span></div>';
     if (L.error) h += spacer(6) + txt(L.error, 'color:var(--out);font-size:12px;align-self:flex-start');
     h += spacer(8) + primaryBtn(L.loading ? 'Logging in...' : 'Login', function () { doLogin(L); }, L.loading) + spacer(16) +
-      '<div style="font-size:10.5px;color:var(--ink3);text-align:center;line-height:15px;letter-spacing:0.5px">※ Students / buyers can look up their info by tapping an<br>NFC card only, without logging in</div>' +
+      (REPORT_ONLY ? '' : '<div style="font-size:10.5px;color:var(--ink3);text-align:center;line-height:15px;letter-spacing:0.5px">※ Students / buyers can look up their info by tapping an<br>NFC card only, without logging in</div>') +
       '</div></div>';
     return h;
   }
@@ -1694,16 +1704,22 @@
       session.selectedCampus = campuses.filter(function (c) { return c.toUpperCase() === own; })[0] || campuses[0] || MART_CAMPUS;
       saveSession();
       setDefaultDiscount();
-      navigate('sales', true);
+      navigate(HOME, true);
     }, function (e) {
       L.error = e.status === 0 ? e.message : e.status === 403 ? e.message : 'Login failed: ' + e.message;
     }).then(function () { L.loading = false; render(); });
   }
 
+  var REPORT_TABS = [
+    { route: 'report', label: 'Summary', icon: 'BarChart' },
+    { route: 'history', label: 'History', icon: 'ListAlt' },
+    { route: 'paylist', label: 'Pay List', icon: 'Payments' },
+    { route: 'logout', label: 'Logout', icon: 'Logout' }
+  ];
   function navBar() {
     var h = '<nav class="navbar">';
-    TABS.filter(function (t) { return routeAllowed(t.route); }).forEach(function (t) {
-      var sel = navSelected(t.route);
+    (REPORT_ONLY ? REPORT_TABS : TABS).filter(function (t) { return routeAllowed(t.route); }).forEach(function (t) {
+      var sel = REPORT_ONLY ? route === t.route : navSelected(t.route);
       h += '<div class="navitem' + (sel ? ' sel' : '') + '" data-nav="' + t.route + '" title="' + esc(t.label) + '">' +
         '<div class="ind"></div><svg viewBox="0 0 24 24" aria-label="' + esc(t.label) + '"><path d="' + ICONS[t.icon] + '"/></svg>' +
         '<span class="lab">' + esc(t.label) + '</span></div>';
@@ -1831,7 +1847,8 @@
     var nav = t.closest('[data-nav]');
     if (nav) {
       var nr = nav.getAttribute('data-nav');
-      if (nr !== route) navigate(nr);
+      if (nr === 'logout') logout();
+      else if (nr !== route) navigate(nr);
       return;
     }
     var a = t.closest('[data-act]');
@@ -1874,7 +1891,7 @@
   function routeFromHash() {
     var hr = location.hash.replace('#', '');
     if (hr === 'logout') { logout(); return; }
-    if (session.manager) { route = ROUTES.indexOf(hr) >= 0 && !(hr === 'receipt' && !vm.last) ? hr : 'sales'; ui.dropdown = null; initScreen(route); render(true); }
+    if (session.manager) { route = ROUTES.indexOf(hr) >= 0 && routeAllowed(hr) && !(hr === 'receipt' && !vm.last) ? hr : HOME; ui.dropdown = null; initScreen(route); render(true); }
   }
 
   function start() {
@@ -1917,7 +1934,7 @@
     });
     var initial = location.hash.replace('#', '');
     if (initial === 'logout') { logout(); return; }
-    if (session.manager) navigate(ROUTES.indexOf(initial) >= 0 ? initial : 'sales', true);
+    if (session.manager) navigate(ROUTES.indexOf(initial) >= 0 ? initial : HOME, true);
     else { S = {}; render(true); }
     window.martApp = { tap: onNfc, navigate: navigate, apiBase: API_BASE };
   }
