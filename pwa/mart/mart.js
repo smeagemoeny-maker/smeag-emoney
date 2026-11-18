@@ -266,7 +266,7 @@
     if (route === 'register') {
       if (p) {
         beep('error');
-        S.message = 'Barcode ' + code + ' is already registered: "' + (p.sMenu || '-') + '" (stock ' + p.stock + '). Use Edit Products to change it.';
+        S.message = 'Barcode ' + code + ' is already registered: "' + (p.sMenu || '-') + '" (stock ' + p.stock + '). Use Products › Edit to change it.';
       } else {
         beep('ok');
         S.barcode = code; S.message = null;
@@ -361,8 +361,7 @@
     ListAlt: 'M19 5v14H5V5h14m1.1-2H3.9c-.5 0-.9.4-.9.9v16.2c0 .4.4.9.9.9h16.2c.4 0 .9-.5.9-.9V3.9c0-.5-.5-.9-.9-.9zM11 7h6v2h-6V7zm0 4h6v2h-6v-2zm0 4h6v2h-6zM7 7h2v2H7zm0 4h2v2H7zm0 4h2v2H7z'
   };
   var TABS = [
-    { route: 'register', label: 'Register', icon: 'AddBox' },
-    { route: 'modify', label: 'Modify', icon: 'Edit' },
+    { route: 'modify', label: 'Products', icon: 'Edit' },
     { route: 'sales', label: 'Sales', icon: 'ShoppingCart' },
     { route: 'report', label: 'Report', icon: 'BarChart' },
     { route: 'buyer', label: 'Buyer Info', icon: 'Badge' },
@@ -370,10 +369,23 @@
   ];
   // History and Pay List live inside the Report tab (chips at the top switch between them).
   var REPORT_GROUP = ['report', 'history', 'paylist'];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['history', 'paylist', 'receipt']);
-  function navSelected(t) { return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0); }
+  // Edit and Register live inside the Products tab (same chip switch as Report).
+  var PRODUCT_GROUP = ['modify', 'register'];
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
+  function navSelected(t) {
+    return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0) || (t === 'modify' && PRODUCT_GROUP.indexOf(route) >= 0);
+  }
+  function productTabs() {
+    var h = '<div class="chips tabs" style="padding-bottom:8px">';
+    [['modify', 'Edit'], ['register', 'Register']].forEach(function (c) {
+      h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
+        if (route !== c[0]) navigate(c[0], true);
+      }) + '">' + c[1] + '</div>';
+    });
+    return h + '</div>';
+  }
   function reportTabs() {
-    var h = '<div class="chips" style="padding-bottom:11px">';
+    var h = '<div class="chips tabs" style="padding-bottom:8px">';
     [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
@@ -429,6 +441,13 @@
   }
   function datePill(label, value, onChange) {
     return '<button class="pill" data-act="' + act(function () { openDatePicker(value, onChange); }) + '"><span class="k">' + esc(label) + '</span> ' + esc(value || '-') + '</button>';
+  }
+  // From / To pills + Search on one line; picking a date re-runs the search.
+  function rangeBar(run) {
+    return '<div class="filterbar">' +
+      datePill('From', S.start, function (v) { S.start = v; run(); }) +
+      datePill('To', S.end, function (v) { S.end = v; run(); }) +
+      '<button class="pill go" data-act="' + act(run) + '">Search</button></div>';
   }
   function half(l, r) { return '<div class="row"><div class="half l">' + l + '</div><div class="half r">' + r + '</div></div>'; }
   function spacer(h) { return '<div style="height:' + h + 'px;flex:none"></div>'; }
@@ -494,7 +513,8 @@
       case 'pusanpay':
         S = { store: vm.pz.store, amount: vm.pz.amount, memo: vm.pz.memo, awaitingTap: false }; break;
       case 'paylist':
-        S = { view: 'daily', start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
+        // campus: the sales drill-down reads the same Pusan Mart rows as the Report Summary
+        S = { view: 'daily', campus: MART_CAMPUS, start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
           costDate: ymd(new Date(today.getTime() - 24 * 3600 * 1000)), costInput: '', costMsg: null, costSaving: false };
         runPayList(); break;
       case 'receipt':
@@ -881,7 +901,7 @@
   }
 
   function registerScreen() {
-    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Product Register') + title('Register Product') +
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Register Product') + productTabs() +
       campusDropdown('r_campus', function (v) { S.campus = v; S.category = null; vm.products = []; loadProducts(v); }) +
       registerCategoryDropdown() +
       '<div class="photobox">' + (S.photo ? '<img src="' + esc(S.photo) + '" alt="">' :
@@ -929,7 +949,7 @@
     var wanted = S.name.trim().replace(/\s+/g, ' ').toUpperCase();
     var dup = vm.products.filter(function (p) { return String(p.sMenu || '').trim().replace(/\s+/g, ' ').toUpperCase() === wanted; })[0];
     if (dup && !window.confirm('"' + dup.sMenu + '" is already registered (' + (dup.mMenu || '-') + ', stock ' + dup.stock + ').\n' +
-        'Use Edit Products to change its stock or price.\n\nRegister it again anyway?')) return;
+        'Use Products › Edit to change its stock or price.\n\nRegister it again anyway?')) return;
     var bc = isPusan(S.campus) ? cleanCode(S.barcode) : '';
     var bcDup = bc && vm.products.filter(function (p) { return p.barcode === bc; })[0];
     if (bcDup) { S.message = 'Barcode ' + bc + ' is already used by "' + (bcDup.sMenu || '-') + '".'; return; }
@@ -958,7 +978,7 @@
     var filtered = vm.products.filter(function (p) {
       return (S.category === 'All' || p.mMenu === S.category) && (S.subcategory === 'All' || p.sMenu === S.subcategory);
     });
-    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Product Modify') + title('Edit Products') +
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Edit Products') + productTabs() +
       campusDropdown('m_campus', function (v) { S.campus = v; S.selected = null; loadProducts(v); }) +
       dropdown('m_cat', S.category, catOpts, function (v) { S.category = v; S.subcategory = 'All'; }, 'Category') +
       dropdown('m_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Subcategory');
@@ -1044,18 +1064,15 @@
     });
     // Compact filters (pills) so most of the screen is left for the transaction list.
     var total = results.reduce(function (a, t) { return a + num(t.payment); }, 0);
-    var h = '<div class="screen">' + eyebrow('Report') + title('Sales History') + reportTabs() +
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Sales History') + reportTabs() +
       '<div class="filterbar">' +
       pillDropdown('h_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; runHistory(); }, '📍') + '</div>' +
-      '<div class="filterbar">' +
-      datePill('From', S.start, function (v) { S.start = v; runHistory(); }) +
-      datePill('To', S.end, function (v) { S.end = v; runHistory(); }) +
-      '<button class="pill go" data-act="' + act(runHistory) + '">Search</button></div>' +
+      rangeBar(runHistory) +
       '<div class="filterbar">' +
       pillDropdown('h_cat', S.category, catOpts, function (v) { if (v !== S.category) S.subcategory = 'All'; S.category = v; }, 'Cat') +
       pillDropdown('h_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Sub') + '</div>' +
       (results.length ? '<div class="sb histsum"><span>' + results.length + ' transactions</span><span>₱' + money(total) + '</span></div>' : '') +
-      '<div class="vscroll fill">' + errorLine();
+      errorLine();
     if (!results.length && !S.error) h += loadingOr('No sales history found.', 'font-size:12px;color:var(--ink3)');
     results.forEach(function (t) {
       var qty = num(t.quantity);
@@ -1069,8 +1086,46 @@
   }
 
   function runReport() {
-    screenLoad(repo.fetchWeeklyReport(S.campus, S.start, S.end), function (r) { S.report = r; },
+    S.catView = null; S.sales = null;
+    var sales = repo.fetchHistory(S.campus, S.start, S.end).then(function (rows) {
+      return rows.filter(function (t) { return !t.type || t.type === 'decrease'; });
+    }, function () { return null; });
+    screenLoad(Promise.all([repo.fetchWeeklyReport(S.campus, S.start, S.end), sales]), function (v) { S.report = v[0]; S.sales = v[1]; },
       function (e) { S.error = 'Failed to load report: ' + e.message; });
+  }
+  // Sales rows grouped by key(t): [{ name, total, qty, count, rows }] sorted by revenue.
+  function groupSales(rows, key) {
+    var m = {}, out = [];
+    rows.forEach(function (t) {
+      var k = key(t) || '-';
+      var g = m[k] || (m[k] = out[out.length] = { name: k, total: 0, qty: 0, count: 0, rows: [] });
+      g.total += num(t.payment); g.qty += num(t.quantity) || 1; g.count++; g.rows.push(t);
+    });
+    return out.sort(function (a, b) { return b.total - a.total; });
+  }
+  function groupRow(g, sub, onTap) {
+    return '<div class="listrow tap" style="justify-content:space-between"' + tapAttr(onTap) + '><div style="min-width:0;padding-right:8px">' +
+      '<div style="font-size:12.5px;font-weight:700">' + esc(g.name) + '</div>' +
+      '<div style="font-size:10.5px;color:var(--ink3)">' + esc(sub) + '</div></div>' +
+      '<div style="font-size:12.5px;font-weight:700;flex:none">₱' + money(g.total) + ' <span style="color:var(--brand)">›</span></div></div>';
+  }
+  // Category → its products; tapping a product opens the transactions behind it.
+  function categoryScreen() {
+    var c = S.catView, from = S.start, to = S.end;
+    var products = groupSales(c.rows, function (t) { return t.subcategory; });
+    var h = '<div class="screen">' + eyebrow('Report · Category') + title(c.name) +
+      '<div style="padding-bottom:10px">' + secondaryBtn('← Back', function () { S.catView = null; }) + '</div>' +
+      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + esc(rangeText(from, to)) + ' · ' +
+      products.length + ' products · ' + c.count + ' transactions</span><span style="font-size:13px;font-weight:700">₱' + money(c.total) + '</span></div>' +
+      '<div class="vscroll fill">';
+    products.forEach(function (g) {
+      h += groupRow(g, 'Qty ' + comma(g.qty) + ' · ' + g.count + ' transactions', function () { openRowsDetail(g.name, from, to, g.rows); });
+    });
+    h += '</div></div>';
+    return h;
+  }
+  function openRowsDetail(label, from, to, rows) {
+    S.detail = { kind: 'sales', label: label, from: from, to: to, item: label, rows: rows, loading: false, error: null };
   }
 
   // ----- drill-down: tapping a sales number on Summary / Pay List opens the rows behind it
@@ -1164,10 +1219,10 @@
   function tapAttr(fn) { return ' data-act="' + act(fn) + '"'; }
   function reportScreen() {
     if (S.detail) return detailScreen();
+    if (S.catView) return categoryScreen();
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Report') + reportTabs() +
-      campusDropdown('rp_campus', function (v) { S.campus = v; runReport(); }) +
-      half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
-      secondaryBtn('Search', runReport) + spacer(10) + errorLine();
+      '<div class="filterbar">' + pillDropdown('rp_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; runReport(); }, '📍') + '</div>' +
+      rangeBar(runReport) + errorLine();
     var r = S.report;
     if (!r && S.loading) h += txt('Loading...', 'font-size:12px;color:var(--ink3)');
     if (r) {
@@ -1176,7 +1231,7 @@
       };
       var from = S.start, to = S.end;
       var allSales = function () { openDetail('sales', 'Sales Details', from, to); };
-      h += primaryBtn('⬇ Download Report PDF', notInBrowser) + spacer(14) +
+      h += primaryBtn('⬇ Download Report PDF', notInBrowser, false, ' style="height:38px"') + spacer(10) +
         '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + comma(Math.round(r.totalRevenue)), null, allSales) + stat('Transactions', comma(r.transactionCount), null, allSales) + '</div>' + spacer(8) +
         '<div class="row" style="gap:8px">' + stat('Avg. Order Value', '₱' + comma(r.avgOrderValue, 2)) + stat('Low Stock Alerts', String(r.lowStock.length), 'var(--low)') + '</div>' +
         spacer(16) + eyebrow('Daily Sales') + spacer(8);
@@ -1189,7 +1244,14 @@
       });
       h += '</div><div class="barlabels">';
       r.dailyTotals.forEach(function (d) { h += '<div class="tap"' + tapAttr(function () { openDetail('sales', 'Sales ' + d[0], d[0], d[0]); }) + '>' + esc(d[0].slice(-2)) + '</div>'; });
-      h += '</div>' + spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Top Sellers (by Quantity)') + spacer(8);
+      h += '</div>' + spacer(16) + '<div class="divider"></div>' + spacer(12) + eyebrow('Sales by Category') + spacer(8);
+      if (!S.sales) h += txt(S.loading ? 'Loading...' : 'Category breakdown unavailable.', 'font-size:12px;color:var(--ink3)');
+      else if (!S.sales.length) h += txt('No sales in this period.', 'font-size:12px;color:var(--ink3)');
+      else groupSales(S.sales, function (t) { return t.category; }).forEach(function (g) {
+        var nProd = groupSales(g.rows, function (t) { return t.subcategory; }).length;
+        h += groupRow(g, nProd + ' products · Qty ' + comma(g.qty) + ' · ' + g.count + ' transactions', function () { S.catView = g; });
+      });
+      h += spacer(12) + '<div class="divider"></div>' + spacer(12) + eyebrow('Top Sellers (by Quantity)') + spacer(8);
       r.topProducts.forEach(function (tp, idx) {
         h += '<div class="listrow tap"' + tapAttr(function () { openDetail('sales', tp[0], from, to, tp[0]); }) + '><div class="rank" style="background:' + (idx === 0 ? 'var(--brand)' : 'var(--ink)') + '">' + (idx + 1) + '</div>' +
           '<div style="font-size:12px;flex:1;min-width:0;padding-left:8px">' + esc(tp[0]) + '</div>' +
@@ -1280,13 +1342,14 @@
       function (e) { S.results = []; S.error = 'Search failed: ' + e.message; });
   }
 
-  // ----- daily summary: sales (PusanmartPayments) / cost (entered from the POS report) / net
+  // ----- daily closing (R1:SUMMARY): sales = Pusan Pay + barcode sales; cost = barcode items (automatic,
+  // store_menus.cost) + Pusan Pay cost typed from the Bizmatech report; settlement = cost + 50% of profit.
   function dailyRow(date) {
     return S.daily && S.daily.days.filter(function (d) { return d.date === date; })[0] || null;
   }
   function syncCostInput() {
     var d = dailyRow(S.costDate);
-    S.costInput = d && d.cost != null ? money(d.cost) : '';
+    S.costInput = d && d.typedCost != null ? money(d.typedCost) : '';
   }
   function saveCost() {
     var raw = String(S.costInput || '').replace(/,/g, '').trim();
@@ -1295,31 +1358,152 @@
     s.costSaving = true; s.costMsg = null;
     repo.savePusanmartCost(date, raw === '' ? null : Number(raw)).then(function () {
       if (S !== s) return;
-      s.costMsg = { err: false, text: date + (raw === '' ? ' cost cleared.' : ' cost ₱' + money(Number(raw)) + ' saved.') };
+      s.costMsg = { err: false, text: date + (raw === '' ? ' Pusan Pay cost cleared.' : ' Pusan Pay cost ₱' + money(Number(raw)) + ' saved.') };
       if (date < s.start || date > s.end) { if (date < s.start) s.start = date; else s.end = date; }
       runPayList();
     }, function (e) {
       if (S === s) s.costMsg = { err: true, text: 'Save failed: ' + e.message };
     }).then(function () { if (S === s) { s.costSaving = false; render(); } });
   }
+  function peso(n) { return comma(n, 2); } // 7,025.30
+  function sharePct() { return Math.round(((S.daily && S.daily.settleShare) || 0.5) * 100); }
   function downloadDailyCsv() {
     var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    var r = S.daily, rows = [['Date', 'Trans.', 'Net Sales (PHP)', 'Cost (PHP)', 'Net Profit (PHP)', 'Margin %']];
+    var r = S.daily, pct = sharePct();
+    var rows = [['Date', 'Trans.', 'Gross Sales (PHP)', 'Discount (PHP)', 'Net Sales (PHP)', 'Cost Exp. (PHP)', 'Barcode Cost (auto)', 'Pusan Pay Cost (typed)',
+      'Rev | PFT (PHP)', 'Margin %', 'Settlement = Cost + ' + pct + '% PFT (PHP)']];
     r.days.slice().reverse().forEach(function (d) {
-      rows.push([d.date, d.count, money(d.sales), d.cost == null ? '' : money(d.cost), d.net == null ? '' : money(d.net),
-        d.cost == null || !d.sales ? '' : (d.net / d.sales * 100).toFixed(1)]);
+      rows.push([d.date, d.count, money(d.gross), money(d.discount), money(d.sales), d.cost == null ? '' : money(d.cost), money(d.items.cost),
+        d.pay.cost == null ? '' : money(d.pay.cost), d.net == null ? '' : money(d.net),
+        d.cost == null || !d.sales ? '' : (d.net / d.sales * 100).toFixed(1), d.settlement == null ? '' : money(d.settlement)]);
     });
     rows.push([]);
-    rows.push(['Total', r.totals.count, money(r.totals.sales), money(r.totals.cost), money(r.totals.net),
-      r.totals.salesWithCost ? (r.totals.net / r.totals.salesWithCost * 100).toFixed(1) : '']);
+    rows.push(['Total', r.totals.count, money(r.totals.gross), money(r.totals.discount), money(r.totals.sales), money(r.totals.cost), money(r.totals.itemCost), '',
+      money(r.totals.net), r.totals.salesWithCost ? (r.totals.net / r.totals.salesWithCost * 100).toFixed(1) : '', money(r.totals.settlement)]);
     rows.push(['Days without cost', r.totals.daysMissingCost]);
     var name = 'pusanmart_daily_' + S.start + '_' + S.end + '.csv';
-    downloadFile(name, 'text/csv;charset=utf-8', '\ufeff' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
     toast('Saved to Downloads: ' + name, 3500);
   }
+  // The closing report, laid out like the Bizmatech "Daily Sales Report  R1:SUMMARY". Used on screen and for printing.
+  function closingReportHtml(d) {
+    var pct = sharePct();
+    var line = function (label, value, cls) {
+      return '<div class="rl' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><span>' + value + '</span></div>';
+    };
+    var na = '<span class="rmiss">missing</span>';
+    var share = d.net == null ? null : Math.round(d.net * pct) / 100;
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var now = new Date();
+    var h = '<div class="rpt">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Daily Sales Report</div><div class="rsub">R1:SUMMARY · From: ' + esc(d.date) + '</div></div></div>' +
+      '<div class="rsec">=== SALES DETAILS ===</div>' +
+      line('<b>' + d.count + ' Trans.</b>', '') +
+      line('Sys TL Sales', peso(d.gross)) +
+      line('(-) OVL Discount', peso(d.discount), 'rul') +
+      line('<b>Net Sales</b>', '<b>' + peso(d.sales) + '</b>') +
+      line('(-) Cost Exp.', d.cost == null ? na : peso(d.cost)) +
+      line('&nbsp;&nbsp;· Barcode items (auto)', peso(d.items.cost), 'rsm') +
+      line('&nbsp;&nbsp;· Pusan Pay (Bizmatech)', d.pay.count ? (d.pay.cost == null ? na : peso(d.pay.cost)) : '0.00', 'rsm') +
+      line('<b>Rev | PFT</b>', d.net == null ? na : '<b>' + peso(d.net) + '</b>', 'rtop') +
+      '<div class="rsec">=== PAYMENT DETAILS ===</div>' +
+      line('Pusan Pay (card) ' + d.pay.count + ' trans.', peso(d.pay.sales)) +
+      line('Barcode sales (card) ' + d.items.count + ' trans. · ' + d.items.qty + ' pcs', peso(d.items.sales), 'rul') +
+      line('<b>Net Payment Received</b>', '<b>' + peso(d.sales) + '</b>') +
+      '<div class="rsec">=== SETTLEMENT ===</div>' +
+      line('Cost', d.cost == null ? na : peso(d.cost)) +
+      line('+ ' + pct + '% of PFT' + (d.net == null ? '' : ' (' + peso(d.net) + ')'), share == null ? na : peso(share), 'rul') +
+      line('<b>Total</b>', d.settlement == null ? na : '<b class="rbig">' + peso(d.settlement) + '</b>');
+    if (d.items.uncosted && d.items.uncosted.length) {
+      h += '<div class="rwarn">No cost on file (counted as 0): ' + d.items.uncosted.map(function (u) { return esc(u.name) + ' ×' + u.qty; }).join(', ') + '</div>';
+    }
+    h += '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div>' +
+      '<div class="rsign"><div><span></span>Cashier</div><div><span></span>Check By</div></div></div>';
+    return h;
+  }
+  function printHtml(html) {
+    var el = document.getElementById('printArea');
+    if (!el) { el = document.createElement('div'); el.id = 'printArea'; document.body.appendChild(el); }
+    el.innerHTML = html;
+    window.print();
+  }
+  function printClosingReport(d) { printHtml(closingReportHtml(d)); }
+
+  // X Reading Report (mid-day / shift check, no reset), laid out like the Bizmatech "X Reading Report  R1:SUMMARY":
+  // SALES DETAILS | PAYMENT DETAILS | CASH DRAWER, then PAYMENT DENOM. Every Pusan Mart sale is an e-money card tap,
+  // so it all goes under "E MONEY TAP" and the cash drawer stays 0.00.
+  function mdy(date) { var p = String(date).split('-'); return p[1] + '/' + p[2] + '/' + p[0]; }
+  function hm12(d) {
+    var h = d.getHours(), ap = h < 12 ? 'AM' : 'PM';
+    return pad2(h % 12 || 12) + ':' + pad2(d.getMinutes()) + ' ' + ap;
+  }
+  function xReadingHtml(d, asOf) {
+    var line = function (label, value, cls) {
+      return '<div class="rl' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><span>' + value + '</span></div>';
+    };
+    var zero = '0.00';
+    var costKnown = d.cost != null;
+    var cost = costKnown ? d.cost : d.knownCost;
+    var pft = Math.round((d.sales - cost) * 100) / 100;
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var now = new Date();
+    var col = function (title, body) { return '<div class="xcol"><div class="rsec">== ' + title + ' ==</div>' + body + '</div>'; };
+    var sales = '<div class="rl"><span><b>' + d.count + ' Trans.</b></span><span></span></div>' +
+      line('Sys TL Sales', peso(d.gross)) +
+      line('(-) Cancel &amp;', zero) +
+      line('(-) Void', zero, 'rul') +
+      line('<b>Gross TL Sales</b>', '<b>' + peso(d.gross) + '</b>') +
+      line('(-) OVL Discount', peso(d.discount), 'rul') +
+      line('<b>Net Sales</b>', '<b>' + peso(d.sales) + '</b>') +
+      line('(-) Cost Exp.' + (costKnown ? '' : ' *'), peso(cost), 'rul') +
+      line('<b>Rev | PFT</b>', '<b>' + peso(pft) + '</b>' + (costKnown ? '' : ' *'));
+    var pay = line('<b>CS Sale Paid</b>', '<b>' + peso(d.sales) + '</b>') +
+      line('(+) Prev. SPR', zero, 'rul') +
+      '<div class="xnet"><b>Net Payment Received</b><div class="rbig"><b>' + peso(d.sales) + '</b></div></div>' +
+      line('Pymt. Balance', zero) +
+      line('Pymt Ex/Over', zero) + '<div style="height:10px"></div>' +
+      line('TL Cont. Deposit', zero);
+    var drawer = line('Prev. UR Sale', zero) +
+      line('Start In*Cash', zero) +
+      line('(+) Cash In', zero) +
+      line('<b>(+) Cur Sales</b>', '<b>' + zero + '</b>') +
+      line('(+) Prev CShift', zero, 'rul') +
+      line('', '<b>' + zero + '</b>') +
+      line('(-) Cash Out', zero) +
+      line('(-) Refunds', zero, 'rul') +
+      line('<b>End* Cash :</b>', '<b>' + zero + '</b>');
+    var denom = '<div class="rsec">=== PAYMENT DENOM ===</div><div class="rsm" style="padding-bottom:2px">[ Current Payment Received ]</div>' +
+      line('E MONEY TAP', peso(d.sales)) + line('CHECK', zero) + line('BANK2BANK', zero) + line('GCASH', zero) + line('CASH', zero);
+    var h = '<div class="rpt xr">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:center"><div class="rtitle">X Reading Report</div>' +
+      '<div class="rsub">From: ' + esc(mdy(d.date)) + ' 12:00 AM&nbsp; To ' + esc(mdy(d.date)) + ' ' + esc(asOf) + '</div>' +
+      '<div class="rsub">[F#]TID:ALL | CA:ALL | SA:ALL</div></div>' +
+      '<div class="rtitle">R1:SUMMARY</div></div>' +
+      '<div class="xgrid">' + col('SALES DETAILS', sales) + col('PAYMENT DETAILS', pay) + col('CASH DRAWER', drawer) + '</div>' +
+      '<div class="xgrid"><div class="xcol">' + denom + '</div></div>';
+    if (!costKnown && d.pay.count) {
+      h += '<div class="rwarn">* Pusan Pay cost (Bizmatech Cost Exp.) not entered yet — cost shows barcode items only, so PFT is provisional.</div>';
+    }
+    h += '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(mdy(ymd(now)) + ' ' + hm12(now)) + '</div>' +
+      '<div class="rsign"><div><span></span>Cashier</div><div><span></span>Check By</div></div></div>';
+    return h;
+  }
+  // Re-reads the day right before printing so the X Reading is current up to now.
+  function printXReading(date) {
+    if (!date) return;
+    toast('Preparing X Reading...', 1500);
+    repo.fetchPusanmartDaily(date, date).then(function (r) {
+      var d = r && r.days && r.days.filter(function (x) { return x.date === date; })[0];
+      if (!d) { toast('No data for ' + date, 3000); return; }
+      var now = new Date();
+      printHtml(xReadingHtml(d, date === ymd(now) ? hm12(now) : '11:59 PM'));
+    }, function (e) { toast('X Reading failed: ' + e.message, 4000); });
+  }
   function payListTabs() {
-    var h = '<div class="chips" style="padding-bottom:11px">';
-    [['daily', 'Daily Sales / Cost / Net'], ['list', 'Payments']].forEach(function (c) {
+    var h = '<div class="chips tabs" style="padding-bottom:8px">';
+    [['daily', 'Daily Closing / Cost'], ['list', 'Payments']].forEach(function (c) {
       h += '<div class="chip' + (S.view === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (S.view === c[0]) return; S.view = c[0]; S.error = null; runPayList();
       }) + '">' + c[1] + '</div>';
@@ -1332,43 +1516,55 @@
       return '<div class="stat' + (onTap ? ' tap' : '') + '"' + (onTap ? tapAttr(onTap) : '') + '><div class="lab">' + esc(label) + '</div><div class="val" style="font-size:15px;color:' + (color || 'var(--ink)') + '">' + esc(value) + '</div>' +
         (sub ? '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + esc(sub) + '</div>' : '') + '</div>';
     };
-    var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
-      half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
-      secondaryBtn('Search', runPayList) + spacer(10) + '<div class="vscroll fill">' + errorLine();
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
+      primaryBtn('🖨 X Reading — Today (up to now)', function () { printXReading(ymd(new Date())); }, false, ' style="height:38px"') + spacer(10) +
+      rangeBar(runPayList) + errorLine();
     if (!r) { h += loadingOr('No results.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
-    var t = r.totals, from = S.start, to = S.end;
-    var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (' + t.daysWithCost + ' days with cost)' : 'Enter cost';
-    h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + money(t.sales), null, t.count + ' trans.', function () { openDetail('pay', 'Pusan Pay Details', from, to); }) +
-      stat('Cost', '₱' + money(t.cost), 'var(--low)', t.daysMissingCost ? t.daysMissingCost + ' days missing' : null) + '</div>' + spacer(8) +
-      '<div class="row" style="gap:8px">' + stat('Net Profit', '₱' + money(t.net), t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) + '</div>' + spacer(12);
+    var t = r.totals, from = S.start, to = S.end, pct = sharePct();
+    // Net Sales = Report Summary "Total Revenue" (same rows). Cost = barcode cost (auto) + Pusan Pay cost (typed);
+    // while a day's Pusan Pay cost is missing, the cost found so far is shown and profit stays open for those days.
+    var missing = t.daysMissingCost > 0;
+    var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (' + t.daysWithCost + ' days with cost)' : 'Enter Pusan Pay cost';
+    var costSub = 'Barcode ₱' + peso(t.itemCost) + (missing ? ' · Pusan Pay ₱' + peso(t.paySalesMissingCost) + ' sales: cost missing (' + t.daysMissingCost + ' days)' : ' · Pusan Pay typed');
+    h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + peso(t.sales), null, t.count + ' trans. · = Summary', function () { openDetail('sales', 'Sales Details', from, to); }) +
+      stat('Cost Exp.', '₱' + peso(t.knownCost != null ? t.knownCost : t.cost), 'var(--low)', costSub) + '</div>' + spacer(8) +
+      '<div class="row" style="gap:8px">' + stat('Rev | PFT', t.daysWithCost ? '₱' + peso(t.net) : '—', t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) +
+      stat('Settlement', t.daysWithCost ? '₱' + peso(t.settlement) : '—', null, 'Cost + ' + pct + '% of PFT' + (missing ? ' · complete days only' : '')) + '</div>' + spacer(12);
 
     if (r.costTableMissing) h += txt('The cost table is not set up yet (admin: run supabase_pusanmart_daily_cost.sql).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
-    // cost entry (Cost Exp. from the PusanMart POS Daily Sales Report)
+
+    // closing report of the selected day
     var cd = dailyRow(S.costDate);
+    if (cd) {
+      h += '<div class="card" style="padding:12px;margin-bottom:10px">' + closingReportHtml(cd) + spacer(10) +
+        primaryBtn('🖨 Print Closing Report', function () { printClosingReport(cd); }, false, ' style="height:38px"') + spacer(8) +
+        secondaryBtn('🖨 Print X Reading (' + cd.date + ')', function () { printXReading(cd.date); }) + '</div>';
+    }
+
+    // Pusan Pay cost: items rung up on the Bizmatech POS, so its "Cost Exp." is typed in. Barcode sales cost is automatic.
     h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
-      '<div style="font-size:12px;font-weight:800;padding-bottom:8px">Enter Cost <span style="font-weight:400;color:var(--ink3)">· Cost Exp. on the report</span></div>' +
+      '<div style="font-size:12px;font-weight:800;padding-bottom:8px">Pusan Pay Cost <span style="font-weight:400;color:var(--ink3)">· Cost Exp. on the Bizmatech report</span></div>' +
       half(dateField('Date', S.costDate, function (v) { S.costDate = v; S.costMsg = null; syncCostInput(); }),
         labeledField('pl_cost', 'Cost (PHP)', S.costInput, function (v) { S.costInput = v; S.costMsg = null; }, '0.00', 'decimal'));
     if (cd) {
-      var raw = String(S.costInput || '').replace(/,/g, '').trim();
-      var preview = raw !== '' && Number(raw) >= 0 ? '  →  Net ₱' + money(cd.sales - Number(raw)) : '';
-      h += txt('Sales this day ₱' + money(cd.sales) + ' (' + cd.count + ' trans.)' + preview, 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
+      h += txt('Pusan Pay ₱' + peso(cd.pay.sales) + ' (' + cd.pay.count + ' trans.) · Barcode sales ₱' + peso(cd.items.sales) +
+        ' with cost ₱' + peso(cd.items.cost) + ' (automatic)', 'font-size:11.5px;color:var(--ink2);padding-bottom:8px');
     }
     if (S.costMsg) h += txt(S.costMsg.text, 'font-size:12px;padding-bottom:8px;color:' + (S.costMsg.err ? 'var(--out)' : 'var(--ok)'));
     h += primaryBtn(S.costSaving ? 'Saving...' : 'Save', saveCost, S.costSaving || !S.costDate) + '</div>';
 
-    h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length) + spacer(10);
+    h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length, ' style="height:38px"') + spacer(10);
     r.days.forEach(function (d) {
       var sel = d.date === S.costDate;
       h += '<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer' + (sel ? ';border-color:var(--brand)' : '') + '" data-act="' +
         act(function () { S.costDate = d.date; S.costMsg = null; syncCostInput(); }) + '">' +
         '<div class="sb"><span style="font-size:12.5px;font-weight:700">' + esc(d.date) + '</span>' +
-        '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + ' trans.</span></div>' +
+        '<span style="font-size:10.5px;color:var(--ink3)">' + d.count + ' trans.' + (d.settlement == null ? '' : ' · Settle ₱' + peso(d.settlement)) + '</span></div>' +
         '<div class="sb" style="padding-top:4px;font-size:11.5px">' +
-        '<span class="tap salesnum"' + tapAttr(function () { S.costDate = d.date; syncCostInput(); openDetail('pay', 'Pusan Pay ' + d.date, d.date, d.date); }) +
-        '>Sales <b>₱' + money(d.sales) + '</b> ›</span>' +
-        '<span>Cost ' + (d.cost == null ? '<b style="color:var(--out)">missing</b>' : '<b>₱' + money(d.cost) + '</b>') + '</span>' +
-        '<span>Net ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + money(d.net) + '</b>') + '</span>' +
+        '<span class="tap salesnum"' + tapAttr(function () { S.costDate = d.date; syncCostInput(); openDetail('sales', 'Sales ' + d.date, d.date, d.date); }) +
+        '>Sales <b>₱' + peso(d.sales) + '</b> ›</span>' +
+        '<span>Cost ' + (d.cost == null ? '<b>₱' + peso(d.knownCost) + '</b> <b style="color:var(--out)">+ Pusan Pay missing</b>' : '<b>₱' + peso(d.cost) + '</b>') + '</span>' +
+        '<span>PFT ' + (d.net == null ? '-' : '<b style="color:' + (d.net < 0 ? 'var(--out)' : 'var(--ok)') + '">₱' + peso(d.net) + '</b>') + '</span>' +
         '</div></div>';
     });
     h += '</div></div>';
@@ -1379,12 +1575,11 @@
     if (S.detail) return detailScreen();
     if (S.view === 'daily') return dailyScreen();
     var total = S.results.reduce(function (a, r) { return a + r.allPayments; }, 0);
-    var h = '<div class="screen">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
-      half(dateField('Start Date', S.start, function (v) { S.start = v; }), dateField('End Date', S.end, function (v) { S.end = v; })) +
-      secondaryBtn('Search', runPayList) + spacer(10) +
-      '<div class="sb" style="padding-bottom:10px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + ' payments</span>' +
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
+      rangeBar(runPayList) +
+      '<div class="sb" style="padding-bottom:8px"><span style="font-size:12px;color:var(--ink2)">' + S.results.length + ' payments</span>' +
       '<span style="font-size:13px;font-weight:700">Total ₱' + money(total) + '</span></div>' +
-      primaryBtn('⬇ Download Excel', downloadPayListCsv, !S.results.length) + spacer(10) + '<div class="vscroll fill">' + errorLine();
+      primaryBtn('⬇ Download Excel', downloadPayListCsv, !S.results.length, ' style="height:38px"') + spacer(10) + errorLine();
     if (!S.results.length && !S.error) h += loadingOr('No PusanMart payments in this period.', 'font-size:12px;color:var(--ink3)');
     S.results.forEach(function (r) { h += payCard(r); });
     h += '</div></div>';

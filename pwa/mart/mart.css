@@ -212,6 +212,7 @@ button, input { font-family: inherit; }
 }
 .chip.sel { background: var(--brand); color: #fff; }
 .chips { display: flex; gap: 8px; width: 100%; }
+.chips.tabs .chip { padding: 7px 0; }
 .nfcbox {
   width: 100%; background: var(--surface2); border-radius: 14px;
   padding: 16px 0; display: flex; flex-direction: column; align-items: center;
@@ -446,3 +447,39 @@ button, input { font-family: inherit; }
 .discrow { display: flex; align-items: center; gap: 8px; padding-top: 8px; }
 .discrow .discinput { flex: 1; min-width: 0; margin: 0; }
 .discrow .discapply { flex: none; width: auto; padding: 8px 14px; }
+
+/* Daily closing report (laid out like the Bizmatech "Daily Sales Report R1:SUMMARY"), on screen and printed */
+.rpt { font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+.rbrand { font-size: 20px; font-weight: 900; letter-spacing: -.5px; }
+.rtitle { font-size: 14px; font-weight: 800; letter-spacing: 1px; }
+.rsub { font-size: 10.5px; color: var(--ink3); }
+.rsec { font-size: 11px; font-weight: 800; padding: 10px 0 4px; color: var(--ink2); }
+.rl { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.rl.rsm { font-size: 11px; color: var(--ink3); }
+.rl.rul { border-bottom: 1px solid var(--ink); padding-bottom: 4px; margin-bottom: 2px; }
+.rl.rtop { border-top: 1px solid var(--ink); padding-top: 4px; margin-top: 2px; }
+.rbig { font-size: 15px; }
+.rmiss { color: var(--out); font-weight: 700; }
+.rwarn { margin-top: 8px; font-size: 10.5px; color: var(--out); }
+.rfoot { margin-top: 12px; font-size: 10.5px; font-family: ui-monospace, Menlo, monospace; }
+.rsign { display: flex; gap: 24px; margin-top: 28px; font-size: 10.5px; text-align: center; }
+.rsign div { flex: 1; }
+.rsign span { display: block; border-top: 1px solid var(--ink); margin-bottom: 2px; }
+/* X Reading Report: three columns like the Bizmatech printout */
+.xr .rhead { align-items: center; }
+.xgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.xgrid .xcol { min-width: 0; }
+.xr .rsm { font-size: 11px; color: var(--ink3); }
+.xnet { text-align: center; padding: 6px 0; border-bottom: 2px solid var(--ink); margin-bottom: 6px; }
+@media (max-width: 560px) { .xgrid { grid-template-columns: 1fr; gap: 0; } }
+#printArea { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  body > *:not(#printArea) { display: none !important; }
+  #printArea { display: block !important; max-width: 520px; }
+  #printArea:has(.xr) { max-width: none; }
+  #printArea .xgrid { grid-template-columns: repeat(3, 1fr) !important; gap: 18px !important; }
+  #printArea .rpt { --ink: #000; --ink2: #222; --ink3: #444; --out: #000; color: #000; }
+  body { background: #fff !important; }
+}
