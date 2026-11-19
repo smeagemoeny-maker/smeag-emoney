@@ -746,10 +746,11 @@ async function reportEntries(campus, a, b, detail = false) {
   const filters = [...tsRange("transaction_date", a, b), `or=${enc(`(${campusOr.join(",")})`)}`];
   const select = detail ? BANK_COLS : "id,uid,campus,category,subcategory,transaction_type,payment,transaction_source,transaction_date";
   const pusanOnly = isPusanCampus(campus);
-  const [bank, before, pusan] = await Promise.all([
+  const [bank, before, pusan, pusanItems] = await Promise.all([
     pusanOnly ? NO_RESULT : paged("bank", select, filters, "id.asc", 100000),
     pusanOnly ? NO_RESULT : paged("beforebank", select, filters, "id.asc", 100000),
     pusanmartRows(campus, a, b, detail),
+    pusanmartItemRows(campus, a, b, select),
   ]);
 
   const entries = [];
@@ -769,7 +770,13 @@ async function reportEntries(campus, a, b, detail = false) {
   for (const r of pusan.rows) {
     entries.push({ col: "Pusan Mart", day: phDay(r.register_days), amount: Number(r.allpayments || 0), table: "PusanmartPayments", row: r });
   }
-  return { entries, truncated: bank.truncated || before.truncated || pusan.truncated };
+  for (const { row: r, table } of pusanItems.rows) {
+    const pay = Number(r.payment || 0);
+    const t = String(r.transaction_type || "").toLowerCase();
+    const amount = t === "decrease" ? pay : t === "increase" ? -pay : 0;
+    entries.push({ col: "Pusan Mart", day: phDay(r.transaction_date), amount, table, row: r });
+  }
+  return { entries, truncated: bank.truncated || before.truncated || pusan.truncated || pusanItems.truncated };
 }
 
 export async function report({ campus, from, to }) {
@@ -847,6 +854,25 @@ async function pusanmartRows(campus, from, to, detail = false) {
   const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
   const campusOf = await campusesFor(rows.map((r) => r.nfcid));
   return { rows: rows.filter((r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase())), truncated };
+}
+
+// Pusan Mart barcode sales (Sales screen scan, pos_checkout): bank rows with category "Pusan Mart Mart" and
+// bank.campus "Pusan Mart", so the campus filter above never sees them and they write no PusanmartPayments row.
+// They belong to the Pusan Mart column like Pusan Pay: filed under the buyer's campus (person.campus),
+// campus "PUSAN MART" counts every one. Same rows as the mart Pay List "Barcode sales".
+const PUSANMART_ITEM_CATEGORY = "Pusan Mart Mart";
+async function pusanmartItemRows(campus, from, to, select) {
+  const filters = [`category=ilike.${enc(escapeLike(PUSANMART_ITEM_CATEGORY))}`, ...tsRange("transaction_date", from, to)];
+  const [bank, before] = await Promise.all([
+    paged("bank", select, filters, "id.asc", 100000),
+    paged("beforebank", select, filters, "id.asc", 100000),
+  ]);
+  const rows = [...bank.rows.map((row) => ({ row, table: "bank" })), ...before.rows.map((row) => ({ row, table: "beforebank" }))];
+  const truncated = bank.truncated || before.truncated;
+  if (isPusanCampus(campus)) return { rows, truncated };
+  const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
+  const campusOf = await campusesFor(rows.map((x) => x.row.uid));
+  return { rows: rows.filter((x) => wanted.has(String(campusOf.get(String(x.row.uid || "").toLowerCase()) || "").toLowerCase())), truncated };
 }
 
 async function campusesFor(uids) {
