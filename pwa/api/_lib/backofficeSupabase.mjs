@@ -16,11 +16,12 @@ const PERSON_SELECT = "id,uid,studentid,name,age,gender,campus,s_date,e_date,tot
 
 // ---------- products (store_menus) ----------
 
-export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, stock, minStock, barcode }, staffLoginId) {
+export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, cost, stock, minStock, barcode }, staffLoginId) {
   if (!campus) throw httpError(400, "Campus is required.");
   if (!String(sMenu || "").trim()) throw httpError(400, "Product name is required.");
   const price = Number(payment);
   if (!(price >= 0)) throw httpError(400, "Price must be 0 or more.");
+  const unitCost = toCost(cost);
   const code = cleanBarcode(barcode);
   if (code) await assertBarcodeFree(campus, code);
   const body = {
@@ -34,11 +35,12 @@ export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, 
     manager: staffLoginId || null,
   };
   const [row] = await withProductColumns((columns, extras) => {
-    if (code && !extras) throw httpError(503, "Barcodes are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
+    if ((code || unitCost != null) && !extras) throw httpError(503, "Barcode / cost columns are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
+    const extra = { ...(code ? { barcode: code } : {}), ...(unitCost != null ? { cost: unitCost } : {}) };
     return rest(`store_menus?select=${columns}`, {
       method: "POST",
       headers: { prefer: "return=representation" },
-      body: code ? { ...body, barcode: code } : body,
+      body: { ...body, ...extra },
     });
   });
   return mapProduct(row);
@@ -62,7 +64,16 @@ const PRODUCT_FIELDS = {
   stock: "stock",
   minStock: "min_stock",
   barcode: "barcode",
+  cost: "cost",
 };
+
+// Unit cost (PHP): null/"" = not set; otherwise a number >= 0.
+function toCost(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!(n >= 0)) throw httpError(400, "Cost price must be 0 or more.");
+  return Math.round(n * 100) / 100;
+}
 
 export async function updateProduct(id, changes) {
   const body = {};
@@ -77,6 +88,8 @@ export async function updateProduct(id, changes) {
       if (!(value >= 0)) throw httpError(400, `${key === "stock" ? "Stock" : "Minimum stock"} must be 0 or more.`);
     } else if (key === "barcode") {
       value = cleanBarcode(value);
+    } else if (key === "cost") {
+      value = toCost(value);
     } else if (key === "sMenu" && !String(value || "").trim()) {
       throw httpError(400, "Product name is required.");
     }
@@ -88,7 +101,7 @@ export async function updateProduct(id, changes) {
     if (current) await assertBarcodeFree(current.Campus, body.barcode, id);
   }
   const rows = await withProductColumns((columns, extras) => {
-    if ("barcode" in body && !extras) throw httpError(503, "Barcodes are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
+    if (("barcode" in body || "cost" in body) && !extras) throw httpError(503, "Barcode / cost columns are not set up yet: run api/migrations/supabase_pusanmart_products_import.sql.");
     return rest(`store_menus?id=eq.${productId(id)}&select=${columns}`, {
       method: "PATCH",
       headers: { prefer: "return=representation" },

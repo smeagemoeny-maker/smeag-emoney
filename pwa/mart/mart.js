@@ -105,7 +105,8 @@
       id: Number(p.id), campus: p.campus || '', mMenu: p.mMenu, sMenu: p.sMenu, imagePath: p.imagePath,
       image: resolveImage(p.imagePath), payment: num(p.payment), stock: Math.trunc(num(p.stock)),
       salesNumber: Math.trunc(num(p.salesNumber)), minStock: Math.trunc(num(p.minStock)),
-      barcode: p.barcode ? String(p.barcode).trim().toUpperCase() : '', itemCode: p.itemCode || ''
+      barcode: p.barcode ? String(p.barcode).trim().toUpperCase() : '', itemCode: p.itemCode || '',
+      cost: p.cost == null || p.cost === '' ? null : num(p.cost)
     };
   }
   function normPerson(p) {
@@ -284,7 +285,7 @@
     } else if (p) {
       beep('ok');
       S.category = 'All'; S.subcategory = 'All'; S.q = p.barcode || code;
-      S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || ''; S.message = null;
+      S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.cost = p.cost == null ? '' : String(p.cost); S.barcode = p.barcode || ''; S.message = null;
       focusLater('m_stock');
     } else {
       beep('error');
@@ -301,14 +302,6 @@
   // the search box. Returns true when the code was handled as a product, false to let it be a card tap.
   function onBarcode(raw, fromSearch) {
     if (session.manager && isPusan(S.campus) && (route === 'register' || route === 'modify')) { onProductScan(raw); return true; }
-    if (session.manager && isPusan(S.campus) && route === 'lookup') {
-      var lc = cleanCode(raw), lp = findByCode(lc);
-      beep(lp ? 'ok' : 'error');
-      S.q = lp ? (lp.barcode || lc) : lc;
-      if (!lp) toast('Barcode not registered: ' + lc, 2600);
-      render();
-      return true;
-    }
     if (!session.manager || route !== 'sales' || !isPusan(S.campus)) return false;
     var code = cleanCode(raw);
     var p = findByCode(code);
@@ -384,8 +377,8 @@
   // History and Pay List live inside the Report tab (chips at the top switch between them).
   var REPORT_GROUP = ['report', 'history', 'paylist'];
   // Edit and Register live inside the Products tab (same chip switch as Report).
-  var PRODUCT_GROUP = ['modify', 'register', 'lookup'];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'lookup', 'history', 'paylist', 'receipt']);
+  var PRODUCT_GROUP = ['modify', 'register'];
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
   // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
   function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
   function routeAllowed(r) {
@@ -397,7 +390,7 @@
   }
   function productTabs() {
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['modify', 'Edit'], ['register', 'Register'], ['lookup', 'Lookup']].forEach(function (c) {
+    [['modify', 'Edit'], ['register', 'Register']].forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
       }) + '">' + c[1] + '</div>';
@@ -518,11 +511,8 @@
         S = { campus: campus, awaitingTap: false, paying: false, confirm: null, category: 'All', subcategory: 'All' };
         loadProducts(S.campus); break;
       case 'register':
-        S = { campus: campus, photo: null, name: '', barcode: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
+        S = { campus: campus, photo: null, name: '', barcode: '', price: '', cost: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
         vm.products = []; loadProducts(S.campus); break;
-      case 'lookup':
-        S = { campus: campus, q: '', category: 'All', status: 'All', sort: 'Name' };
-        loadProducts(S.campus); break;
       case 'modify':
         S = { campus: campus, q: '', category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
         loadProducts(S.campus); break;
@@ -594,7 +584,7 @@
     // Sales always listens (a tap with an empty cart shows the student's info and balance; with items it opens Pay).
     // Register / Modify listen too so the barcode scanner's burst is caught there (onBarcode keeps it off the card path).
     return !!(session.manager && (route === 'buyer' || route === 'sales' || (route === 'pusanpay' && S.awaitingTap) ||
-      ((route === 'register' || route === 'modify' || route === 'lookup') && isPusan(S.campus))));
+      ((route === 'register' || route === 'modify') && isPusan(S.campus))));
   }
   function syncNfc() {
     var N = window.PusanNfc;
@@ -937,9 +927,10 @@
       labeledField('r_name', 'Product Name', S.name, function (v) { S.name = v; }, 'e.g. Coke Zero 245ml') +
       (isPusan(S.campus) ? labeledField('r_barcode', 'Barcode (scan anywhere on this screen)', S.barcode, function (v) { S.barcode = v; }, 'Scan with the barcode scanner or type') : '') +
       half(
-        labeledField('r_price', 'Product Price (PHP)', S.price, function (v) { S.price = v; }, '0.00', 'decimal'),
-        labeledField('r_qty', 'Quantity', S.qty, function (v) { S.qty = v; }, '0', 'numeric')
-      ) +
+        labeledField('r_price', 'Selling Price (PHP)', S.price, function (v) { S.price = v; }, '0.00', 'decimal'),
+        labeledField('r_cost', 'Cost Price (PHP)', S.cost, function (v) { S.cost = v; }, '0.00', 'decimal')
+      ) + marginLine(S.price, S.cost) +
+      labeledField('r_qty', 'Quantity', S.qty, function (v) { S.qty = v; }, '0', 'numeric') +
       labeledField('r_min', 'Minimum Stock Threshold (Warn≤)', S.minStock, function (v) { S.minStock = v; }, 'e.g. 6', 'numeric') +
       labeledField('r_desc', 'Description', S.desc, function (v) { S.desc = v; }, 'Optional');
     if (S.message) h += txt(S.message, 'color:var(--brand);font-size:12px;padding-bottom:8px');
@@ -971,6 +962,8 @@
     if (min == null) min = 5;
     if (!S.category) { S.message = 'Please select a category.'; return; }
     if (!S.name.trim() || price == null || qty == null) { S.message = 'Please enter a valid product name, price, and quantity.'; return; }
+    var cost = String(S.cost || '').trim() ? parseNum(S.cost) : null;
+    if (String(S.cost || '').trim() && (cost == null || cost < 0)) { S.message = 'Please enter a valid cost price.'; return; }
     var wanted = S.name.trim().replace(/\s+/g, ' ').toUpperCase();
     var dup = vm.products.filter(function (p) { return String(p.sMenu || '').trim().replace(/\s+/g, ' ').toUpperCase() === wanted; })[0];
     if (dup && !window.confirm('"' + dup.sMenu + '" is already registered (' + (dup.mMenu || '-') + ', stock ' + dup.stock + ').\n' +
@@ -983,77 +976,15 @@
     // Same row as DbRepository.insertProduct: Campus upper-cased, m_menu = the chosen category. The Android app
     // uploads the photo by SFTP first; a browser cannot, so the product is saved without an image.
     var regName = s.name.trim();
-    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.category, sMenu: regName, payment: price, stock: qty, minStock: min, barcode: bc || undefined })
+    repo.createProduct({ campus: s.campus.toUpperCase(), mMenu: s.category, sMenu: regName, payment: price, cost: cost == null ? undefined : cost, stock: qty, minStock: min, barcode: bc || undefined })
       .then(function (product) {
         s.message = 'Registered: ' + regName + ' (' + s.category + ')';
         if (product) vm.products.push(normProduct(product));
         toast('✅ Registered: ' + regName, 2500);
-        s.name = ''; s.price = ''; s.qty = ''; s.desc = ''; s.photo = null;
+        s.name = ''; s.price = ''; s.cost = ''; s.qty = ''; s.desc = ''; s.photo = null;
         if (hadPhoto && S === s) toast('✅ Registered: ' + regName + ' — photo not uploaded (the browser cannot upload product photos).', 4000);
       }, function (e) { s.message = 'Registration failed: ' + e.message; })
       .then(function () { s.saving = false; render(); });
-  }
-
-  // Lookup (read-only): search products by name / barcode / item code / category, filter by stock status,
-  // and see price, stock and threshold at a glance. Tapping a row opens it in Edit.
-  var LOOKUP_STATUS = ['All', 'OK', 'LOW', 'OUT'];
-  var LOOKUP_SORT = ['Name', 'Stock ↑', 'Stock ↓', 'Price ↑', 'Price ↓'];
-  function lookupScreen() {
-    var catOpts = ['All'].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
-    if (catOpts.indexOf(S.category) < 0) S.category = 'All';
-    var q = String(S.q || '').trim().toLowerCase();
-    var qc = cleanCode(S.q).toLowerCase();
-    var rows = vm.products.filter(function (p) {
-      if (S.category !== 'All' && p.mMenu !== S.category) return false;
-      if (S.status !== 'All' && stockStatus(p) !== S.status) return false;
-      if (!q) return true;
-      return String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 ||
-        String(p.mMenu || '').toLowerCase().indexOf(q) >= 0 ||
-        (qc && p.barcode && p.barcode.toLowerCase().indexOf(qc) >= 0) ||
-        (qc && p.itemCode && String(p.itemCode).toLowerCase().indexOf(qc) >= 0);
-    });
-    var cmp = {
-      'Stock ↑': function (a, b) { return a.stock - b.stock; },
-      'Stock ↓': function (a, b) { return b.stock - a.stock; },
-      'Price ↑': function (a, b) { return num(a.payment) - num(b.payment); },
-      'Price ↓': function (a, b) { return num(b.payment) - num(a.payment); }
-    }[S.sort];
-    rows = rows.slice().sort(function (a, b) {
-      return (cmp ? cmp(a, b) : 0) || String(a.sMenu || '').localeCompare(String(b.sMenu || ''));
-    });
-    var low = 0, out = 0, units = 0;
-    rows.forEach(function (p) { var st = stockStatus(p); if (st === 'LOW') low++; else if (st === 'OUT') out++; units += Math.max(0, num(p.stock)); });
-    actions.in_l_search = function (v) { S.q = v; };
-    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Product Lookup') + productTabs() +
-      '<div class="sb" style="padding-bottom:8px"><input class="tf search" id="l_search" data-in="in_l_search" type="search" placeholder="' +
-      (isPusan(S.campus) ? '🔍 Name, category or scan barcode' : '🔍 Name or category') + '" value="' + esc(S.q || '') + '" autocomplete="off" spellcheck="false">' +
-      (S.q ? '<button class="pill" style="margin-left:6px" data-act="' + act(function () { S.q = ''; focusLater('l_search'); }) + '">Clear</button>' : '') + '</div>' +
-      '<div class="filterbar">' +
-      pillDropdown('l_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; S.category = 'All'; loadProducts(v); }, '📍') +
-      pillDropdown('l_cat', S.category, catOpts, function (v) { S.category = v; }, 'Cat') + '</div>' +
-      '<div class="filterbar">' +
-      pillDropdown('l_status', S.status, LOOKUP_STATUS, function (v) { S.status = v; }, 'Stock') +
-      pillDropdown('l_sort', S.sort, LOOKUP_SORT, function (v) { S.sort = v; }, 'Sort') + '</div>' +
-      errorLine();
-    if (rows.length) h += '<div class="sb histsum"><span>' + rows.length + ' products · ' + units + ' pcs</span><span>' +
-      (low ? '<span style="color:var(--low)">LOW ' + low + '</span> ' : '') + (out ? '<span style="color:var(--out)">OUT ' + out + '</span>' : '') + '</span></div>';
-    else if (!S.error) h += loadingOr(q ? 'No products found for "' + S.q.trim() + '".' : 'No products match the selected filters.', 'font-size:12.5px;color:var(--ink2);padding:8px 0');
-    rows.forEach(function (p) {
-      var st = stockStatus(p);
-      h += '<div class="mitem ' + st.toLowerCase() + '"><div class="mhead" data-act="' + act(function () { openInEdit(p); }) + '">' + thumb(p, 40) +
-        '<div class="info"><div style="font-size:12.5px;font-weight:700">' + esc(p.sMenu || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">' + esc(p.mMenu || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)"><b style="color:var(--ink)">₱' + money(p.payment) + '</b> · Stock ' + p.stock + ' · Warn≤' + p.minStock +
-        (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div></div>';
-    });
-    h += spacer(24) + '</div></div>';
-    return h;
-  }
-  function openInEdit(p) {
-    var campus = S.campus;
-    navigate('modify');
-    if (S.campus !== campus) { S.campus = campus; loadProducts(campus); }
-    S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || '';
   }
 
   function modifyScreen() {
@@ -1095,16 +1026,19 @@
       h += '<div class="mitem ' + (isSel ? 'sel' : st.toLowerCase()) + '">' +
         '<div class="mhead" data-act="' + act(function () {
           if (isSel) S.selected = null;
-          else { S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || ''; S.message = null; }
+          else { S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.cost = p.cost == null ? '' : String(p.cost); S.barcode = p.barcode || ''; S.message = null; }
         }) + '">' + thumb(p, 40) + '<div class="info"><div style="font-size:12.5px;font-weight:700">' + esc(p.sMenu || '-') + '</div>' +
-        '<div style="font-size:10.5px;color:var(--ink2)">Stock ' + p.stock + ' · Threshold ' + p.minStock + (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div>';
+        '<div style="font-size:10.5px;color:var(--ink2)">₱' + money(p.payment) + (p.cost != null ? ' (cost ₱' + money(p.cost) + ')' : '') + ' · Stock ' + p.stock + ' · Threshold ' + p.minStock + (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div>';
       if (isSel) {
         h += '<div class="divider" style="background:' + bc + '"></div><div style="padding:10px">' +
           half(
             labeledField('m_stock', 'Stock Quantity', S.stock, function (v) { S.stock = v; }, '', 'numeric'),
             labeledField('m_min', 'Minimum Stock Threshold', S.minStock, function (v) { S.minStock = v; }, '', 'numeric')
           ) +
-          labeledField('m_price', 'Price (PHP)', S.price, function (v) { S.price = v; }, '', 'decimal') +
+          half(
+            labeledField('m_price', 'Selling Price (PHP)', S.price, function (v) { S.price = v; }, '', 'decimal'),
+            labeledField('m_cost', 'Cost Price (PHP)', S.cost, function (v) { S.cost = v; }, 'Not set', 'decimal')
+          ) + marginLine(S.price, S.cost) +
           (isPusan(S.campus) ? labeledField('m_barcode', 'Barcode', S.barcode, function (v) { S.barcode = v; }, 'Scan or type') : '');
         if (S.message) h += txt(S.message, 'color:var(--brand);font-size:12px;padding-bottom:8px');
         h += primaryBtn(S.saving ? 'Saving...' : 'Save Changes', function () { saveModify(p); }, S.saving) + spacer(8) +
@@ -1123,11 +1057,22 @@
     }
     return h;
   }
+  // Profit per unit and margin under the price fields, so a wrong cost (e.g. a box price) shows at once.
+  function marginLine(price, cost) {
+    var pr = parseNum(price), c = String(cost || '').trim() ? parseNum(cost) : null;
+    if (pr == null || c == null) return '';
+    var profit = pr - c, pct = pr > 0 ? Math.round(profit / pr * 1000) / 10 : 0;
+    return txt('Profit ₱' + money(profit) + ' per unit · margin ' + pct + '%',
+      'font-size:11.5px;padding:0 0 8px;color:' + (profit < 0 ? 'var(--out)' : 'var(--ink2)'));
+  }
   function saveModify(p) {
     var ns = parseIntStrict(S.stock), nm = parseIntStrict(S.minStock), np = parseNum(S.price);
     if (ns == null || nm == null) { S.message = 'Please enter a valid stock quantity.'; return; }
     var s = S, changes = { stock: ns, minStock: nm };
     if (np != null) changes.payment = np;
+    var rawCost = String(S.cost || '').trim(), nc = rawCost ? parseNum(rawCost) : null;
+    if (rawCost && (nc == null || nc < 0)) { S.message = 'Please enter a valid cost price.'; return; }
+    if (nc !== p.cost) changes.cost = nc;
     if (isPusan(S.campus) && cleanCode(S.barcode) !== (p.barcode || '')) {
       var nb = cleanCode(S.barcode);
       var used = nb && vm.products.filter(function (x) { return x.barcode === nb && x.id !== p.id; })[0];
@@ -1879,7 +1824,7 @@
     if (!session.manager) {
       body = '<div class="content">' + loginScreen() + '</div>';
     } else {
-      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, lookup: lookupScreen, history: historyScreen, report: reportScreen,
+      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen,
         buyer: buyerScreen, pusanpay: pusanPayScreen, paylist: payListScreen, receipt: receiptScreen }[route] || salesScreen;
       body = '<div class="content">' + fn() + '</div>' + navBar();
     }
