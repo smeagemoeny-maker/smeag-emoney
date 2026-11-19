@@ -328,12 +328,20 @@
     vm.cart = []; S.confirm = null; S.lastScanId = null;
   }
 
-  function cartSubtotal() { return vm.cart.reduce(function (a, i) { return a + i.product.payment * i.quantity; }, 0); }
+  // it.price: selling price edited at the counter for this sale only (store_menus.payment is unchanged).
+  function unitOf(it) { return it.price != null ? it.price : it.product.payment; }
+  // Copy of a cart line with some fields changed (keeps disc / price).
+  function withLine(c, patch) {
+    var o = { product: c.product, quantity: c.quantity, disc: c.disc, price: c.price };
+    for (var k in patch) o[k] = patch[k];
+    return o;
+  }
+  function cartSubtotal() { return vm.cart.reduce(function (a, i) { return a + unitOf(i) * i.quantity; }, 0); }
   // Per-item discount: it.disc = { rate: 0..1 } or { amount: pesos off the line }. It REPLACES the cart-wide
   // discount for that line (same rule as pos_checkout, supabase_pos_checkout_item_discount.sql).
   function r2(n) { return Math.round(n * 100) / 100; }
   function lineNet(it, cartRate) {
-    var gross = it.product.payment * it.quantity, d = it.disc;
+    var gross = unitOf(it) * it.quantity, d = it.disc;
     if (d && d.amount != null) return r2(gross - Math.min(d.amount, gross));
     return r2(gross - gross * (d ? d.rate : (cartRate == null ? vm.discountRate : cartRate)));
   }
@@ -344,7 +352,16 @@
   }
   function cartTotalAfterDiscount() { return r2(vm.cart.reduce(function (a, it) { return a + lineNet(it); }, 0)); }
   function setLineDisc(p, d) {
-    vm.cart.forEach(function (c, i) { if (c.product.id === p.id) vm.cart[i] = { product: c.product, quantity: c.quantity, disc: d }; });
+    vm.cart.forEach(function (c, i) { if (c.product.id === p.id) vm.cart[i] = withLine(c, { disc: d }); });
+  }
+  function setLinePrice(p, price) {
+    vm.cart.forEach(function (c, i) {
+      if (c.product.id !== p.id) return;
+      var d = c.disc;
+      // A ₱ discount larger than the new line total would be cut at the line total anyway: drop it.
+      if (d && d.amount != null && price != null && d.amount > price * c.quantity) d = null;
+      vm.cart[i] = withLine(c, { price: price, disc: d });
+    });
   }
 
   function toast(msg, ms) {
@@ -601,6 +618,7 @@
       uid: uidStr, store: storeFor(), campus: campus,
       cart: cart.map(function (it) {
         var line = { productId: it.product.id, quantity: it.quantity };
+        if (it.price != null) line.unitPrice = it.price;
         if (it.disc && it.disc.amount != null) line.discountAmount = it.disc.amount;
         else if (it.disc) line.discountRate = it.disc.rate;
         return line;
@@ -780,20 +798,26 @@
     if (!vm.cart.length) h += txt(scan ? 'Scan a barcode or select a product ' + (wide ? 'on the left.' : 'above.') :
       'Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
     vm.cart.forEach(function (it) {
-      var p = it.product, gross = p.payment * it.quantity, net = lineNet(it);
-      var editing = S.discEdit === p.id;
+      var p = it.product, unit = unitOf(it), gross = unit * it.quantity, net = lineNet(it);
+      var editing = S.discEdit === p.id, pricing = S.priceEdit === p.id, edited = it.price != null;
+      var openPrice = act(function () {
+        S.priceEdit = pricing ? null : p.id; S.discEdit = null; S.priceInput = String(unit);
+        if (!pricing) focusLater('priceinput');
+      });
       h += '<div class="cartrow' + (scan && S.lastScanId === p.id ? ' scanned' : '') + '">' + thumb(p, 40) +
         '<div class="cartname">' + esc(p.sMenu || '-') +
-        '<div class="cartsub">' + (scan ? '₱' + money(p.payment) + ' × ' + it.quantity + ' = ' : '') +
+        '<div class="cartsub">' + (scan || edited ? '<span class="pricetag' + (edited ? ' on' : '') + '" title="Edit price" data-act="' + openPrice + '">' +
+          (edited ? '<s>₱' + money(p.payment) + '</s> ' : '') + '₱' + money(unit) + '</span> × ' + it.quantity + ' = ' : '') +
         (net !== r2(gross) ? '<s>₱' + money(gross) + '</s> <b>₱' + money(net) + '</b>' : '<b>₱' + money(gross) + '</b>') + '</div></div>' +
         '<div class="disctag' + (it.disc ? ' on' : '') + (editing ? ' open' : '') + '" title="Item discount" data-act="' + act(function () {
-          S.discEdit = editing ? null : p.id; S.discInput = ''; S.discMode = (it.disc && it.disc.amount != null) ? 'amount' : 'rate';
+          S.discEdit = editing ? null : p.id; S.priceEdit = null; S.discInput = ''; S.discMode = (it.disc && it.disc.amount != null) ? 'amount' : 'rate';
         }) + '">' + (it.disc ? esc(discTag(it.disc)) : '%') + '</div>' +
         '<div class="stepper"><div class="stepbtn" data-act="' + act(function () { changeQty(p, -1); }) + '">−</div>' +
         '<div class="stepqty">' + it.quantity + '</div>' +
         '<div class="stepbtn" data-act="' + act(function () { changeQty(p, 1); }) + '">+</div></div>' +
         (scan ? '<div class="cartdel" title="Remove from list" data-act="' + act(function () { removeLine(p); }) + '">✕</div>' : '') + '</div>';
       if (editing) h += itemDiscEditor(it);
+      if (pricing) h += itemPriceEditor(it);
     });
     h += spacer(4) + '<div class="chips">';
     [['No Discount', 0], ['Manager 15%', 0.15], ['Teacher 10%', 0.10]].forEach(function (c) {
@@ -863,7 +887,7 @@
       toast(p.stock <= 0 ? 'Out of stock: ' + (p.sMenu || '-') : 'Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600);
       return;
     }
-    if (idx >= 0) vm.cart[idx] = { product: vm.cart[idx].product, quantity: q, disc: vm.cart[idx].disc };
+    if (idx >= 0) vm.cart[idx] = withLine(vm.cart[idx], { quantity: q });
     else vm.cart.push({ product: p, quantity: 1 });
     beep('ok');
     toast('Added: ' + (p.sMenu || '-') + (q > 1 ? ' ×' + q : ''), 1200);
@@ -874,12 +898,12 @@
     if (idx < 0) return;
     var q2 = vm.cart[idx].quantity + d;
     if (d > 0 && q2 > p.stock) { beep('error'); toast('Not enough stock: ' + (p.sMenu || '-') + ' (in stock: ' + p.stock + ')', 1600); return; }
-    if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = { product: vm.cart[idx].product, quantity: q2, disc: vm.cart[idx].disc };
+    if (q2 <= 0) vm.cart.splice(idx, 1); else vm.cart[idx] = withLine(vm.cart[idx], { quantity: q2 });
   }
 
   // Item discount editor under a cart line: presets, or a custom % / ₱ amount. "Cart" = use the cart-wide discount.
   function itemDiscEditor(it) {
-    var p = it.product, d = it.disc, mode = S.discMode || 'rate', gross = p.payment * it.quantity;
+    var p = it.product, d = it.disc, mode = S.discMode || 'rate', gross = unitOf(it) * it.quantity;
     function close() { S.discEdit = null; S.discInput = ''; }
     var h = '<div class="discedit"><div class="chips">';
     [['Cart', null], ['0%', 0], ['10%', 0.1], ['20%', 0.2], ['30%', 0.3], ['50%', 0.5]].forEach(function (c) {
@@ -901,6 +925,23 @@
       (bad ? '<div style="color:var(--out);font-size:11px;padding-top:4px">' + (mode === 'rate' ? 'Enter 0 – 100.' : 'Enter 0 – ₱' + money(gross) + '.') + '</div>' : '') +
       '</div>';
     return h;
+  }
+
+  // Price editor under a cart line (like "Edit Price" on the old POS): the price for this sale only.
+  function itemPriceEditor(it) {
+    var p = it.product;
+    function close() { S.priceEdit = null; S.priceInput = ''; }
+    actions.in_priceinput = function (v) { S.priceInput = v; };
+    var raw = String(S.priceInput == null ? '' : S.priceInput).trim(), v = parseNum(raw), bad = raw !== '' && (v == null || v < 0);
+    var apply = function () { setLinePrice(p, r2(v) === r2(p.payment) ? null : r2(v)); close(); };
+    actions.enter_priceinput = function () { if (v != null && !bad) { apply(); render(); } };
+    return '<div class="discedit"><div style="font-size:11px;color:var(--ink2)">Price for this sale only · list price ₱' + money(p.payment) + '</div>' +
+      '<div class="discrow">' +
+      '<input class="tf discinput" id="priceinput" data-in="in_priceinput" value="' + esc(S.priceInput || '') +
+      '" placeholder="Unit price (₱)" inputmode="decimal" type="text" autocomplete="off">' +
+      '<button class="btn btn-primary discapply"' + (v == null || bad ? ' disabled' : ' data-act="' + act(apply) + '"') + '>Apply</button>' +
+      (it.price != null ? '<button class="btn btn-secondary discapply" data-act="' + act(function () { setLinePrice(p, null); close(); }) + '">Reset</button>' : '') +
+      '</div>' + (bad ? '<div style="color:var(--out);font-size:11px;padding-top:4px">Enter a price of ₱0 or more.</div>' : '') + '</div>';
   }
 
   // Pusan Mart cart header: item count, scan mode (Add / Remove) and Clear.
@@ -1749,8 +1790,8 @@
   function receiptText(L) {
     var disc = 0, lines = ['SMEAG Mobile Mart - ' + L.campus, ''];
     L.cart.forEach(function (it) {
-      var gross = it.product.payment * it.quantity;
-      lines.push(it.product.sMenu + ' × ' + it.quantity + '  ₱' + money(gross));
+      var gross = unitOf(it) * it.quantity;
+      lines.push(it.product.sMenu + ' × ' + it.quantity + '  ₱' + money(gross) + (it.price != null ? '  (price ₱' + money(it.price) + ', list ₱' + money(it.product.payment) + ')' : ''));
       if (it.disc) lines.push('  Item discount ' + discTag(it.disc) + '  −₱' + money(gross - lineNet(it, L.rate)));
       else disc += gross - lineNet(it, L.rate);
     });
@@ -2019,6 +2060,10 @@
         var box = document.getElementById('s_search'); if (box) box.value = '';
         return;
       }
+    }
+    // Sales: Enter in the cart price editor applies the price.
+    if (e.key === 'Enter' && e.target && e.target.id === 'priceinput' && actions.enter_priceinput) {
+      e.preventDefault(); actions.enter_priceinput(); return;
     }
     // Edit Products: Enter in the search box opens the exact barcode / item code match, or the single result.
     if (e.key === 'Enter' && route === 'modify' && e.target && e.target.id === 'm_search') {

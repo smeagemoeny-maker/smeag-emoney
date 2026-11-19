@@ -3,7 +3,7 @@
 // (migrations/supabase_pos_functions.sql) so balance + stock changes stay in one transaction.
 import "./env.mjs";
 import { normalizeUid, requiredEnv } from "./db.mjs";
-import { httpError, itemDiscount, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
+import { hasUnitPrice, httpError, itemDiscount, lineUnitPrice, validateChargeInput, validateCheckoutInput } from "./repository.mjs";
 import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
@@ -136,8 +136,11 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
     const d = itemDiscount(item);
     if (d && d.amount != null) line.discountAmount = d.amount;
     else if (d) line.discountRate = d.rate;
+    // Price edited at the counter for this sale only — supabase_pos_checkout_unit_price.sql.
+    if (hasUnitPrice(item)) line.unitPrice = lineUnitPrice(item, 0);
     return line;
   });
+  const priceEdit = lines.some((line) => line.unitPrice != null);
 
   return rest("rpc/pos_checkout", {
     method: "POST",
@@ -149,6 +152,9 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
       p_discount_label: discountLabel || "No Discount",
       p_discount_rate: Number(discountRate || 0),
       p_category: checkoutCategory(store || "mart", campus),
+      // Sent only with an edited price: before that migration runs, the old function rejects the call
+      // (unknown parameter) instead of charging the full price.
+      ...(priceEdit ? { p_price_edit: true } : {}),
     },
   });
 }

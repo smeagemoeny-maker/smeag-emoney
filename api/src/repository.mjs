@@ -61,7 +61,25 @@ export function validateCheckoutInput({ uid, store, campus, cart, discountRate }
     if (hasAmount && !(Number(item.discountAmount) >= 0 && Number.isFinite(Number(item.discountAmount)))) {
       throw httpError(400, "Invalid item discount amount.");
     }
+    if (hasUnitPrice(item) && !(Number(item.unitPrice) >= 0 && Number.isFinite(Number(item.unitPrice)))) {
+      throw httpError(400, "Invalid item price.");
+    }
   }
+}
+
+// Per-line selling price for this sale only (cart line { unitPrice }); store_menus.payment is unchanged.
+// Same rule as pos_checkout in api/migrations/supabase_pos_checkout_unit_price.sql.
+export function hasUnitPrice(item) {
+  return item?.unitPrice != null && item.unitPrice !== "";
+}
+export function lineUnitPrice(item, productPrice) {
+  return hasUnitPrice(item) ? Math.round(Number(item.unitPrice) * 100) / 100 : toMoney(productPrice);
+}
+// bank.remark of a line sold at an edited price: 'Price ₱20.00' (+ ' · <discount>').
+export function priceRemark(item, productPrice, remark) {
+  const unit = lineUnitPrice(item, productPrice);
+  if (!hasUnitPrice(item) || unit === toMoney(productPrice)) return remark;
+  return `Price ₱${unit.toFixed(2)}` + (!remark || remark === "No Discount" ? "" : ` · ${remark}`);
 }
 
 // Per-item discount (cart line { discountRate } or { discountAmount }) replaces the cart-wide rate for that line.
@@ -124,8 +142,9 @@ export async function createCheckout({ uid, store, campus, cart, discountLabel, 
         throw httpError(409, `Insufficient stock: ${product.s_menu}`);
       }
 
-      const lineTotal = toMoney(product.payment) * quantity;
-      const { payment: linePayment, remark } = linePaymentFor(lineTotal, item, discountRate, discountLabel);
+      const lineTotal = lineUnitPrice(item, product.payment) * quantity;
+      const { payment: linePayment, remark: discRemark } = linePaymentFor(lineTotal, item, discountRate, discountLabel);
+      const remark = priceRemark(item, product.payment, discRemark);
       finalTotal = roundMoney(finalTotal + linePayment);
       if (remainingBalance < linePayment) {
         throw httpError(409, "Insufficient balance.");
