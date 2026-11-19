@@ -529,7 +529,7 @@
       case 'paylist':
         // campus: the sales drill-down reads the same Pusan Mart rows as the Report Summary
         S = { view: 'daily', campus: MART_CAMPUS, start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
-          costDate: ymd(new Date(today.getTime() - 24 * 3600 * 1000)), costInput: '', costMsg: null, costSaving: false };
+          costDate: ymd(today), costInput: '', costMsg: null, costSaving: false };
         runPayList(); break;
       case 'receipt':
         S = {}; break;
@@ -1620,11 +1620,26 @@
     // while a day's Pusan Pay cost is missing, the cost found so far is shown and profit stays open for those days.
     var missing = t.daysMissingCost > 0;
     var margin = t.salesWithCost ? (t.net / t.salesWithCost * 100).toFixed(1) + '% (' + t.daysWithCost + ' days with cost)' : 'Enter Pusan Pay cost';
+    // Provisional (days still missing their Pusan Pay cost): count only those days' barcode sales, whose cost is
+    // automatic, and leave their Pusan Pay sales out until the cost is typed. Final figures replace it once saved.
+    var prov = null;
+    if (missing) {
+      prov = { net: 0, settlement: 0, sales: 0 };
+      (r.days || []).forEach(function (d) {
+        if (d.cost !== null) { if (d.count > 0 || d.cost > 0) { prov.net += d.net; prov.settlement += d.settlement; prov.sales += d.sales; } return; }
+        var n = d.items.sales - d.items.cost;
+        prov.net += n; prov.settlement += d.items.cost + Math.round(n * (r.settleShare || 0.5) * 100) / 100; prov.sales += d.items.sales;
+      });
+      var provNote = 'Provisional · Pusan Pay ₱' + peso(t.paySalesMissingCost) + ' excluded until cost is entered';
+      margin = (prov.sales ? (prov.net / prov.sales * 100).toFixed(1) + '% · ' : '') + provNote;
+    }
     var costSub = 'Barcode ₱' + peso(t.itemCost) + (missing ? ' · Pusan Pay ₱' + peso(t.paySalesMissingCost) + ' sales: cost missing (' + t.daysMissingCost + ' days)' : ' · Pusan Pay typed');
     h += '<div class="row" style="gap:8px">' + stat('Net Sales', '₱' + peso(t.sales), null, t.count + ' trans. · = Summary', function () { openDetail('sales', 'Sales Details', from, to); }) +
       stat('Cost Exp.', '₱' + peso(t.knownCost != null ? t.knownCost : t.cost), 'var(--low)', costSub) + '</div>' + spacer(8) +
-      '<div class="row" style="gap:8px">' + stat('Rev | PFT', t.daysWithCost ? '₱' + peso(t.net) : '—', t.net < 0 ? 'var(--out)' : 'var(--ok)', margin) +
-      stat('Settlement', t.daysWithCost ? '₱' + peso(t.settlement) : '—', null, 'Cost + ' + pct + '% of PFT' + (missing ? ' · complete days only' : '')) + '</div>' + spacer(12);
+      '<div class="row" style="gap:8px">' + stat('Rev | PFT' + (prov ? ' (provisional)' : ''), prov ? '≈ ₱' + peso(prov.net) : t.daysWithCost ? '₱' + peso(t.net) : '—',
+        (prov ? prov.net : t.net) < 0 ? 'var(--out)' : 'var(--ok)', margin) +
+      stat('Settlement' + (prov ? ' (provisional)' : ''), prov ? '≈ ₱' + peso(prov.settlement) : t.daysWithCost ? '₱' + peso(t.settlement) : '—', null,
+        'Cost + ' + pct + '% of PFT' + (prov ? ' · final after Pusan Pay cost is saved' : '')) + '</div>' + spacer(12);
 
     if (r.costTableMissing) h += txt('The cost table is not set up yet (admin: run supabase_pusanmart_daily_cost.sql).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
 
