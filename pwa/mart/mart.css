@@ -473,12 +473,18 @@ button, input { font-family: inherit; }
 .xr .rsm { font-size: 11px; color: var(--ink3); }
 .xnet { text-align: center; padding: 6px 0; border-bottom: 2px solid var(--ink); margin-bottom: 6px; }
 @media (max-width: 560px) { .xgrid { grid-template-columns: 1fr; gap: 0; } }
+.rtbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rtbl th, .rtbl td { padding: 3px 4px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
+.rtbl th { border-bottom: 1px solid var(--ink); font-weight: 800; }
+.rtbl .n { text-align: right; white-space: nowrap; }
+.rtbl tfoot td { border-top: 1px solid var(--ink); border-bottom: none; font-weight: 800; }
+.rtbl tr { break-inside: avoid; }
 #printArea { display: none; }
 @media print {
   @page { margin: 12mm; }
   body > *:not(#printArea) { display: none !important; }
   #printArea { display: block !important; max-width: 520px; }
-  #printArea:has(.xr) { max-width: none; }
+  #printArea:has(.xr), #printArea:has(.rpt-sales) { max-width: none; }
   #printArea .xgrid { grid-template-columns: repeat(3, 1fr) !important; gap: 18px !important; }
   #printArea .rpt { --ink: #000; --ink2: #222; --ink3: #444; --out: #000; color: #000; }
   body { background: #fff !important; }

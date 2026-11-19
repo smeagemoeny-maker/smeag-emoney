@@ -503,7 +503,6 @@
   // ------------------------------------------------------------------ screen state init
   function initScreen(r) {
     var today = new Date();
-    var weekAgo = new Date(today.getTime() - 6 * 24 * 3600 * 1000);
     var campuses = allowedCampuses();
     var campus = campuses.indexOf(session.selectedCampus) >= 0 ? session.selectedCampus : (campuses[0] || MART_CAMPUS);
     switch (r) {
@@ -517,10 +516,10 @@
         S = { campus: campus, q: '', category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
         loadProducts(S.campus); break;
       case 'history':
-        S = { campus: campus, start: ymd(new Date(Date.now() - 16 * 24 * 3600 * 1000)), end: ymd(today), all: [], category: 'All', subcategory: 'All' };
+        S = { campus: campus, start: ymd(today), end: ymd(today), all: [], category: 'All', subcategory: 'All' };
         runHistory(); break;
       case 'report':
-        S = { campus: campus, start: ymd(weekAgo), end: ymd(today), report: null };
+        S = { campus: campus, start: ymd(today), end: ymd(today), report: null };
         runReport(); break;
       case 'buyer':
         S = {}; break;
@@ -528,7 +527,7 @@
         S = { store: vm.pz.store, amount: vm.pz.amount, memo: vm.pz.memo, awaitingTap: false }; break;
       case 'paylist':
         // campus: the sales drill-down reads the same Pusan Mart rows as the Report Summary
-        S = { view: 'daily', campus: MART_CAMPUS, start: ymd(weekAgo), end: ymd(today), results: [], daily: null,
+        S = { view: 'daily', campus: MART_CAMPUS, start: ymd(today), end: ymd(today), results: [], daily: null,
           costDate: ymd(today), costInput: '', costMsg: null, costSaving: false };
         runPayList(); break;
       case 'receipt':
@@ -1318,7 +1317,7 @@
       };
       var from = S.start, to = S.end;
       var allSales = function () { openDetail('sales', 'Sales Details', from, to); };
-      h += primaryBtn('⬇ Download Report PDF', notInBrowser, false, ' style="height:38px"') + spacer(10) +
+      h += primaryBtn('⬇ Download Report PDF', function () { printSalesReport(r, from, to); }, false, ' style="height:38px"') + spacer(10) +
         '<div class="row" style="gap:8px">' + stat('Total Revenue', '₱' + comma(Math.round(r.totalRevenue)), null, allSales) + stat('Transactions', comma(r.transactionCount), null, allSales) + '</div>' + spacer(8) +
         '<div class="row" style="gap:8px">' + stat('Avg. Order Value', '₱' + comma(r.avgOrderValue, 2)) + stat('Low Stock Alerts', String(r.lowStock.length), 'var(--low)') + '</div>' +
         spacer(16) + eyebrow('Daily Sales') + spacer(8);
@@ -1524,6 +1523,55 @@
     window.print();
   }
   function printClosingReport(d) { printHtml(closingReportHtml(d)); }
+
+  // Sales report (Report tab) as a printable page: summary, daily totals, every item sold, categories, low stock.
+  // The browser's print dialog saves it as PDF ("Save as PDF") on desktop and mobile alike.
+  function salesReportHtml(r, from, to) {
+    var line = function (label, value, cls) {
+      return '<div class="rl' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><span>' + value + '</span></div>';
+    };
+    var now = new Date();
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var h = '<div class="rpt rpt-sales">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Sales Report</div><div class="rsub">' + esc(S.campus) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
+      '<div class="rsec">=== SUMMARY ===</div>' +
+      line('Total Revenue', '₱' + peso(r.totalRevenue)) +
+      line('Transactions', comma(r.transactionCount)) +
+      line('Avg. Order Value', '₱' + peso(r.avgOrderValue)) +
+      line('Low Stock Alerts', String(r.lowStock.length)) +
+      '<div class="rsec">=== DAILY SALES ===</div>';
+    r.dailyTotals.forEach(function (d) { h += line(esc(d[0]), '₱' + peso(d[1])); });
+    var sales = S.sales || [];
+    var items = itemsByQty(sales);
+    var tQty = items.reduce(function (a, g) { return a + g.qty; }, 0), tAmt = items.reduce(function (a, g) { return a + g.total; }, 0);
+    h += '<div class="rsec">=== SALES BY ITEM (' + items.length + ' items) ===</div>';
+    if (!items.length) h += '<div class="rsm">' + (S.sales ? 'No sales in this period.' : 'Item breakdown unavailable.') + '</div>';
+    else {
+      h += '<table class="rtbl"><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="n">Qty</th><th class="n">Amount (₱)</th></tr></thead><tbody>';
+      items.forEach(function (g, i) {
+        h += '<tr><td>' + (i + 1) + '</td><td>' + esc(g.name) + '</td><td>' + esc(g.rows[0].category || '-') + '</td><td class="n">' +
+          comma(g.qty) + '</td><td class="n">' + peso(g.total) + '</td></tr>';
+      });
+      h += '</tbody><tfoot><tr><td></td><td>Total</td><td></td><td class="n">' + comma(tQty) + '</td><td class="n">' + peso(tAmt) + '</td></tr></tfoot></table>';
+      h += '<div class="rsec">=== SALES BY CATEGORY ===</div>';
+      groupSales(sales, function (t) { return t.category; }).forEach(function (g) {
+        h += line(esc(g.name) + ' <span class="rsm">· Qty ' + comma(g.qty) + ' · ' + g.count + ' trans.</span>', '₱' + peso(g.total));
+      });
+    }
+    if (r.lowStock.length) {
+      h += '<div class="rsec">=== LOW STOCK ITEMS ===</div>';
+      r.lowStock.forEach(function (p) { h += line(esc(p.sMenu || '-'), stockStatus(p) + ' (' + comma(p.stock) + ')', 'rsm'); });
+    }
+    h += '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div></div>';
+    return h;
+  }
+  function printSalesReport(r, from, to) {
+    var prev = document.title;
+    document.title = 'SalesReport_' + String(S.campus).replace(/\s+/g, '') + '_' + from + '_' + to; // default PDF file name
+    printHtml(salesReportHtml(r, from, to));
+    setTimeout(function () { document.title = prev; }, 1000);
+  }
 
   // X Reading Report (mid-day / shift check, no reset), laid out like the Bizmatech "X Reading Report  R1:SUMMARY":
   // SALES DETAILS | PAYMENT DETAILS | CASH DRAWER, then PAYMENT DENOM. Every Pusan Mart sale is an e-money card tap,
