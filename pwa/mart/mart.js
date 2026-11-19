@@ -266,6 +266,8 @@
     var code = cleanCode(raw);
     if (!code) return;
     var p = findByCode(code);
+    // Edit: a scan while the search box has focus is a search, not a barcode change for the open product.
+    if (route === 'modify' && document.activeElement && document.activeElement.id === 'm_search') S.selected = null;
     if (route === 'register') {
       if (p) {
         beep('error');
@@ -281,7 +283,7 @@
       else { beep('ok'); S.barcode = code; S.message = null; }
     } else if (p) {
       beep('ok');
-      S.category = 'All'; S.subcategory = 'All';
+      S.category = 'All'; S.subcategory = 'All'; S.q = p.barcode || code;
       S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || ''; S.message = null;
       focusLater('m_stock');
     } else {
@@ -299,6 +301,14 @@
   // the search box. Returns true when the code was handled as a product, false to let it be a card tap.
   function onBarcode(raw, fromSearch) {
     if (session.manager && isPusan(S.campus) && (route === 'register' || route === 'modify')) { onProductScan(raw); return true; }
+    if (session.manager && isPusan(S.campus) && route === 'lookup') {
+      var lc = cleanCode(raw), lp = findByCode(lc);
+      beep(lp ? 'ok' : 'error');
+      S.q = lp ? (lp.barcode || lc) : lc;
+      if (!lp) toast('Barcode not registered: ' + lc, 2600);
+      render();
+      return true;
+    }
     if (!session.manager || route !== 'sales' || !isPusan(S.campus)) return false;
     var code = cleanCode(raw);
     var p = findByCode(code);
@@ -374,8 +384,8 @@
   // History and Pay List live inside the Report tab (chips at the top switch between them).
   var REPORT_GROUP = ['report', 'history', 'paylist'];
   // Edit and Register live inside the Products tab (same chip switch as Report).
-  var PRODUCT_GROUP = ['modify', 'register'];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
+  var PRODUCT_GROUP = ['modify', 'register', 'lookup'];
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'lookup', 'history', 'paylist', 'receipt']);
   // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
   function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
   function routeAllowed(r) {
@@ -387,7 +397,7 @@
   }
   function productTabs() {
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['modify', 'Edit'], ['register', 'Register']].forEach(function (c) {
+    [['modify', 'Edit'], ['register', 'Register'], ['lookup', 'Lookup']].forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
       }) + '">' + c[1] + '</div>';
@@ -510,8 +520,11 @@
       case 'register':
         S = { campus: campus, photo: null, name: '', barcode: '', price: '', qty: '', minStock: '5', desc: '', message: null, saving: false, category: null };
         vm.products = []; loadProducts(S.campus); break;
+      case 'lookup':
+        S = { campus: campus, q: '', category: 'All', status: 'All', sort: 'Name' };
+        loadProducts(S.campus); break;
       case 'modify':
-        S = { campus: campus, category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
+        S = { campus: campus, q: '', category: 'All', subcategory: 'All', selected: null, stock: '', minStock: '', price: '', message: null, pendingDelete: null };
         loadProducts(S.campus); break;
       case 'history':
         S = { campus: campus, start: ymd(new Date(Date.now() - 16 * 24 * 3600 * 1000)), end: ymd(today), all: [], category: 'All', subcategory: 'All' };
@@ -581,7 +594,7 @@
     // Sales always listens (a tap with an empty cart shows the student's info and balance; with items it opens Pay).
     // Register / Modify listen too so the barcode scanner's burst is caught there (onBarcode keeps it off the card path).
     return !!(session.manager && (route === 'buyer' || route === 'sales' || (route === 'pusanpay' && S.awaitingTap) ||
-      ((route === 'register' || route === 'modify') && isPusan(S.campus))));
+      ((route === 'register' || route === 'modify' || route === 'lookup') && isPusan(S.campus))));
   }
   function syncNfc() {
     var N = window.PusanNfc;
@@ -981,21 +994,100 @@
       .then(function () { s.saving = false; render(); });
   }
 
+  // Lookup (read-only): search products by name / barcode / item code / category, filter by stock status,
+  // and see price, stock and threshold at a glance. Tapping a row opens it in Edit.
+  var LOOKUP_STATUS = ['All', 'OK', 'LOW', 'OUT'];
+  var LOOKUP_SORT = ['Name', 'Stock ↑', 'Stock ↓', 'Price ↑', 'Price ↓'];
+  function lookupScreen() {
+    var catOpts = ['All'].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
+    if (catOpts.indexOf(S.category) < 0) S.category = 'All';
+    var q = String(S.q || '').trim().toLowerCase();
+    var qc = cleanCode(S.q).toLowerCase();
+    var rows = vm.products.filter(function (p) {
+      if (S.category !== 'All' && p.mMenu !== S.category) return false;
+      if (S.status !== 'All' && stockStatus(p) !== S.status) return false;
+      if (!q) return true;
+      return String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 ||
+        String(p.mMenu || '').toLowerCase().indexOf(q) >= 0 ||
+        (qc && p.barcode && p.barcode.toLowerCase().indexOf(qc) >= 0) ||
+        (qc && p.itemCode && String(p.itemCode).toLowerCase().indexOf(qc) >= 0);
+    });
+    var cmp = {
+      'Stock ↑': function (a, b) { return a.stock - b.stock; },
+      'Stock ↓': function (a, b) { return b.stock - a.stock; },
+      'Price ↑': function (a, b) { return num(a.payment) - num(b.payment); },
+      'Price ↓': function (a, b) { return num(b.payment) - num(a.payment); }
+    }[S.sort];
+    rows = rows.slice().sort(function (a, b) {
+      return (cmp ? cmp(a, b) : 0) || String(a.sMenu || '').localeCompare(String(b.sMenu || ''));
+    });
+    var low = 0, out = 0, units = 0;
+    rows.forEach(function (p) { var st = stockStatus(p); if (st === 'LOW') low++; else if (st === 'OUT') out++; units += Math.max(0, num(p.stock)); });
+    actions.in_l_search = function (v) { S.q = v; };
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Product Lookup') + productTabs() +
+      '<div class="sb" style="padding-bottom:8px"><input class="tf search" id="l_search" data-in="in_l_search" type="search" placeholder="' +
+      (isPusan(S.campus) ? '🔍 Name, category or scan barcode' : '🔍 Name or category') + '" value="' + esc(S.q || '') + '" autocomplete="off" spellcheck="false">' +
+      (S.q ? '<button class="pill" style="margin-left:6px" data-act="' + act(function () { S.q = ''; focusLater('l_search'); }) + '">Clear</button>' : '') + '</div>' +
+      '<div class="filterbar">' +
+      pillDropdown('l_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; S.category = 'All'; loadProducts(v); }, '📍') +
+      pillDropdown('l_cat', S.category, catOpts, function (v) { S.category = v; }, 'Cat') + '</div>' +
+      '<div class="filterbar">' +
+      pillDropdown('l_status', S.status, LOOKUP_STATUS, function (v) { S.status = v; }, 'Stock') +
+      pillDropdown('l_sort', S.sort, LOOKUP_SORT, function (v) { S.sort = v; }, 'Sort') + '</div>' +
+      errorLine();
+    if (rows.length) h += '<div class="sb histsum"><span>' + rows.length + ' products · ' + units + ' pcs</span><span>' +
+      (low ? '<span style="color:var(--low)">LOW ' + low + '</span> ' : '') + (out ? '<span style="color:var(--out)">OUT ' + out + '</span>' : '') + '</span></div>';
+    else if (!S.error) h += loadingOr(q ? 'No products found for "' + S.q.trim() + '".' : 'No products match the selected filters.', 'font-size:12.5px;color:var(--ink2);padding:8px 0');
+    rows.forEach(function (p) {
+      var st = stockStatus(p);
+      h += '<div class="mitem ' + st.toLowerCase() + '"><div class="mhead" data-act="' + act(function () { openInEdit(p); }) + '">' + thumb(p, 40) +
+        '<div class="info"><div style="font-size:12.5px;font-weight:700">' + esc(p.sMenu || '-') + '</div>' +
+        '<div style="font-size:10.5px;color:var(--ink2)">' + esc(p.mMenu || '-') + '</div>' +
+        '<div style="font-size:10.5px;color:var(--ink2)"><b style="color:var(--ink)">₱' + money(p.payment) + '</b> · Stock ' + p.stock + ' · Warn≤' + p.minStock +
+        (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div></div>';
+    });
+    h += spacer(24) + '</div></div>';
+    return h;
+  }
+  function openInEdit(p) {
+    var campus = S.campus;
+    navigate('modify');
+    if (S.campus !== campus) { S.campus = campus; loadProducts(campus); }
+    S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.barcode = p.barcode || '';
+  }
+
   function modifyScreen() {
     var catOpts = ['All'].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
     if (catOpts.indexOf(S.category) < 0) S.category = 'All';
     var base = S.category === 'All' ? vm.products : vm.products.filter(function (p) { return p.mMenu === S.category; });
     var subOpts = ['All'].concat(uniqSorted(base.map(function (p) { return p.sMenu; })));
     if (subOpts.indexOf(S.subcategory) < 0) S.subcategory = 'All';
+    // Search (name / category / barcode / item code) searches every product and ignores the Category filters.
+    var q = String(S.q || '').trim().toLowerCase(), qc = cleanCode(S.q || '').toLowerCase();
     var filtered = vm.products.filter(function (p) {
+      if (q) return String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || String(p.mMenu || '').toLowerCase().indexOf(q) >= 0 ||
+        (qc && p.barcode && p.barcode.toLowerCase().indexOf(qc) >= 0) || (qc && p.itemCode && String(p.itemCode).toLowerCase().indexOf(qc) >= 0);
       return (S.category === 'All' || p.mMenu === S.category) && (S.subcategory === 'All' || p.sMenu === S.subcategory);
     });
+    actions.in_m_search = function (v) { S.q = v; };
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Edit Products') + productTabs() +
+      '<div class="sb" style="padding-bottom:8px"><input class="tf search" id="m_search" data-in="in_m_search" type="search" placeholder="' +
+      (isPusan(S.campus) ? '🔍 Product name or scan barcode' : '🔍 Product name') + '" value="' + esc(S.q || '') + '" autocomplete="off" spellcheck="false">' +
+      (S.q ? '<button class="pill" style="margin-left:6px" data-act="' + act(function () { S.q = ''; S.selected = null; focusLater('m_search'); }) + '">Clear</button>' : '') + '</div>' +
       campusDropdown('m_campus', function (v) { S.campus = v; S.selected = null; loadProducts(v); }) +
       dropdown('m_cat', S.category, catOpts, function (v) { S.category = v; S.subcategory = 'All'; }, 'Category') +
       dropdown('m_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Subcategory');
     if (S.error) h += errorLine();
-    if (!filtered.length) h += loadingOr('No products match the selected filters.', 'font-size:12.5px;color:var(--ink2);padding:8px 0');
+    if (!filtered.length && q && vm.products.length) {
+      // Not found: offer to register it as a new product (barcode-like input fills Barcode, anything else fills Name).
+      var raw = String(S.q).trim(), isCode = /^[0-9A-Za-z-]{6,}$/.test(raw) && /\d/.test(raw) && !/\s/.test(raw);
+      h += txt('No products found for "' + raw + '".', 'font-size:12.5px;color:var(--ink2);padding:8px 0') +
+        primaryBtn('+ Register as new product', function () {
+          navigate('register');
+          if (isCode) { S.barcode = cleanCode(raw); focusLater('r_name'); } else { S.name = raw; focusLater('r_price'); }
+        }) + spacer(8);
+    } else if (!filtered.length) h += loadingOr('No products match the selected filters.', 'font-size:12.5px;color:var(--ink2);padding:8px 0');
+    else if (q) h += txt(filtered.length + ' product' + (filtered.length > 1 ? 's' : '') + ' found', 'font-size:11.5px;color:var(--ink2);padding-bottom:6px');
     if (S.message && !S.selected) h += txt(S.message, 'color:var(--brand);font-size:12px;padding-bottom:8px');
     filtered.forEach(function (p) {
       var st = stockStatus(p), isSel = S.selected === p.id;
@@ -1787,7 +1879,7 @@
     if (!session.manager) {
       body = '<div class="content">' + loginScreen() + '</div>';
     } else {
-      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen,
+      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, lookup: lookupScreen, history: historyScreen, report: reportScreen,
         buyer: buyerScreen, pusanpay: pusanPayScreen, paylist: payListScreen, receipt: receiptScreen }[route] || salesScreen;
       body = '<div class="content">' + fn() + '</div>' + navBar();
     }
@@ -1919,6 +2011,21 @@
         var box = document.getElementById('s_search'); if (box) box.value = '';
         return;
       }
+    }
+    // Edit Products: Enter in the search box opens the exact barcode / item code match, or the single result.
+    if (e.key === 'Enter' && route === 'modify' && e.target && e.target.id === 'm_search') {
+      e.preventDefault();
+      var mq = String(e.target.value || '').trim(), mp = mq && findByCode(cleanCode(mq));
+      if (!mp) {
+        var ql = mq.toLowerCase();
+        var hits = ql ? vm.products.filter(function (x) { return String(x.sMenu || '').toLowerCase().indexOf(ql) >= 0; }) : [];
+        if (hits.length === 1) mp = hits[0];
+      }
+      if (mp) {
+        S.selected = mp.id; S.stock = String(mp.stock); S.minStock = String(mp.minStock); S.price = String(mp.payment); S.barcode = mp.barcode || ''; S.message = null;
+        render(); focusLater('m_stock');
+      }
+      return;
     }
     // Enter in the login form submits, like the IME action on the phone.
     if (e.key === 'Enter' && !session.manager && S.login && e.target && (e.target.id === 'l_id' || e.target.id === 'l_pw')) {
