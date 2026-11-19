@@ -61,6 +61,8 @@
     'Total amount of\n= Recharge \u2212 Cash Out\n(net money added to cards; Receipt and Store shop are not part of it)'
   ];
 
+  var PM_CARDS = ['\uCD1D\uB9E4\uCD9C Sales', '\uC6D0\uAC00 Cost', '\uC218\uC775 Profit', '\uBD80\uC0B0\uB9C8\uD2B8 50%', 'SMEAG 50%'];
+
   window.OfficeTabs = window.OfficeTabs || {};
   window.OfficeTabs['REPORT'] = {
     mount: function (root, ctx) {
@@ -81,6 +83,14 @@
           '<div class="g2-card-hd">' + c[0] + '</div>' +
           '<input class="g2-card-val" type="text" readonly tabindex="-1" value="' + c[1] + '"></div>';
       });
+      /* Pusan Mart profit split (sales - cost = profit, 50% Pusan Mart / 50% SMEAG) */
+      html += '<div class="g2-pm" data-k="pm" hidden><span class="g2-pm-ttl">PUSAN MART PROFIT (50 : 50)</span>' +
+        '<span class="g2-pm-note" data-k="pmnote"></span>';
+      PM_CARDS.forEach(function (c, i) {
+        html += '<div class="g2-card g2-card-sm" style="left:' + (i * 140) + 'px;top:20px">' +
+          '<div class="g2-card-hd">' + c + '</div><input class="g2-card-val" type="text" readonly tabindex="-1" value="0.00"></div>';
+      });
+      html += '</div>';
       html +=
         '<button class="flat g2-btn" data-k="pdf" style="left:20px;top:170px;width:160px;height:40px;background:#008000">DOWNLOAD PDF</button>' +
         '<button class="flat g2-btn b" data-k="excel" style="left:190px;top:170px;width:120px;height:40px;background:#1D6F42">EXPORT EXCEL</button>' +
@@ -98,7 +108,34 @@
       var dtpStart = wireDtp(q('start'), start);
       var dtpEnd = wireDtp(q('end'), new Date(today));
       var cardVals = root.querySelectorAll('.g2-card-val');   // Recharge, Cash Out, Receipt, Store shop, Total amount
-      var cards = root.querySelectorAll('.g2-card');
+      var cards = root.querySelectorAll('.g2-card:not(.g2-card-sm)');
+      var pmCards = root.querySelectorAll('.g2-card-sm'), pmVals = root.querySelectorAll('.g2-card-sm .g2-card-val');
+      var pm = null;            // pusanMart block of the last SEARCH (sales / cost / profit / shares)
+      function pmOn() { return !!(pm && loaded && selCats().indexOf('Pusan Mart') >= 0); }
+      // the profit cards: values + hover text with how each number is made
+      function showPm() {
+        q('pm').hidden = !pmOn();
+        if (!pmOn()) return;
+        var m = OfficeKit.money, t = pm.totals, pct = Math.round(pm.share * 100);
+        [t.sales, t.cost, t.profit, t.pusanShare, t.smeagShare].forEach(function (v, i) { pmVals[i].value = m(v); });
+        var miss = t.missingSales > 0
+          ? '\n\n\u26A0 Sales without a cost yet: ' + m(t.missingSales) +
+            (t.missingPayDays ? ' (' + t.missingPayDays + ' day(s) of Pusan Pay without the typed Bizmatech "Cost Exp.")' : '') +
+            (t.uncosted.length ? '\nProducts without a unit cost: ' + t.uncosted.map(function (u) { return u.name; }).join(', ') : '') +
+            '\nThey are left out of the profit until the cost is entered (MART > Daily Sales).'
+          : '';
+        var tips = [
+          'Total sales (\uCD1D\uB9E4\uCD9C)\n= the Pusan Mart column total.\nBarcode sales ' + m(t.itemSales) + ' + Pusan Pay ' + m(t.paySales) + ' = ' + m(t.sales),
+          'Cost (\uC6D0\uAC00)\nBarcode sales: quantity x unit cost (Bizmatech list) = ' + m(t.itemCost) +
+            '\nPusan Pay: the typed daily "Cost Exp." = ' + m(t.payCost) + '\n= ' + m(t.cost),
+          'Profit (\uC218\uC775)\n= sales with a known cost \u2212 cost\n= ' + m(t.costedSales) + ' \u2212 ' + m(t.cost) + ' = ' + m(t.profit),
+          'Pusan Mart share (\uBD80\uC0B0\uB9C8\uD2B8 \uC218\uC775 ' + pct + '%)\n= profit x ' + pct + '% = ' + m(t.pusanShare) +
+            '\n\nPaid to Pusan Mart = cost + its share\n= ' + m(t.cost) + ' + ' + m(t.pusanShare) + ' = ' + m(t.settlement),
+          'SMEAG share (SMEAG \uC218\uC775 ' + (100 - pct) + '%)\n= profit \u2212 Pusan Mart share = ' + m(t.smeagShare)
+        ];
+        pmCards.forEach(function (el, i) { el.setAttribute('data-tip', tips[i] + miss); el.classList.toggle('g2-pm-warn', t.missingSales > 0); });
+        q('pmnote').textContent = t.missingSales > 0 ? '\u26A0 ' + m(t.missingSales) + ' sales without cost (not in profit)' : '';
+      }
       // tooltips with this search's numbers: the formula of each card filled in from the TOTAL row
       function cardTips(t, v) {
         var m = OfficeKit.money;
@@ -283,6 +320,7 @@
         cardVals[3].value = OfficeKit.money(Math.abs(store));
         cardVals[4].value = OfficeKit.money(rech - cash);
         cardTips(t, { rech: Math.abs(rech), cash: Math.abs(cash), receipt: Math.abs(receipt), store: Math.abs(store) });
+        showPm();
       }
 
       function load() {
@@ -305,6 +343,7 @@
             }
             return r;
           });
+          pm = res.pusanMart || null;
           loaded = { campus: campus, from: from, to: res.days && res.days.length ? res.days[res.days.length - 1].date : to };
           lastRows = rows;
           showRows();
@@ -339,6 +378,11 @@
               stat('Recharge', cardVals[0].value) + stat('Cash Out', cardVals[1].value) + stat('Receipt', cardVals[2].value) +
               stat('Store Shop', cardVals[3].value) + stat('Total Amount', cardVals[4].value, true) +
               '</tr></table>') +
+          (pmOn()
+            ? '<div class="pmt">PUSAN MART PROFIT (' + Math.round(pm.share * 100) + ' : ' + (100 - Math.round(pm.share * 100)) + ')</div><table class="stats"><tr>' +
+              PM_CARDS.map(function (c, i) { return stat(c, pmVals[i].value); }).join('') + '</tr></table>' +
+              (pm.totals.missingSales > 0 ? '<div class="m9">Sales without a cost yet: ' + esc(OfficeKit.money(pm.totals.missingSales)) + ' (not in the profit)</div>' : '')
+            : '') +
           '<table class="wk"><colgroup><col style="width:30pt"><col style="width:80pt">' + cats.map(function () { return '<col>'; }).join('') + '</colgroup>' +
           '<thead><tr><th>NO</th><th>DATE</th>' + cats.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
           rows.map(function (r) {
@@ -355,7 +399,7 @@
           '@page{margin:1cm;@bottom-center{content:"Page " counter(page);font:8pt "Segoe UI",Arial,sans-serif;}}' +
           'body{font-size:8pt;font-family:"Segoe UI",Arial,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
           'table.hd{width:100%;border-collapse:collapse;} table.hd td{vertical-align:top;padding:0;} table.hd td.r{text-align:right;}' +
-          '.ttl{font-size:18pt;font-weight:600;color:#000080;} .m10{font-size:10pt;} .m9{font-size:9pt;}' +
+          '.pmt{font-size:10pt;font-weight:600;color:#000080;margin-top:4pt;} .ttl{font-size:18pt;font-weight:600;color:#000080;} .m10{font-size:10pt;} .m9{font-size:9pt;}' +
           'table.stats{width:100%;border-collapse:separate;border-spacing:6pt 0;margin:10pt -6pt;} table.stats td{width:20%;padding:0;}' +
           '.card{border:1px solid #646464;background:#FFF;} .sl{background:#E6E6E6;text-align:center;font-size:9pt;padding:4pt 0;}' +
           '.sv{margin:5pt 6pt 6pt;border:1px solid #646464;text-align:center;font-size:12pt;padding:2pt 0;}' +
@@ -468,7 +512,12 @@
             ? ['Columns: ' + colsText(), sel.map(function (c) { return c + ' ' + OfficeKit.money(t[c]); }).join(' · ') +
                 (withSum() ? ' · Total ' + OfficeKit.money(t.SUM) : '')]
             : ['Recharge ' + cardVals[0].value + ' · Cash Out ' + cardVals[1].value + ' · Receipt ' + cardVals[2].value +
-                ' · Store shop ' + cardVals[3].value + ' · Total ' + cardVals[4].value]);
+                ' · Store shop ' + cardVals[3].value + ' · Total ' + cardVals[4].value])
+          .concat(pmOn()
+            ? ['Pusan Mart profit: Sales ' + pmVals[0].value + ' · Cost ' + pmVals[1].value + ' · Profit ' + pmVals[2].value +
+                ' · Pusan Mart ' + Math.round(pm.share * 100) + '% ' + pmVals[3].value + ' · SMEAG ' + (100 - Math.round(pm.share * 100)) + '% ' + pmVals[4].value +
+                (pm.totals.missingSales > 0 ? ' · Sales without cost (not in profit) ' + OfficeKit.money(pm.totals.missingSales) : '')]
+            : []);
         // same marks as the screen: a saved manual value gets an orange cell, the SUM column a light blue one
         function cellFill(r, c) {
           if (r && adjusted[r.DATE] && adjusted[r.DATE][c.key]) return 'FCE3C0';

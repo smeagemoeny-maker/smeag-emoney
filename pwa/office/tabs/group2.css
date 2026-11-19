@@ -94,6 +94,15 @@
   box-shadow: 2px 2px 4px rgba(0,0,0,.25); font: 12px/1.45 var(--font);
   white-space: pre-line; text-align: left; pointer-events: none;
 }
+/* REPORT: Pusan Mart profit split (5 small cards, top right) */
+.g2-pm { position: absolute; left: 990px; top: 56px; width: 700px; height: 102px; }
+.g2-pm[hidden] { display: none; }
+.g2-pm-ttl { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 700; color: #000080; white-space: nowrap; }
+.g2-pm-note { position: absolute; left: 220px; top: 0; font-size: 12px; color: #B05A00; white-space: nowrap; }
+.g2-card.g2-card-sm { width: 132px; }
+.g2-card.g2-card-sm .g2-card-val { left: 8px; width: 116px; font-size: 15px; }
+.g2-card.g2-card-sm.g2-pm-warn .g2-card-hd { background: #FCE3C0; }
+.g2-card.g2-card-sm[data-tip]:hover::after { left: auto; right: 0; }
 .g2-title {
   position: absolute; left: 0; width: 1706px; text-align: center;
   font-size: 20px; line-height: 26px; color: #000080; white-space: nowrap; cursor: default; user-select: none;

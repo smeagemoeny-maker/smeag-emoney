@@ -347,9 +347,10 @@ export const PUSANMART_SETTLE_SHARE = 0.5;
 const PUSANMART_ITEM_CATEGORY = "Pusan Mart Mart";
 const PUSANMART_CAMPUS = "Pusan Mart";
 
-const nameKey = (v) => String(v ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+export const pusanmartNameKey = (v) => String(v ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+const nameKey = pusanmartNameKey;
 
-async function pusanmartUnitCosts() {
+export async function pusanmartUnitCosts() {
   // Current Pusan Mart list first, then the old hand-made list, so a name only on the old list still has a price.
   const byName = new Map();
   for (const campus of ["PUSAN MART", "PUSAN MART (OLD)"]) {

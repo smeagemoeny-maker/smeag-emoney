@@ -9,6 +9,7 @@
 import { requiredEnv } from "./db.mjs";
 import { httpError } from "./repository.mjs";
 import { escapeLike, q, rest } from "./supabaseRepository.mjs";
+import { PUSANMART_SETTLE_SHARE, pusanmartUnitCosts, pusanmartNameKey as nameKey } from "./backofficeSupabase.mjs";
 
 const PAGE = 1000;
 const MAX_ROWS = 5000;      // person searches
@@ -744,7 +745,7 @@ async function reportEntries(campus, a, b, detail = false) {
     ...(prefixes.length ? prefixes : names).map((p) => `category.ilike.${q(`${escapeLike(p)}*`)}`),
   ];
   const filters = [...tsRange("transaction_date", a, b), `or=${enc(`(${campusOr.join(",")})`)}`];
-  const select = detail ? BANK_COLS : "id,uid,campus,category,subcategory,transaction_type,payment,transaction_source,transaction_date";
+  const select = detail ? BANK_COLS : "id,uid,campus,category,subcategory,transaction_type,payment,quantity,transaction_source,transaction_date";
   const pusanOnly = isPusanCampus(campus);
   const [bank, before, pusan, pusanItems] = await Promise.all([
     pusanOnly ? NO_RESULT : paged("bank", select, filters, "id.asc", 100000),
@@ -776,12 +777,12 @@ async function reportEntries(campus, a, b, detail = false) {
     const amount = t === "decrease" ? pay : t === "increase" ? -pay : 0;
     entries.push({ col: "Pusan Mart", day: phDay(r.transaction_date), amount, table, row: r });
   }
-  return { entries, truncated: bank.truncated || before.truncated || pusan.truncated || pusanItems.truncated };
+  return { entries, payAllByDay: pusan.allByDay, truncated: bank.truncated || before.truncated || pusan.truncated || pusanItems.truncated };
 }
 
 export async function report({ campus, from, to }) {
   const { a, b, dayCount } = reportRange(campus, from, to);
-  const { entries, truncated } = await reportEntries(campus, a, b);
+  const { entries, payAllByDay, truncated } = await reportEntries(campus, a, b);
 
   // day -> column -> net (sign as the column counts it)
   const sums = new Map();
@@ -815,7 +816,83 @@ export async function report({ campus, from, to }) {
     officeCategories: OFFICE_CATEGORIES,
     storeCategories: STORE_CATEGORIES,
     days,
+    pusanMart: await pusanmartProfit(entries, payAllByDay, days, a, b),
     truncated,
+  };
+}
+
+// Pusan Mart column -> sales, cost, profit and the 50/50 split of the profit (Pusan Mart / SMEAG).
+// Same cost rules as the PusanMart closing report (pusanmartDaily):
+//   - barcode lines ("Pusan Mart Mart"): quantity x store_menus.cost (Bizmatech unit cost, by product name);
+//   - Pusan Pay (PusanmartPayments, amount only): the day's typed "Cost Exp." (pusanmart_daily_cost). It covers
+//     every Pusan Pay sale of that day, so a campus report takes the campus's share of the day's Pusan Pay sales.
+// Sales = the Pusan Mart value shown in the report (a saved manual value included).
+// Sales whose cost is not known yet (Pusan Pay day without a typed cost, product without a unit cost) are
+// missingSales and stay out of the profit (like the closing report): profit = (sales - missingSales) - cost.
+async function pusanmartProfit(entries, payAllByDay, days, a, b) {
+  const per = new Map();   // day -> { item, itemCost, pay, uncosted }
+  const at = (day) => { if (!per.has(day)) per.set(day, { item: 0, itemCost: 0, pay: 0, uncosted: 0 }); return per.get(day); };
+  const isItem = (e) => e.table !== "PusanmartPayments" && nameKey(e.row.category) === nameKey(PUSANMART_ITEM_CATEGORY);
+  const itemRows = entries.filter((e) => e.col === "Pusan Mart" && isItem(e));
+  const costs = itemRows.length ? await pusanmartUnitCosts() : new Map();
+  const uncostedNames = new Map();
+  for (const e of entries) {
+    if (e.col !== "Pusan Mart") continue;
+    const d = at(e.day);
+    if (!isItem(e)) { d.pay += e.amount; continue; }   // Pusan Pay (amount only)
+    d.item += e.amount;
+    const sign = e.amount < 0 ? -1 : 1;
+    const qty = Number(e.row.quantity || 0);
+    const p = costs.get(nameKey(e.row.subcategory));
+    if (p && p.cost != null) d.itemCost += sign * p.cost * qty;
+    else {
+      d.uncosted += e.amount;
+      const name = String(e.row.subcategory || "?").trim();
+      uncostedNames.set(name, (uncostedNames.get(name) || 0) + sign * qty);
+    }
+  }
+  const typed = new Map();
+  let costTableMissing = false;
+  try {
+    const rows = await rest(`pusanmart_daily_cost?select=day,cost&day=gte.${a}&day=lte.${b}&limit=1000`);
+    for (const r of rows) typed.set(String(r.day).slice(0, 10), Number(r.cost));
+  } catch (e) {
+    if (!/pusanmart_daily_cost/.test(String(e?.message || ""))) throw e;
+    costTableMissing = true;
+  }
+  const out = [];
+  const t = { sales: 0, itemSales: 0, paySales: 0, itemCost: 0, payCost: 0, missingSales: 0, missingPayDays: 0 };
+  for (const day of days) {
+    const sales = Number(day.values["Pusan Mart"] || 0);
+    const d = per.get(day.date) || { item: 0, itemCost: 0, pay: 0, uncosted: 0 };
+    let payCost = 0, missing = d.uncosted;
+    if (d.pay > 0) {
+      const all = payAllByDay.get(day.date) || d.pay;
+      if (typed.has(day.date)) payCost = typed.get(day.date) * Math.min(1, d.pay / all);
+      else { missing += d.pay; t.missingPayDays++; }
+    }
+    const cost = round(d.itemCost + payCost);
+    const profit = round(sales - missing - cost);
+    out.push({ date: day.date, sales, cost, profit, missingSales: round(missing) });
+    t.sales += sales; t.itemSales += d.item; t.paySales += d.pay;
+    t.itemCost += d.itemCost; t.payCost += payCost; t.missingSales += missing;
+  }
+  const cost = round(t.itemCost + t.payCost);
+  const profit = round(t.sales - t.missingSales - cost);
+  const pusanShare = round(profit * PUSANMART_SETTLE_SHARE);
+  return {
+    share: PUSANMART_SETTLE_SHARE,
+    costTableMissing,
+    days: out,
+    totals: {
+      sales: round(t.sales), costedSales: round(t.sales - t.missingSales), itemSales: round(t.itemSales), paySales: round(t.paySales),
+      itemCost: round(t.itemCost), payCost: round(t.payCost), cost, profit,
+      pusanShare, smeagShare: round(profit - pusanShare),
+      // what Pusan Mart is paid: its cost back + its half of the profit
+      settlement: round(cost + pusanShare),
+      missingSales: round(t.missingSales), missingPayDays: t.missingPayDays,
+      uncosted: [...uncostedNames].map(([name, qty]) => ({ name, qty })),
+    },
   };
 }
 
@@ -850,10 +927,13 @@ async function pusanmartRows(campus, from, to, detail = false) {
   const filters = ["center=eq.PusanMart", ...tsRange("register_days", from, to)];
   const select = detail ? "id,nfcid,name,allpayments,register_days" : "id,nfcid,allpayments,register_days";
   const { rows, truncated } = await paged("PusanmartPayments", select, filters, "id.asc", 100000);
-  if (isPusanCampus(campus)) return { rows, truncated };
+  // every campus's Pusan Pay sales per day (the typed daily cost is shared out by these)
+  const allByDay = new Map();
+  for (const r of rows) allByDay.set(phDay(r.register_days), (allByDay.get(phDay(r.register_days)) || 0) + Number(r.allpayments || 0));
+  if (isPusanCampus(campus)) return { rows, truncated, allByDay };
   const wanted = new Set(campusNames(campus).map((n) => n.toLowerCase()));
   const campusOf = await campusesFor(rows.map((r) => r.nfcid));
-  return { rows: rows.filter((r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase())), truncated };
+  return { rows: rows.filter((r) => wanted.has(String(campusOf.get(String(r.nfcid || "").toLowerCase()) || "").toLowerCase())), truncated, allByDay };
 }
 
 // Pusan Mart barcode sales (Sales screen scan, pos_checkout): bank rows with category "Pusan Mart Mart" and
