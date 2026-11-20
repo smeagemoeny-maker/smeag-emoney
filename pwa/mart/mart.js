@@ -1675,15 +1675,27 @@
     return h;
   }
   // Re-reads the day right before printing so the X Reading is current up to now.
-  function printXReading(date) {
+  // A past date prints the whole day (to 11:59 PM); a From~To range prints one page per day.
+  function printXReading(date, toDate) {
     if (!date) return;
+    var end = toDate && toDate >= date ? toDate : date;
     toast('Preparing X Reading...', 1500);
-    repo.fetchPusanmartDaily(date, date).then(function (r) {
-      var d = r && r.days && r.days.filter(function (x) { return x.date === date; })[0];
-      if (!d) { toast('No data for ' + date, 3000); return; }
-      var now = new Date();
-      printHtml(xReadingHtml(d, date === ymd(now) ? hm12(now) : '11:59 PM'));
+    repo.fetchPusanmartDaily(date, end).then(function (r) {
+      var days = (r && r.days || []).filter(function (x) { return x.date >= date && x.date <= end; })
+        .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      if (!days.length) { toast('No data for ' + date + (end !== date ? ' ~ ' + end : ''), 3000); return; }
+      var now = new Date(), today = ymd(now);
+      printHtml(days.map(function (d, i) {
+        return '<div' + (i ? ' style="page-break-before:always;break-before:page"' : '') + '>' +
+          xReadingHtml(d, d.date === today ? hm12(now) : '11:59 PM') + '</div>';
+      }).join(''));
     }, function (e) { toast('X Reading failed: ' + e.message, 4000); });
+  }
+  function xReadingLabel() {
+    var from = S.start, to = S.end || S.start, today = ymd(new Date());
+    if (!from) return '🖨 X Reading — Today (up to now)';
+    if (from === to) return '🖨 X Reading — ' + (from === today ? 'Today (up to now)' : from);
+    return '🖨 X Reading — ' + from + ' ~ ' + to + ' (1 page per day)';
   }
   function payListTabs() {
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
@@ -1701,8 +1713,8 @@
         (sub ? '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + esc(sub) + '</div>' : '') + '</div>';
     };
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Pay List') + reportTabs() + payListTabs() +
-      primaryBtn('🖨 X Reading — Today (up to now)', function () { printXReading(ymd(new Date())); }, false, ' style="height:38px"') + spacer(10) +
-      rangeBar(runPayList) + errorLine();
+      rangeBar(runPayList) + spacer(8) +
+      primaryBtn(xReadingLabel(), function () { printXReading(S.start || ymd(new Date()), S.end); }, false, ' style="height:38px"') + spacer(10) + errorLine();
     if (!r) { h += loadingOr('No results.', 'font-size:12px;color:var(--ink3)') + '</div></div>'; return h; }
     var t = r.totals, from = S.start, to = S.end, pct = sharePct();
     // Net Sales = Report Summary "Total Revenue" (same rows). Cost = barcode cost (auto) + Pusan Pay cost (typed);
