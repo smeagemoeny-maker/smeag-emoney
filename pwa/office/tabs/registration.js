@@ -280,15 +280,17 @@
         return loadSheetJs().then(function (XLSX) {
           return readFile(f).then(function (buf) {
             var wb = XLSX.read(buf, { type: 'array' });
-            setup = parseSetup(XLSX, wb);              // setup schedule with a NEW section?
+            setup = parseSetup(XLSX, wb);              // setup / pick-up / school-system list?
             if (setup) return;
-            var ws = wb.Sheets[wb.SheetNames[0]];
-            var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
+            var rows = [];                             // old 10-column template: first sheet with data
+            for (var s = 0; s < wb.SheetNames.length && !rows.length; s++) {
+              rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[s]], { header: 1, raw: true, defval: '', blankrows: false });
+            }
             students = parseRows(XLSX, rows);
           });
         }).then(function () {
           if (setup) return importSetup(f, setup);
-          if (!students.length) return ctx.messageBox('No data found in the Excel file.', 'SMEAG', 'OK', 'warning');
+          if (!students.length) return ctx.messageBox('No data found in the Excel file.\n\nFor new students use the setup schedule, the pick-up list or the school-system list (a header row with NAME and PERIOD).', 'SMEAG', 'OK', 'warning');
           return ctx.messageBox('Import ' + students.length + ' students from "' + f.name + '"?', 'Confirm Import', 'YesNo', 'question').then(function (ans) {
             if (ans !== 'Yes') return;
             return ctx.api.request('POST', '/api/office/people', { people: students }).then(function (res) {
@@ -301,11 +303,19 @@
 
       // Setup schedule: NEW section only -> server preview (duplicates marked) -> confirm -> create -> IMPORTED LIST
       function importSetup(f, setup) {
-        var campus = cbCampus.value || campusFromText(f.name) ||
+        // campus: Campus box > CAMPUS column (one campus only) > file name > course text
+        var inFile = [];
+        setup.students.forEach(function (s) { var c = campusFromText(s.campus); if (c && inFile.indexOf(c) < 0) inFile.push(c); });
+        if (!cbCampus.value && inFile.length > 1) {
+          return ctx.messageBox('This file has several campuses (' + inFile.join(', ') + ').\nSelect the Campus first; only that campus is imported.', 'SMEAG', 'OK', 'warning');
+        }
+        var campus = cbCampus.value || inFile[0] || campusFromText(f.name) ||
           campusFromText(setup.students.map(function (s) { return s.course; }).join(' '));
-        if (!campus) return ctx.messageBox('Select the Campus first (the campus is not in the file name).', 'SMEAG', 'OK', 'warning');
-        if (!setup.students.length) return ctx.messageBox('The NEW section has no students.', 'SMEAG', 'OK', 'warning');
-        var body = { campus: campus, fileName: f.name, students: setup.students };
+        if (!campus) return ctx.messageBox('Select the Campus first (the campus is not in the file).', 'SMEAG', 'OK', 'warning');
+        var students = setup.students.filter(function (s) { var c = campusFromText(s.campus); return !c || c === campus; });
+        if (students.length < setup.students.length) setup.skipped['other campus'] = setup.students.length - students.length;
+        if (!students.length) return ctx.messageBox('No new students for ' + campus + ' in this file.', 'SMEAG', 'OK', 'warning');
+        var body = { campus: campus, fileName: f.name, students: students };
         return ctx.api.request('POST', '/api/office/people/import-new', Object.assign({ dryRun: true }, body)).then(function (pre) {
           return previewDialog(ctx, f.name, pre, setup.skipped).then(function (ok) {
             if (!ok) return;
@@ -376,50 +386,62 @@
   }
   function str(v) { return v == null ? '' : String(v).trim(); }
 
-  /* ---------- setup schedule ("Capital setup 2026Nov19.xlsx") ----------
-     Sections are labelled in a column left of NAME: NEW / extend / transfer campus / room change.
-     Only the NEW section is imported; its header row has NAT, NAME, age, sex, D-DAY, BEFORE (room), STUDY PERIOD, COURSE.
-     Returns null when no sheet has a NEW section (-> old 10-column template). */
+  /* ---------- student lists: NEW students only ----------
+     Three layouts are read (any sheet; empty sheets such as a chart sheet are skipped):
+     1. Setup schedule ("Capital setup 2026Nov19.xlsx"): a "NEW" label, header NAT/NAME/age/sex/D-DAY/BEFORE/STUDY PERI/COURSE,
+        then sections "extend" / "transfer campus" / "room change".
+     2. Pick-up list ("pick up Capital Nov20.xlsx"): header CAMPUS/ROOM/NAT/NAME/AGE/SEX/PERIOD/w-COURSE; arrivals first,
+        then sections "extension" / "Room change" / "HOLIDAY STAFF".
+     3. School-system export (.xls): columns ... ORDER (IN / OUT / MOVE) and COND (NOMAL / EXTEND): only IN + not EXTEND.
+     Rows up to the first section label are NEW; any row mentioning EXTEND / 연장 / room change is never imported.
+     Returns null when no sheet has a NAME + period header (-> old 10-column template). */
   var HEADS = {
-    nat: /^nat/i, name: /^name$/i, age: /^age$/i, sex: /^(sex|gender)$/i, dday: /^d-?\s*day$/i,
-    room: /^(before|room)$/i, period: /^study\s*peri/i, course: /^course/i
+    nat: /^nat/i, name: /^name$/i, age: /^age$/i, sex: /^(sex|gender)$/i, dday: /^d-?\s*day$/i, aday: /^a-?\s*day$/i,
+    room: /^(before|room)$/i, studyPeriod: /^study\s*peri/i, period: /^period$/i, course: /course/i,
+    campus: /^campus$/i, order: /^order$/i, cond: /^cond/i
   };
+  var SECTION = /^(new|extend|extension|transfer|room\s*change|holiday|graduat|leave|cancel|out\b)/i;
   function parseSetup(XLSX, wb) {
     for (var s = 0; s < wb.SheetNames.length; s++) {
       var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[s]], { header: 1, raw: true, defval: '', blankrows: true });
-      var newAt = -1;
-      for (var i = 0; i < rows.length && newAt < 0; i++) {
-        for (var k = 0; k < (rows[i] || []).length; k++) if (/^new$/i.test(str(rows[i][k]))) { newAt = i; break; }
-      }
-      if (newAt < 0) continue;
       var col = null, headAt = -1;
-      for (var h = newAt; h < Math.min(rows.length, newAt + 6) && !col; h++) col = headerMap(rows[h]), headAt = h;
-      for (h = newAt - 1; h >= 0 && !col; h--) col = headerMap(rows[h]), headAt = newAt;
-      if (!col) throw new Error('Sheet "' + wb.SheetNames[s] + '": the NEW section has no NAME header row.');
+      for (var i = 0; i < rows.length && !col; i++) {
+        var m = headerMap(rows[i]);
+        if (m && (m.studyPeriod != null || m.period != null)) { col = m; headAt = i; }
+      }
+      if (!col) continue;
+      var perCol = col.studyPeriod != null ? col.studyPeriod : col.period;
       var out = [], skipped = {}, section = 'NEW';
+      function skip(k) { skipped[k] = (skipped[k] || 0) + 1; }
       for (i = headAt + 1; i < rows.length; i++) {
         var r = rows[i] || [], cells = [];
-        for (k = 0; k < r.length; k++) if (str(r[k]) !== '') cells.push(k);
+        for (var k = 0; k < r.length; k++) if (str(r[k]) !== '') cells.push(k);
         if (!cells.length) continue;
-        var name = str(r[col.name]);
-        if (!name) {
-          // a lone label left of the NAME column starts the next section (extend, transfer campus, room change ...)
-          if (cells.length === 1 && cells[0] < col.name && /[a-z]/i.test(str(r[cells[0]]))) section = str(r[cells[0]]);
+        var first = str(r[cells[0]]);
+        // a label left of the NAME column starts a section (NEW, extend, room change, holiday staff ...)
+        if (cells[0] < col.name && /[a-z]/i.test(first) && (cells.length === 1 || SECTION.test(first))) {
+          section = /^new$/i.test(first) ? 'NEW' : first.replace(/\s+/g, ' ');
           continue;
         }
-        if (section !== 'NEW') { skipped[section] = (skipped[section] || 0) + 1; continue; }
-        if (/^name$/i.test(name)) continue;
-        if (r.some(function (v) { return /extend|연장|room\s*change|방\s*변경/i.test(str(v)); })) { skipped.extend = (skipped.extend || 0) + 1; continue; }
+        var name = str(r[col.name]);
+        if (!name || /^name$/i.test(name)) continue;
+        if (section !== 'NEW') { if (!/holiday|staff/i.test(section)) skip(section); continue; }
+        if (col.order != null) {
+          var ord = str(r[col.order]).toUpperCase();
+          if (ord !== 'IN') { skip(ord === 'MOVE' ? 'room change' : ord === 'OUT' ? 'leaving (OUT)' : (ord || 'no ORDER')); continue; }
+        }
+        if (r.some(function (v) { return /extend|연장|room\s*change|방\s*변경/i.test(str(v)); })) { skip('extend'); continue; }
         var line = i + 1;
-        var dday = str(r[col.dday]) === '' ? null : excelDate(XLSX, r[col.dday], 'D-DAY', line);
-        var per = periodDates(XLSX, r[col.period], dday, line);
+        var dday = dateCell(XLSX, r[col.aday != null ? col.aday : col.dday]);
+        var per = periodDates(XLSX, r[perCol], dday, line);
         var age = str(r[col.age]);
-        out.push({
+        var p = {
           name: name, nat: str(r[col.nat]), age: age === '' || isNaN(Number(age)) ? null : Math.round(Number(age)),
-          gender: str(r[col.sex]), room: str(r[col.room]), course: str(r[col.course]),
+          gender: str(r[col.sex]), room: str(r[col.room]), course: str(r[col.course]), campus: str(r[col.campus]),
           startDate: per.start || dday, endDate: per.end, line: line
-        });
-        if (!out[out.length - 1].startDate || !out[out.length - 1].endDate) throw new Error('Row ' + line + ' (' + name + '): cannot read the study period.');
+        };
+        if (!p.startDate || !p.endDate) throw new Error('Row ' + line + ' (' + name + '): cannot read the study period.');
+        out.push(p);
       }
       return { students: out, skipped: skipped, sheet: wb.SheetNames[s] };
     }
@@ -434,18 +456,33 @@
     }
     return m.name != null ? m : null;
   }
-  // "2026-11-22~2026-12-19" or "11-22~12-19" (year from D-DAY; end rolls into next year when needed)
+  // a date cell or '' -> "YYYY-MM-DD" or null (never throws; only a fallback for the start date)
+  function dateCell(XLSX, v) {
+    if (str(v) === '') return null;
+    try { return excelDate(XLSX, v, 'date', 0); } catch (e) { return null; }
+  }
+  // "2026-11-22~2026-12-19" or "11-22~12-19". Without a year: D-DAY's year, else the year that puts the start
+  // nearest today; the end rolls into the next year when it would be before the start.
   function periodDates(XLSX, v, dday, line) {
     var s = str(v);
     if (!s) return {};
     var parts = s.split(/\s*~\s*/);
-    var year = dday ? +dday.slice(0, 4) : new Date().getFullYear();
+    function nearYear(mo, d) {
+      if (dday) return +dday.slice(0, 4);
+      var now = new Date(), y = now.getFullYear(), best = y, bestGap = Infinity;
+      [y - 1, y, y + 1].forEach(function (yy) {
+        var gap = Math.abs(new Date(yy, mo - 1, d) - now);
+        if (gap < bestGap) { bestGap = gap; best = yy; }
+      });
+      return best;
+    }
     function one(p, prev) {
       var m;
       if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(p))) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
       if ((m = /^(\d{1,2})[-/.](\d{1,2})$/.exec(p))) {
-        var d = year + '-' + pad(m[1]) + '-' + pad(m[2]);
-        if (prev && d < prev) d = (year + 1) + '-' + pad(m[1]) + '-' + pad(m[2]);
+        var y = prev ? +prev.slice(0, 4) : nearYear(+m[1], +m[2]);
+        var d = y + '-' + pad(m[1]) + '-' + pad(m[2]);
+        if (prev && d < prev) d = (y + 1) + '-' + pad(m[1]) + '-' + pad(m[2]);
         return d;
       }
       throw new Error('Row ' + line + ': study period "' + s + '" is not "start~end".');
