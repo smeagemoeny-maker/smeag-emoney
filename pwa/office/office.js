@@ -163,7 +163,8 @@
       layer.hidden = false;
       var w = dlg.offsetWidth, h = dlg.offsetHeight;
       dlg.style.left = Math.round((1706 - w) / 2) + 'px';
-      dlg.style.top = Math.round((998 - h) / 2) + 'px';
+      dlg.style.top = Math.max(0, Math.round((998 - h) / 2)) + 'px';
+      makeDraggable(dlg);
       var done = false;
       function close(value) {
         if (done) return; done = true;
@@ -183,6 +184,37 @@
       dlg.querySelector('.dlg-x').addEventListener('click', function () { if (!handlers.noCancel) close(handlers.cancelValue); });
       var f = dlg.querySelector('[data-autofocus]');
       if (f) f.focus();
+    });
+  }
+
+  // Drag a dialog by its title bar (mouse or touch). Moves are divided by the window scale (fit / zoom),
+  // and at least 120px of the title bar stays inside the window so the dialog can always be grabbed again.
+  function makeDraggable(dlg) {
+    var bar = dlg.querySelector('.dlg-title');
+    if (!bar) return;
+    bar.style.cursor = 'move';
+    bar.style.touchAction = 'none';
+    bar.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || e.target.closest('button, input, select')) return;
+      e.preventDefault();
+      var scale = currentScale() || 1;
+      var x0 = e.clientX, y0 = e.clientY, left0 = dlg.offsetLeft, top0 = dlg.offsetTop, w = dlg.offsetWidth;
+      try { bar.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      function move(ev) {
+        var left = left0 + (ev.clientX - x0) / scale, top = top0 + (ev.clientY - y0) / scale;
+        left = Math.min(1706 - 120, Math.max(120 - w, left));
+        top = Math.min(998 - 30, Math.max(0, top));
+        dlg.style.left = Math.round(left) + 'px';
+        dlg.style.top = Math.round(top) + 'px';
+      }
+      function up() {
+        bar.removeEventListener('pointermove', move);
+        bar.removeEventListener('pointerup', up);
+        bar.removeEventListener('pointercancel', up);
+      }
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', up);
+      bar.addEventListener('pointercancel', up);
     });
   }
 

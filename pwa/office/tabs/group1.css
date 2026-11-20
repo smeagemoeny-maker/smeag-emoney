@@ -149,4 +149,4 @@
 /* REGISTRATION > IMPORT preview / IMPORTED LIST dialogs (bar + grid styles come from .rdt-* in group2.css) */
 .rdt-bar input[type="date"] { height: 24px; font: 12px var(--font); }
 .rdt-bar label { display: inline-flex; align-items: center; gap: 4px; }
-.og-grid.rdt-grid.reg-imp-grid { width: 1600px; height: 600px; }
+.og-grid.rdt-grid.reg-imp-grid { width: 1600px; height: 480px; }
