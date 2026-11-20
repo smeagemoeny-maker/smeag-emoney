@@ -146,3 +146,7 @@
   border: 1px solid #646464; background: transparent url("human.png") no-repeat center / contain;
   z-index: 1; pointer-events: none;   /* added before UPLOAD PHOTO -> above it in WinForms z-order (overlaps its top 5px) */
 }
+/* REGISTRATION > IMPORT preview / IMPORTED LIST dialogs (bar + grid styles come from .rdt-* in group2.css) */
+.rdt-bar input[type="date"] { height: 24px; font: 12px var(--font); }
+.rdt-bar label { display: inline-flex; align-items: center; gap: 4px; }
+.og-grid.rdt-grid.reg-imp-grid { width: 1600px; height: 600px; }

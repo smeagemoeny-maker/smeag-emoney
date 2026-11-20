@@ -271,16 +271,23 @@
         if (f) OfficeKit.busy(btnImport, importExcel(f));
       });
 
+      var btnImported = c.btn(PX + START_X + INPUT_W + 15, rowY(9) + 90, 150, 32, 'IMPORTED LIST', '#808080', true);
+      btnImported.classList.add('g1-rflat');
+      btnImported.addEventListener('click', function () { if (!btnImported.disabled) OfficeKit.busy(btnImported, showImported(ctx, {})); });
+
       function importExcel(f) {
-        var students;
+        var students, setup;
         return loadSheetJs().then(function (XLSX) {
           return readFile(f).then(function (buf) {
             var wb = XLSX.read(buf, { type: 'array' });
+            setup = parseSetup(XLSX, wb);              // setup schedule with a NEW section?
+            if (setup) return;
             var ws = wb.Sheets[wb.SheetNames[0]];
             var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
             students = parseRows(XLSX, rows);
           });
         }).then(function () {
+          if (setup) return importSetup(f, setup);
           if (!students.length) return ctx.messageBox('No data found in the Excel file.', 'SMEAG', 'OK', 'warning');
           return ctx.messageBox('Import ' + students.length + ' students from "' + f.name + '"?', 'Confirm Import', 'YesNo', 'question').then(function (ans) {
             if (ans !== 'Yes') return;
@@ -290,6 +297,27 @@
             });
           });
         }).catch(OfficeKit.fail(ctx, 'Excel Import Error'));
+      }
+
+      // Setup schedule: NEW section only -> server preview (duplicates marked) -> confirm -> create -> IMPORTED LIST
+      function importSetup(f, setup) {
+        var campus = cbCampus.value || campusFromText(f.name) ||
+          campusFromText(setup.students.map(function (s) { return s.course; }).join(' '));
+        if (!campus) return ctx.messageBox('Select the Campus first (the campus is not in the file name).', 'SMEAG', 'OK', 'warning');
+        if (!setup.students.length) return ctx.messageBox('The NEW section has no students.', 'SMEAG', 'OK', 'warning');
+        var body = { campus: campus, fileName: f.name, students: setup.students };
+        return ctx.api.request('POST', '/api/office/people/import-new', Object.assign({ dryRun: true }, body)).then(function (pre) {
+          return previewDialog(ctx, f.name, pre, setup.skipped).then(function (ok) {
+            if (!ok) return;
+            return ctx.api.request('POST', '/api/office/people/import-new', body).then(function (res) {
+              var made = res.students.filter(function (s) { return s.status === 'created'; }).length;
+              var dup = res.students.length - made;
+              return ctx.messageBox('Created ' + made + ' new students (' + res.campus + ').' +
+                (dup ? '\nSkipped ' + dup + ' duplicates.' : '') + '\n\nCard UID is empty: tap each card in MODIFY INFO.', 'SMEAG', 'OK', 'info')
+                .then(function () { var d = OfficeKit.iso(new Date()); return showImported(ctx, { from: d, to: d }); });
+            });
+          });
+        });
       }
 
       // NFC tap (HandleNfcUid): put the card UID in the box; warn when the card already belongs to a student
@@ -347,6 +375,202 @@
     throw new Error('Row ' + line + ': ' + label + ' "' + s + '" is not a date.');
   }
   function str(v) { return v == null ? '' : String(v).trim(); }
+
+  /* ---------- setup schedule ("Capital setup 2026Nov19.xlsx") ----------
+     Sections are labelled in a column left of NAME: NEW / extend / transfer campus / room change.
+     Only the NEW section is imported; its header row has NAT, NAME, age, sex, D-DAY, BEFORE (room), STUDY PERIOD, COURSE.
+     Returns null when no sheet has a NEW section (-> old 10-column template). */
+  var HEADS = {
+    nat: /^nat/i, name: /^name$/i, age: /^age$/i, sex: /^(sex|gender)$/i, dday: /^d-?\s*day$/i,
+    room: /^(before|room)$/i, period: /^study\s*peri/i, course: /^course/i
+  };
+  function parseSetup(XLSX, wb) {
+    for (var s = 0; s < wb.SheetNames.length; s++) {
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[s]], { header: 1, raw: true, defval: '', blankrows: true });
+      var newAt = -1;
+      for (var i = 0; i < rows.length && newAt < 0; i++) {
+        for (var k = 0; k < (rows[i] || []).length; k++) if (/^new$/i.test(str(rows[i][k]))) { newAt = i; break; }
+      }
+      if (newAt < 0) continue;
+      var col = null, headAt = -1;
+      for (var h = newAt; h < Math.min(rows.length, newAt + 6) && !col; h++) col = headerMap(rows[h]), headAt = h;
+      for (h = newAt - 1; h >= 0 && !col; h--) col = headerMap(rows[h]), headAt = newAt;
+      if (!col) throw new Error('Sheet "' + wb.SheetNames[s] + '": the NEW section has no NAME header row.');
+      var out = [], skipped = {}, section = 'NEW';
+      for (i = headAt + 1; i < rows.length; i++) {
+        var r = rows[i] || [], cells = [];
+        for (k = 0; k < r.length; k++) if (str(r[k]) !== '') cells.push(k);
+        if (!cells.length) continue;
+        var name = str(r[col.name]);
+        if (!name) {
+          // a lone label left of the NAME column starts the next section (extend, transfer campus, room change ...)
+          if (cells.length === 1 && cells[0] < col.name && /[a-z]/i.test(str(r[cells[0]]))) section = str(r[cells[0]]);
+          continue;
+        }
+        if (section !== 'NEW') { skipped[section] = (skipped[section] || 0) + 1; continue; }
+        if (/^name$/i.test(name)) continue;
+        if (r.some(function (v) { return /extend|연장|room\s*change|방\s*변경/i.test(str(v)); })) { skipped.extend = (skipped.extend || 0) + 1; continue; }
+        var line = i + 1;
+        var dday = str(r[col.dday]) === '' ? null : excelDate(XLSX, r[col.dday], 'D-DAY', line);
+        var per = periodDates(XLSX, r[col.period], dday, line);
+        var age = str(r[col.age]);
+        out.push({
+          name: name, nat: str(r[col.nat]), age: age === '' || isNaN(Number(age)) ? null : Math.round(Number(age)),
+          gender: str(r[col.sex]), room: str(r[col.room]), course: str(r[col.course]),
+          startDate: per.start || dday, endDate: per.end, line: line
+        });
+        if (!out[out.length - 1].startDate || !out[out.length - 1].endDate) throw new Error('Row ' + line + ' (' + name + '): cannot read the study period.');
+      }
+      return { students: out, skipped: skipped, sheet: wb.SheetNames[s] };
+    }
+    return null;
+  }
+  function headerMap(r) {
+    if (!r) return null;
+    var m = {};
+    for (var k = 0; k < r.length; k++) {
+      var t = str(r[k]);
+      Object.keys(HEADS).forEach(function (key) { if (m[key] == null && HEADS[key].test(t)) m[key] = k; });
+    }
+    return m.name != null ? m : null;
+  }
+  // "2026-11-22~2026-12-19" or "11-22~12-19" (year from D-DAY; end rolls into next year when needed)
+  function periodDates(XLSX, v, dday, line) {
+    var s = str(v);
+    if (!s) return {};
+    var parts = s.split(/\s*~\s*/);
+    var year = dday ? +dday.slice(0, 4) : new Date().getFullYear();
+    function one(p, prev) {
+      var m;
+      if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(p))) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
+      if ((m = /^(\d{1,2})[-/.](\d{1,2})$/.exec(p))) {
+        var d = year + '-' + pad(m[1]) + '-' + pad(m[2]);
+        if (prev && d < prev) d = (year + 1) + '-' + pad(m[1]) + '-' + pad(m[2]);
+        return d;
+      }
+      throw new Error('Row ' + line + ': study period "' + s + '" is not "start~end".');
+    }
+    var start = one(parts[0]);
+    return { start: start, end: parts[1] ? one(parts[1], start) : null };
+  }
+  function campusFromText(t) {
+    t = String(t || '');
+    if (/baydream\s*-?\s*1/i.test(t)) return 'Baydream1';
+    if (/baydream\s*-?\s*2/i.test(t)) return 'Baydream2';
+    var m = /(capital|encanto|tarlac|talrac)/i.exec(t);
+    if (!m) return '';
+    return { capital: 'Capital', encanto: 'Encanto', tarlac: 'Tarlac', talrac: 'Tarlac' }[m[1].toLowerCase()];
+  }
+
+  var X_BTN = '<button class="dlg-x" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.1"/></svg></button>';
+  function statusCell(s) {
+    var color = { 'new': '#0B7A2A', created: '#0B7A2A', duplicate: '#B00020' }[s] || '#000';
+    var label = { 'new': 'NEW', created: 'CREATED', duplicate: 'DUPLICATE (skip)' }[s] || s;
+    return '<b style="color:' + color + '">' + label + '</b>';
+  }
+  var PREVIEW_COLS = [
+    { key: 'status', header: 'Status', width: 130, render: function (r) { return statusCell(r.status); } },
+    { key: 'name', header: 'Name', width: 230 },
+    { key: 'nat', header: 'Nat', width: 50 },
+    { key: 'age', header: 'Age', width: 45, align: 'right' },
+    { key: 'gender', header: 'Gender', width: 65 },
+    { key: 'room', header: 'Room', width: 70 },
+    { key: 'startDate', header: 'Start', width: 95 },
+    { key: 'endDate', header: 'End', width: 95 },
+    { key: 'course', header: 'Course', width: 230 },
+    { key: 'note', header: 'Note', width: 420 }
+  ];
+
+  // resolves true when the user presses Import
+  function previewDialog(ctx, fileName, pre, skipped) {
+    var esc = OfficeKit.esc, list = pre.students || [];
+    var fresh = list.filter(function (s) { return s.status === 'new'; }).length;
+    var dup = list.length - fresh;
+    var skip = Object.keys(skipped || {}).map(function (k) { return k + ' ' + skipped[k]; }).join(', ');
+    var html = '<div class="dlg-title">IMPORT NEW STUDENTS — ' + esc(fileName) + ' — ' + esc(pre.campus) + X_BTN + '</div>' +
+      '<div class="rdt-bar"><span class="rdt-sum">NEW section: ' + list.length + ' · to create ' + fresh + ' · duplicates ' + dup + '</span>' +
+      (skip ? '<span>Not imported (other sections): ' + esc(skip) + '</span>' : '') + '</div>' +
+      '<div class="rdt-grid reg-imp-grid" data-r="grid"></div>' +
+      '<div class="mb-foot"><span class="rdt-note">Duplicates are skipped. New students get a Student ID and no card UID.</span>' +
+      '<button class="w10btn def" data-r="ok"' + (fresh ? ' data-autofocus' : ' disabled') + '>Create ' + fresh + ' students</button>' +
+      '<button class="w10btn" data-r="cancel"' + (fresh ? '' : ' data-autofocus') + '>Cancel</button></div>';
+    return ctx.openDialog(html, function (dlg, close) {
+      function r(k) { return dlg.querySelector('[data-r="' + k + '"]'); }
+      OfficeKit.grid(r('grid'), { columns: PREVIEW_COLS, select: 'row', rowHeight: 26, font: '12px' }).setRows(list);
+      r('ok').addEventListener('click', function () { close(true); });
+      r('cancel').addEventListener('click', function () { close(false); });
+      return { cancelValue: false };
+    });
+  }
+
+  var IMPORTED_COLS = [
+    { key: 'importedAt', header: 'Imported', width: 140 },
+    { key: 'name', header: 'Name', width: 220 },
+    { key: 'studentId', header: 'Student ID', width: 100 },
+    { key: 'uid', header: 'Card UID', width: 120, render: function (r) {
+      return r.removed ? '<i style="color:#888">deleted</i>' : r.uid ? OfficeKit.esc(r.uid) : '<b style="color:#B05A00">no card</b>';
+    } },
+    { key: 'campus', header: 'Campus', width: 80 },
+    { key: 'nat', header: 'Nat', width: 50 },
+    { key: 'age', header: 'Age', width: 45, align: 'right' },
+    { key: 'gender', header: 'Gender', width: 65 },
+    { key: 'room', header: 'Room', width: 70 },
+    { key: 'startDate', header: 'Start', width: 95 },
+    { key: 'endDate', header: 'End', width: 95 },
+    { key: 'course', header: 'Course', width: 200 },
+    { key: 'importedBy', header: 'By', width: 80 },
+    { key: 'fileName', header: 'File', width: 220 }
+  ];
+
+  // IMPORTED LIST: students created by the setup import (person_import), by import day
+  function showImported(ctx, opt) {
+    var esc = OfficeKit.esc, today = OfficeKit.iso(new Date());
+    var from0 = opt.from || OfficeKit.iso(new Date(Date.now() - 30 * 86400000)), to0 = opt.to || today;
+    var html = '<div class="dlg-title">IMPORTED LIST — new students created by IMPORT FROM EXCEL' + X_BTN + '</div>' +
+      '<div class="rdt-bar"><label>From <input type="date" data-r="from" value="' + esc(from0) + '"></label>' +
+      '<label>To <input type="date" data-r="to" value="' + esc(to0) + '"></label>' +
+      '<label>Campus <select data-r="campus"><option value="">All</option><option>Capital</option><option>Encanto</option>' +
+      '<option>Tarlac</option><option>Baydream1</option><option>Baydream2</option></select></label>' +
+      '<label><input type="checkbox" data-r="nocard"> No card only</label>' +
+      '<button class="w10btn" data-r="search">Search</button><span class="rdt-sum" data-r="sum"></span></div>' +
+      '<div class="rdt-grid reg-imp-grid" data-r="grid"></div>' +
+      '<div class="mb-foot"><span class="rdt-note" data-r="note"></span>' +
+      '<button class="w10btn" data-r="xls">Export Excel</button><button class="w10btn def" data-r="close" data-autofocus>Close</button></div>';
+    return ctx.openDialog(html, function (dlg, close) {
+      function r(k) { return dlg.querySelector('[data-r="' + k + '"]'); }
+      var grid = OfficeKit.grid(r('grid'), { columns: IMPORTED_COLS, select: 'row', rowHeight: 26, font: '12px' });
+      var all = [];
+      function render() {
+        var rows = r('nocard').checked ? all.filter(function (x) { return !x.uid && !x.removed; }) : all;
+        grid.setRows(rows);
+        var nocard = all.filter(function (x) { return !x.uid && !x.removed; }).length;
+        r('sum').textContent = rows.length + ' students' + (nocard ? ' · ' + nocard + ' without card' : '');
+      }
+      function load() {
+        var qs = '?from=' + encodeURIComponent(r('from').value || today) + '&to=' + encodeURIComponent(r('to').value || today) +
+          (r('campus').value ? '&campus=' + encodeURIComponent(r('campus').value) : '');
+        r('note').textContent = 'Loading...';
+        return ctx.api.request('GET', '/api/office/people/imports' + qs).then(function (res) {
+          all = res.imports || [];
+          r('note').textContent = res.truncated ? 'List truncated.' : '';
+          render();
+        }, function (err) { r('note').textContent = ''; return OfficeKit.fail(ctx, 'IMPORTED LIST')(err); });
+      }
+      r('search').addEventListener('click', function () { OfficeKit.busy(r('search'), load()); });
+      r('nocard').addEventListener('change', render);
+      r('close').addEventListener('click', function () { close(); });
+      r('xls').addEventListener('click', function () {
+        OfficeKit.busy(r('xls'), OfficeKit.downloadXlsx('Imported_Students_' + r('from').value + '_' + r('to').value + '.xlsx', [{
+          name: 'Imported', title: ['IMPORTED NEW STUDENTS', r('from').value + ' ~ ' + r('to').value],
+          columns: IMPORTED_COLS.map(function (c) { return c.key === 'uid' ? { key: 'uid', header: 'Card UID', width: 120 } : c; }),
+          rows: grid.rows()
+        }])).catch(OfficeKit.fail(ctx, 'Export Excel'));
+      });
+      load();
+      return {};
+    });
+  }
+
   function parseRows(XLSX, rows) {
     var out = [];
     for (var i = 1; i < rows.length; i++) {          // Skip(1): header row

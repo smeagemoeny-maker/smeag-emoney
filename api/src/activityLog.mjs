@@ -42,6 +42,8 @@ const ACTIONS = [
   ["POST", /^\/api\/office\/transactions$/, "Office: confirm transaction"],
   ["GET", /^\/api\/office\/people$/, "Office: search people"],
   ["POST", /^\/api\/office\/people$/, "Office: register people"],
+  ["POST", /^\/api\/office\/people\/import-new$/, "Office: import new students"],
+  ["GET", /^\/api\/office\/people\/imports$/, "Office: view imported list"],
   ["GET", /^\/api\/office\/people\/for-default$/, "Office: default lookup"],
   ["PATCH", /^\/api\/office\/people\/\d+$/, "Office: modify person"],
   ["POST", /^\/api\/office\/people\/\d+\/default$/, "Office: default card"],
