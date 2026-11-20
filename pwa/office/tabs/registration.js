@@ -401,6 +401,9 @@
     campus: /^campus$/i, order: /^order$/i, cond: /^cond/i
   };
   var SECTION = /^(new|extend|extension|transfer|room\s*change|holiday|graduat|leave|cancel|out\b)/i;
+  // "NEW", "NEW STUDENT", "New Students", "[NEW STUDENT]", "신규", "신규 학생" ... (a title cell of its own, any column)
+  var NEW_LABEL = /^[\s\[(<*#\-]*(new(\s*(students?|arrivals?))?|신규(\s*학생)?)[\s\])>:*\-]*$/i;
+  function newLabelRow(r) { return (r || []).some(function (v) { return NEW_LABEL.test(str(v)); }); }
   function parseSetup(XLSX, wb) {
     for (var s = 0; s < wb.SheetNames.length; s++) {
       var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[s]], { header: 1, raw: true, defval: '', blankrows: true });
@@ -411,21 +414,25 @@
       }
       if (!col) continue;
       var perCol = col.studyPeriod != null ? col.studyPeriod : col.period;
-      var out = [], skipped = {}, section = 'NEW';
+      // With a NEW / NEW STUDENT title, only the rows under it are new; without one, rows up to the first section label.
+      var newAt = -1;
+      for (i = 0; i < rows.length && newAt < 0; i++) if (newLabelRow(rows[i])) newAt = i;
+      var out = [], skipped = {}, section = newAt > headAt ? '' : 'NEW';
       function skip(k) { skipped[k] = (skipped[k] || 0) + 1; }
       for (i = headAt + 1; i < rows.length; i++) {
         var r = rows[i] || [], cells = [];
         for (var k = 0; k < r.length; k++) if (str(r[k]) !== '') cells.push(k);
         if (!cells.length) continue;
+        if (newLabelRow(r)) { section = 'NEW'; continue; }
         var first = str(r[cells[0]]);
         // a label left of the NAME column starts a section (NEW, extend, room change, holiday staff ...)
         if (cells[0] < col.name && /[a-z]/i.test(first) && (cells.length === 1 || SECTION.test(first))) {
-          section = /^new$/i.test(first) ? 'NEW' : first.replace(/\s+/g, ' ');
+          section = first.replace(/\s+/g, ' ');
           continue;
         }
         var name = str(r[col.name]);
         if (!name || /^name$/i.test(name)) continue;
-        if (section !== 'NEW') { if (!/holiday|staff/i.test(section)) skip(section); continue; }
+        if (section !== 'NEW') { if (section && !/holiday|staff/i.test(section)) skip(section); continue; }
         if (col.order != null) {
           var ord = str(r[col.order]).toUpperCase();
           if (ord !== 'IN') { skip(ord === 'MOVE' ? 'room change' : ord === 'OUT' ? 'leaving (OUT)' : (ord || 'no ORDER')); continue; }
