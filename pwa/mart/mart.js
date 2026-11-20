@@ -1520,6 +1520,22 @@
     downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
     toast('Saved to Downloads: ' + name, 3500);
   }
+  // Days whose Pusan Pay cost (Bizmatech Cost Exp.) is not entered yet — the list to fill in.
+  function downloadMissingCostCsv() {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var days = S.daily.days.filter(function (d) { return d.cost == null; }).slice().reverse();
+    var rows = [['Date', 'Trans.', 'Net Sales (PHP)', 'Pusan Pay Trans.', 'Pusan Pay Sales (PHP)', 'Barcode Sales (PHP)', 'Barcode Cost (auto)', 'Pusan Pay Cost (to enter)']];
+    var tp = 0, ts = 0;
+    days.forEach(function (d) {
+      tp += d.pay.sales; ts += d.sales;
+      rows.push([d.date, d.count, money(d.sales), d.pay.count, money(d.pay.sales), money(d.items.sales), money(d.items.cost), '']);
+    });
+    rows.push([]);
+    rows.push(['Total ' + days.length + ' days', '', money(ts), '', money(tp), '', '', '']);
+    var name = 'pusanmart_cost_missing_' + S.start + '_' + S.end + '.csv';
+    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Saved to Downloads: ' + name, 3500);
+  }
   // The closing report, laid out like the Bizmatech "Daily Sales Report  R1:SUMMARY". Used on screen and for printing.
   function closingReportHtml(d) {
     var pct = sharePct();
@@ -1766,8 +1782,23 @@
     h += primaryBtn(S.costSaving ? 'Saving...' : 'Save', saveCost, S.costSaving || !S.costDate) + '</div>';
     }
 
-    h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length, ' style="height:38px"') + spacer(10);
-    r.days.forEach(function (d) {
+    // Filter: all days / only days whose Pusan Pay cost is not entered yet (d.cost == null).
+    var missDays = r.days.filter(function (d) { return d.cost == null; });
+    var missPay = missDays.reduce(function (a, d) { return a + d.pay.sales; }, 0);
+    h += '<div class="chips tabs" style="padding-bottom:8px">';
+    [[false, 'All days (' + r.days.length + ')'], [true, 'Cost missing (' + missDays.length + ')']].forEach(function (c) {
+      h += '<div class="chip' + (!!S.missingOnly === c[0] ? ' sel' : '') + '" data-act="' +
+        act(function () { S.missingOnly = c[0]; }) + '">' + c[1] + '</div>';
+    });
+    h += '</div>';
+    if (S.missingOnly) {
+      h += txt(missDays.length ? missDays.length + ' days without Pusan Pay cost · Pusan Pay sales ₱' + peso(missPay) + ' · tap a day to enter its cost'
+        : 'Every day in this period has its cost entered.', 'font-size:11.5px;color:var(--ink2);padding-bottom:8px') +
+        primaryBtn('⬇ Download Cost-missing List', downloadMissingCostCsv, !missDays.length, ' style="height:38px"') + spacer(10);
+    } else {
+      h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length, ' style="height:38px"') + spacer(10);
+    }
+    (S.missingOnly ? missDays : r.days).forEach(function (d) {
       var sel = d.date === S.costDate;
       h += '<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer' + (sel ? ';border-color:var(--brand)' : '') + '" data-act="' +
         act(function () { S.costDate = d.date; S.costMsg = null; syncCostInput(); }) + '">' +
