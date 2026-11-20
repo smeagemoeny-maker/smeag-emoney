@@ -584,7 +584,8 @@
     { key: 'name', header: 'Name', width: 220 },
     { key: 'studentId', header: 'Student ID', width: 100 },
     { key: 'uid', header: 'Card UID', width: 120, render: function (r) {
-      return r.removed ? '<i style="color:#888">deleted</i>' : r.uid ? OfficeKit.esc(r.uid) : '<b style="color:#B05A00">no card</b>';
+      return r.removed ? '<i style="color:#888">deleted</i>' : r.uid ? OfficeKit.esc(r.uid) :
+        '<b data-assign style="color:#B05A00;cursor:pointer;text-decoration:underline" title="Click, then tap an NFC card">no card</b>';
     } },
     { key: 'campus', header: 'Campus', width: 80 },
     { key: 'nat', header: 'Nat', width: 50 },
@@ -634,6 +635,14 @@
       }
       r('search').addEventListener('click', function () { OfficeKit.busy(r('search'), load()); });
       r('nocard').addEventListener('change', render);
+      // "no card" cell: tap a card to give this student its UID
+      r('grid').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-assign]'), tr = b && b.closest('tr[data-ri]');
+        if (!tr) return;
+        var row = grid.rows()[+tr.getAttribute('data-ri')];
+        if (!row || row.uid || row.removed || !row.personId) return;
+        assignCard(ctx, row).then(function (uid) { if (uid) { row.uid = uid; render(); } });
+      });
       r('close').addEventListener('click', function () { close(); });
       r('xls').addEventListener('click', function () {
         OfficeKit.busy(r('xls'), OfficeKit.downloadXlsx('Imported_Students_' + r('from').value + '_' + r('to').value + '.xlsx', [{
@@ -645,6 +654,50 @@
       load();
       return {};
     });
+  }
+
+  // IMPORTED LIST "no card": wait for an NFC tap (or a typed UID), check it is not used by someone else,
+  // then save it as the student's card UID. Resolves with the saved UID, or null when cancelled.
+  function assignCard(ctx, row) {
+    var esc = OfficeKit.esc;
+    var html = '<div class="dlg-title">ASSIGN CARD' + X_BTN + '</div>' +
+      '<div style="padding:16px 20px;min-width:380px;font-size:13px;line-height:1.7">' +
+      '<div><b>' + esc(row.name || '') + '</b> · ' + esc(row.studentId || '-') + ' · ' + esc(row.campus || '') + '</div>' +
+      '<div style="margin:12px 0;padding:18px;border:2px dashed #2F6FD6;border-radius:6px;text-align:center;font-size:15px;color:#2F6FD6" data-r="msg">' +
+      'Place the NFC card on the reader...</div>' +
+      '<label>or type UID <input type="text" data-r="uid" maxlength="20" spellcheck="false" autocomplete="off" style="width:200px"></label></div>' +
+      '<div class="mb-foot"><button class="w10btn" data-r="save">Save</button>' +
+      '<button class="w10btn def" data-r="cancel" data-autofocus>Cancel</button></div>';
+    return ctx.openDialog(html, function (dlg, close) {
+      function r(k) { return dlg.querySelector('[data-r="' + k + '"]'); }
+      var busy = false;
+      var release = ctx.captureCard ? ctx.captureCard(dlg, function (uid) { r('uid').value = uid; save(uid); }) : function () {};
+      function done(v) { release(); close(v); }
+      function msg(t, color) { r('msg').textContent = t; r('msg').style.color = color || '#2F6FD6'; }
+      function save(uid) {
+        uid = String(uid || '').trim().toUpperCase();
+        if (busy || !uid) return;
+        busy = true;
+        msg('Card ' + uid + ' — checking...');
+        ctx.api.request('GET', '/api/office/people?uid=' + encodeURIComponent(uid)).then(function (res) {
+          var other = (res.people || []).filter(function (p) { return Number(p.id) !== Number(row.personId); })[0];
+          if (other) {
+            msg('Card ' + uid + ' is already used by ' + (other.name || '') + ' (' + (other.studentId || '-') + '). Tap another card.', '#C62828');
+            busy = false;
+            return;
+          }
+          return ctx.api.request('PATCH', '/api/office/people/' + row.personId, { uid: uid }).then(function () { done(uid); });
+        }).catch(function (err) {
+          busy = false;
+          msg('Could not save: ' + ((err && err.message) || err), '#C62828');
+        });
+      }
+      r('uid').addEventListener('input', function () { r('uid').value = r('uid').value.toUpperCase(); });
+      r('save').addEventListener('click', function () { save(r('uid').value); });
+      r('cancel').addEventListener('click', function () { done(null); });
+      dlg.querySelector('.dlg-x').addEventListener('click', release);
+      return { cancelValue: null, onEnter: function () { save(r('uid').value); } };
+    }).then(function (v) { return v || null; });
   }
 
   function parseRows(XLSX, rows) {

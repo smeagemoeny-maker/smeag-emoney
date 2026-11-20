@@ -301,6 +301,13 @@
   /* ================= tab strip + pages (MainForm / TabStrip) ================= */
   /* ================= NFC card info popup (tabs without their own card handler) ================= */
   var NO_PHOTO = 'tabs/human.png';
+  // captureCard(dlg, fn): while dlg is the top dialog, every card tap goes to fn(uid). Returns release().
+  var cardCapture = null;
+  function captureCard(dlg, fn) {
+    var me = { dlg: dlg, fn: fn };
+    cardCapture = me;
+    return function () { if (cardCapture === me) cardCapture = null; };
+  }
   var cardDialogClose = null;   // close() of the open card popup: a new tap replaces it
   function showCardInfo(api, uid) {
     var U = String(uid || '').trim().toUpperCase();
@@ -908,13 +915,16 @@
     var layer = el('modalLayer');
     function loggedIn() { var s = api.session(); return !!(s && s.token); }
     // Not while a dialog (login, confirm, ...) is open, except the card popup itself: a new tap replaces it.
-    function canTap() { return loggedIn() && (layer.hidden || (!!cardDialogClose && layer.children.length === 1)); }
+    // A dialog that waits for a card (captureCard) gets the tap while it is the top dialog.
+    function capturing() { return !!cardCapture && layer.lastElementChild === cardCapture.dlg; }
+    function canTap() { return loggedIn() && (capturing() || layer.hidden || (!!cardDialogClose && layer.children.length === 1)); }
     N.enableKeyboardReader(canTap);
     N.listenForNfc(function (d) {
       if (!canTap()) return;
       if (cardDialogClose) cardDialogClose();
       var uid = String(d.uid || '').toUpperCase();
       if (!uid) return;
+      if (capturing()) { cardCapture.fn(uid); return; }
       if (currentTab === TAB_NAMES[OFFICE_MENU_INDEX]) {
         if (!el('txtUid').readOnly) officePage.loadStudent(uid);   // readOnly while a transaction is saving
         return;
@@ -948,6 +958,7 @@
     var api = createApi();
     tabCtx = {
       api: api, messageBox: messageBox, warn: warn, inputDialog: inputDialog, escapeHtml: escapeHtml, openDialog: openDialog,
+      captureCard: captureCard,
       showCardInfo: function (uid) { return showCardInfo(api, uid); }
     };
     drawLogo();
