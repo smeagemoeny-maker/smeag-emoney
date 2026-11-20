@@ -102,7 +102,7 @@
     <div class="card stores" id="stores" hidden></div>
     <div id="list"></div>
     <div class="bottom"><button type="button" class="ghost" id="close">Close · Look up another card</button></div>
-    <div class="note">For privacy, this screen closes automatically after 3 minutes without use.</div>
+    <div class="note">For privacy, this screen closes after 3 seconds. Touch the screen to keep it open.</div>
   </section>
 </main>
 
@@ -113,7 +113,7 @@
   'use strict';
   var IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
   var API = IS_LOCAL ? 'http://localhost:8787' : location.origin;
-  var IDLE_MS = 3 * 60 * 1000;
+  var IDLE_MS = 3 * 1000; // back to the tap screen 3 s after a tag (any touch/scroll restarts it)
   var PH = 8 * 3600e3;
   var $ = function (id) { return document.getElementById(id); };
   var PV = window.PurchaseView;
@@ -197,6 +197,13 @@
     $('result').hidden = true;
     $('tap').hidden = false;
     $('err').textContent = '';
+    days = 30; store = '';
+    ['periods', 'storesFilter'].forEach(function (g) {
+      $(g).querySelectorAll('button').forEach(function (x, i) {
+        x.setAttribute('aria-pressed', String(g === 'periods' ? x.getAttribute('data-days') === '30' : i === 0));
+      });
+    });
+    window.scrollTo(0, 0);
   }
   function bump() {
     clearTimeout(idleTimer);
