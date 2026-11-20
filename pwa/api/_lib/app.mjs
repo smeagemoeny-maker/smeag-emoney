@@ -226,6 +226,8 @@ const routes = [
   officeRoute("GET", /^\/api\/office\/people$/, ({ url }) =>
     office.searchPeople(query(url, "uid", "uidLike", "name", "campus", "age", "startFrom", "endTo", "regDate", "endBefore"))),
   officeRoute("POST", /^\/api\/office\/people$/, ({ body }) => office.registerPeople(Array.isArray(body.people) ? body.people : [body])),
+  officeRoute("POST", /^\/api\/office\/people\/import-new$/, ({ body, session }) => office.importNewStudents(body, session.loginId)),
+  officeRoute("GET", /^\/api\/office\/people\/imports$/, ({ url }) => office.listImports(query(url, "from", "to", "campus"))),
   officeRoute("GET", /^\/api\/office\/people\/for-default$/, ({ url }) => office.findPersonForDefault(url.searchParams.get("uid"))),
   officeRoute("PATCH", /^\/api\/office\/people\/(\d+)$/, ({ match, body }) => office.updatePerson(match[1], body)),
   officeRoute("POST", /^\/api\/office\/people\/(\d+)\/default$/, ({ match }) => office.defaultCard(match[1])),

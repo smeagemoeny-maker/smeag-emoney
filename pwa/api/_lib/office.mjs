@@ -240,6 +240,180 @@ export async function registerPeople(list) {
   return { people: inserted.map(mapPerson) };
 }
 
+// ---------- REGISTRATION > IMPORT FROM EXCEL: setup schedule, NEW students only ----------
+// The browser reads the "NEW" section of the setup sheet (extend / transfer campus / room change are left out)
+// and sends { campus, fileName, students: [{ name, nat, age, gender, room, course, startDate, endDate }], dryRun }.
+// - Duplicates are skipped, never inserted: same name (ignoring "(family)" etc.) already in person with an
+//   overlapping period, already in the import history with the same start date, or twice in the file.
+// - New people get a random 9-character Student ID and no card UID (the card is tapped in later, MODIFY INFO).
+// - Every created person is written to person_import (migrations/supabase_person_import.sql) for the IMPORTED LIST.
+const IMPORT_COLS = "id,person_id,studentid,name,campus,nat,room,course,age,gender,s_date,e_date,file_name,imported_by,imported_at";
+const CAMPUSES = ["Capital", "Encanto", "Tarlac", "Baydream1", "Baydream2"];
+
+function personNameKey(name) {
+  return String(name || "").replace(/\([^)]*\)/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().toUpperCase();
+}
+
+function overlaps(a1, a2, b1, b2) {
+  if (!a1 || !b1) return a1 === b1 && !!a1;
+  return a1 <= (b2 || b1) && (a2 || a1) >= b1;
+}
+
+function importRow(p, i) {
+  const row = i + 1;
+  const name = String(p.name ?? "").replace(/\s+/g, " ").trim();
+  if (!name) throw httpError(400, `Row ${row}: Name is empty.`);
+  const key = personNameKey(name);
+  if (!key) throw httpError(400, `Row ${row}: Name "${name}" has no letters.`);
+  const startDate = dateOrNull(p.startDate, `Row ${row}: Start date`);
+  const endDate = dateOrNull(p.endDate, `Row ${row}: End date`);
+  if (!startDate || !endDate) throw httpError(400, `Row ${row} (${name}): Start and end date are required.`);
+  if (endDate < startDate) throw httpError(400, `Row ${row} (${name}): End date is before the start date.`);
+  const g = String(p.gender ?? "").trim().toUpperCase();
+  return {
+    name, key, startDate, endDate,
+    age: intOrNull(p.age, `Row ${row}: Age`),
+    gender: g.startsWith("F") ? "Female" : g.startsWith("M") ? "Male" : null,
+    nat: String(p.nat ?? "").trim() || null,
+    room: String(p.room ?? "").trim() || null,
+    course: String(p.course ?? "").trim() || null,
+  };
+}
+
+async function existingByName(keys) {
+  const people = [];
+  for (const part of chunk([...new Set(keys)], 25)) {
+    // ilike on each word of the key, then compare the exact key in JS.
+    const or = part.map((k) => `name.ilike.${q(`*${escapeLike(k).replace(/ /g, "*")}*`)}`).join(",");
+    people.push(...await rest(`person?select=id,uid,studentid,name,campus,s_date,e_date&or=${enc(`(${or})`)}&limit=1000`));
+  }
+  return people;
+}
+
+async function existingImports(keys) {
+  const rows = [];
+  for (const part of chunk([...new Set(keys)], 50)) {
+    rows.push(...await rest(`person_import?select=name_key,s_date,studentid,name&name_key=in.(${part.map((k) => enc(q(k))).join(",")})&limit=1000`));
+  }
+  return rows;
+}
+
+function randomStudentId() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let s = "";
+  for (let i = 0; i < 9; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+async function newStudentIds(count) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const ids = [...new Set(Array.from({ length: count }, randomStudentId))];
+    if (ids.length < count) continue;
+    const taken = [];
+    for (const part of chunk(ids, 100)) {
+      taken.push(...await rest(`person?select=studentid&studentid=in.(${part.map((s) => enc(q(s))).join(",")})`));
+    }
+    if (!taken.length) return ids;
+  }
+  throw httpError(500, "Cannot make unique Student IDs. Please try again.");
+}
+
+function importTableMissing(error) {
+  return /person_import/.test(String(error?.message || "")) && /(does not exist|schema cache|not find)/i.test(String(error?.message || ""));
+}
+
+const NO_IMPORT_TABLE = "The import history table is missing. Run api/migrations/supabase_person_import.sql in the Supabase SQL Editor first.";
+
+export async function importNewStudents(body, staff) {
+  const list = Array.isArray(body?.students) ? body.students : [];
+  if (!list.length) throw httpError(400, "No NEW students found in the file.");
+  if (list.length > 500) throw httpError(400, "Too many rows at once (max 500).");
+  const campus = CAMPUSES.find((c) => c.toLowerCase() === String(body.campus || "").trim().toLowerCase());
+  if (!campus) throw httpError(400, "Select the campus first.");
+  const fileName = String(body.fileName || "").slice(0, 200) || null;
+  const rows = list.map(importRow);
+
+  let imports;
+  try {
+    imports = await existingImports(rows.map((r) => r.key));
+  } catch (error) {
+    if (importTableMissing(error)) throw httpError(400, NO_IMPORT_TABLE);
+    throw error;
+  }
+  const people = await existingByName(rows.map((r) => r.key));
+  const seen = new Map();
+  const preview = rows.map((r, i) => {
+    const out = { ...r, status: "new", note: "" };
+    const twin = seen.get(`${r.key}|${r.startDate}`);
+    const person = people.find((p) => personNameKey(p.name) === r.key && overlaps(p.s_date, p.e_date, r.startDate, r.endDate));
+    const logged = imports.find((x) => x.name_key === r.key && x.s_date === r.startDate);
+    if (twin) Object.assign(out, { status: "duplicate", note: `Same as row ${twin} in this file` });
+    else if (person) {
+      Object.assign(out, { status: "duplicate", note: `Already registered: ${person.studentid || "-"} (${person.campus || "-"} ${person.s_date || "?"}~${person.e_date || "?"})${person.uid ? "" : " · no card yet"}` });
+    } else if (logged) Object.assign(out, { status: "duplicate", note: `Already imported before: ${logged.studentid || "-"}` });
+    else seen.set(`${r.key}|${r.startDate}`, i + 1);
+    delete out.key;
+    return out;
+  });
+  const fresh = rows.filter((r, i) => preview[i].status === "new");
+  if (body.dryRun || !fresh.length) return { campus, students: preview, created: [] };
+
+  const ids = await newStudentIds(fresh.length);
+  const inserted = await rest(`person?select=${PERSON_COLS}`, {
+    method: "POST",
+    headers: { prefer: "return=representation" },
+    body: fresh.map((r, i) => ({
+      uid: null, studentid: ids[i], name: r.name, age: r.age, gender: r.gender, campus,
+      s_date: r.startDate, e_date: r.endDate, totalmoney: 0,
+    })),
+  });
+  const byId = new Map(inserted.map((p) => [p.studentid, p]));
+  await rest("person_import", {
+    method: "POST",
+    body: fresh.map((r, i) => ({
+      person_id: byId.get(ids[i])?.id ?? null, studentid: ids[i], name: r.name, name_key: r.key, campus,
+      nat: r.nat, room: r.room, course: r.course, age: r.age, gender: r.gender,
+      s_date: r.startDate, e_date: r.endDate, file_name: fileName, imported_by: staff || null,
+    })),
+  });
+  let k = 0;
+  for (const p of preview) if (p.status === "new") { p.status = "created"; p.studentId = ids[k++]; }
+  return { campus, students: preview, created: inserted.map(mapPerson) };
+}
+
+// IMPORTED LIST: import history by PH import day, with the person's current card UID / balance.
+export async function listImports(f) {
+  const filters = [];
+  if (f.from || f.to) filters.push(...tsRange("imported_at", f.from || f.to, f.to || f.from));
+  filters.push(...campusFilter("campus", f.campus));
+  let res;
+  try {
+    res = await paged("person_import", IMPORT_COLS, filters, "imported_at.desc,id.asc", MAX_ROWS);
+  } catch (error) {
+    if (importTableMissing(error)) throw httpError(400, NO_IMPORT_TABLE);
+    throw error;
+  }
+  const ids = [...new Set(res.rows.map((r) => r.person_id).filter(Boolean))];
+  const people = new Map();
+  for (const part of chunk(ids, 200)) {
+    for (const p of await rest(`person?select=id,uid,studentid,name,totalmoney&id=in.(${part.join(",")})`)) people.set(Number(p.id), p);
+  }
+  return {
+    truncated: res.truncated,
+    imports: res.rows.map((r) => {
+      const p = people.get(Number(r.person_id));
+      return {
+        id: Number(r.id), personId: r.person_id == null ? null : Number(r.person_id),
+        studentId: p?.studentid ?? r.studentid, name: p?.name ?? r.name, campus: r.campus,
+        nat: r.nat, room: r.room, course: r.course, age: r.age, gender: r.gender,
+        startDate: r.s_date, endDate: r.e_date, fileName: r.file_name, importedBy: r.imported_by,
+        importedAt: phDateTime(r.imported_at),
+        uid: p ? p.uid : null, totalMoney: p ? num(p.totalmoney) : null, removed: !p,
+      };
+    }),
+  };
+}
+
 // MODIFY INFO: uid, studentid, name, photo, age, gender, campus, s_date, e_date (never totalmoney).
 export async function updatePerson(id, changes) {
   const body = personBody(changes, { requireKeys: false });
