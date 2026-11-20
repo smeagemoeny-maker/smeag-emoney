@@ -1040,6 +1040,9 @@
         (qc && p.barcode && p.barcode.toLowerCase().indexOf(qc) >= 0) || (qc && p.itemCode && String(p.itemCode).toLowerCase().indexOf(qc) >= 0);
       return (S.category === 'All' || p.mMenu === S.category) && (S.subcategory === 'All' || p.sMenu === S.subcategory);
     });
+    // "No cost" filter: products whose Cost Price is not set (or 0) — those count as cost 0 in the closing report.
+    var noCostAll = vm.products.filter(noCost);
+    if (S.noCostOnly) filtered = filtered.filter(noCost);
     actions.in_m_search = function (v) { S.q = v; };
     var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Products') + title('Edit Products') + productTabs() +
       '<div class="sb" style="padding-bottom:8px"><input class="tf search" id="m_search" data-in="in_m_search" type="search" placeholder="' +
@@ -1048,6 +1051,20 @@
       campusDropdown('m_campus', function (v) { S.campus = v; S.selected = null; loadProducts(v); }) +
       dropdown('m_cat', S.category, catOpts, function (v) { S.category = v; S.subcategory = 'All'; }, 'Category') +
       dropdown('m_sub', S.subcategory, subOpts, function (v) { S.subcategory = v; }, 'Subcategory');
+    h += '<div class="chips tabs" style="padding-bottom:8px">';
+    [[false, 'All products (' + vm.products.length + ')'], [true, 'No cost (' + noCostAll.length + ')']].forEach(function (c) {
+      h += '<div class="chip' + (!!S.noCostOnly === c[0] ? ' sel' : '') + '" data-act="' +
+        act(function () { S.noCostOnly = c[0]; S.selected = null; }) + '">' + c[1] + '</div>';
+    });
+    h += '</div>';
+    if (S.noCostOnly) {
+      var nc = filtered;
+      h += txt(nc.length + ' products without a cost' + (S.category !== 'All' || q ? ' (filtered)' : '') + ' · tap one to enter its Cost Price',
+        'font-size:11.5px;color:var(--ink2);padding-bottom:8px') +
+        '<div class="row" style="gap:8px">' +
+        primaryBtn('🖨 Print List', function () { printHtml(noCostReportHtml(nc)); }, !nc.length, ' style="height:38px"') +
+        secondaryBtn('⬇ Download Excel', function () { downloadNoCostCsv(nc); }, !nc.length, ' style="height:38px"') + '</div>' + spacer(10);
+    }
     if (S.error) h += errorLine();
     if (!filtered.length && q && vm.products.length) {
       // Not found: offer to register it as a new product (barcode-like input fills Barcode, anything else fills Name).
@@ -1096,6 +1113,38 @@
         '<button style="color:var(--out);font-weight:700" data-act="' + act(function () { deleteProduct(d); }) + '">Delete</button></div></div></div>';
     }
     return h;
+  }
+  function noCost(p) { return p.cost == null || p.cost === 0; }
+  function noCostSort(list) {
+    return list.slice().sort(function (a, b) {
+      return String(a.mMenu || '').localeCompare(String(b.mMenu || '')) || String(a.sMenu || '').localeCompare(String(b.sMenu || ''));
+    });
+  }
+  // Printable list of products without a cost, with an empty Cost column to write in.
+  function noCostReportHtml(list) {
+    var now = new Date(), cell = 'padding:4px 6px;border-bottom:1px solid #ccc;font-size:11px;text-align:left';
+    var h = '<div class="rpt">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Products Without Cost</div><div class="rsub">' + esc(S.campus || '') + ' · ' + list.length + ' items</div></div></div>' +
+      '<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr>' +
+      ['#', 'Category', 'Product', 'Barcode', 'Price', 'Stock', 'Sold', 'Cost'].map(function (t) { return '<th style="' + cell + ';font-weight:800">' + t + '</th>'; }).join('') +
+      '</tr></thead><tbody>';
+    noCostSort(list).forEach(function (p, i) {
+      h += '<tr>' + [i + 1, esc(p.mMenu || '-'), esc(p.sMenu || '-'), esc(p.barcode || ''), peso(p.payment), p.stock, p.salesNumber, p.cost === 0 ? '0.00' : '']
+        .map(function (v) { return '<td style="' + cell + '">' + v + '</td>'; }).join('') + '</tr>';
+    });
+    return h + '</tbody></table>' +
+      '<div class="rfoot">Printed: ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div></div>';
+  }
+  function downloadNoCostCsv(list) {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var rows = [['Category', 'Product', 'Barcode', 'Item Code', 'Selling Price (PHP)', 'Stock', 'Sold', 'Cost (PHP)']];
+    noCostSort(list).forEach(function (p) {
+      rows.push([p.mMenu || '', p.sMenu || '', p.barcode || '', p.itemCode || '', money(p.payment), p.stock, p.salesNumber, p.cost === 0 ? '0' : '']);
+    });
+    var name = 'products_no_cost_' + String(S.campus || '').replace(/\s+/g, '_') + '_' + ymd(new Date()) + '.csv';
+    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + rows.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Saved to Downloads: ' + name, 3500);
   }
   // Profit per unit and margin under the price fields, so a wrong cost (e.g. a box price) shows at once.
   function marginLine(price, cost) {
@@ -1795,6 +1844,20 @@
       h += txt(missDays.length ? missDays.length + ' days without Pusan Pay cost · Pusan Pay sales ₱' + peso(missPay) + ' · tap a day to enter its cost'
         : 'Every day in this period has its cost entered.', 'font-size:11.5px;color:var(--ink2);padding-bottom:8px') +
         primaryBtn('⬇ Download Cost-missing List', downloadMissingCostCsv, !missDays.length, ' style="height:38px"') + spacer(10);
+      // Barcode items sold in this period whose product has no cost on file (counted as cost 0).
+      var unc = {};
+      r.days.forEach(function (d) {
+        (d.items.uncosted || []).forEach(function (u) { unc[u.name] = (unc[u.name] || 0) + Number(u.qty || 0); });
+      });
+      var uncList = Object.keys(unc).sort().map(function (k) { return { name: k, qty: unc[k] }; });
+      if (uncList.length) {
+        h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
+          '<div style="font-size:12px;font-weight:800;padding-bottom:6px">Sold items with no cost <span style="font-weight:400;color:var(--ink3)">· ' +
+          uncList.length + ' products · counted as cost 0 · set it in Products › Edit</span></div>' +
+          uncList.map(function (u) {
+            return '<div class="sb" style="font-size:11.5px;padding:3px 0;border-bottom:1px solid var(--border)"><span>' + esc(u.name) + '</span><b>×' + u.qty + '</b></div>';
+          }).join('') + '</div>';
+      }
     } else {
       h += primaryBtn('⬇ Download Excel', downloadDailyCsv, !r.days.length, ' style="height:38px"') + spacer(10);
     }
