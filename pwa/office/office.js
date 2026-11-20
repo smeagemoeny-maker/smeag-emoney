@@ -379,12 +379,31 @@
   var tabCtx = null;      // set in start(): { api, messageBox, warn, inputDialog, escapeHtml, showCardInfo }
   var tabPages = {};
   var currentTab = TAB_NAMES[OFFICE_MENU_INDEX];
+  // Remember the open tab in the URL (#tab=REPORT) so a browser refresh comes back to the same screen.
+  function tabSlug(name) { return name.toUpperCase().replace(/[^A-Z0-9]+/g, '-'); }
+  function rememberTab(index) {
+    var h = index === OFFICE_MENU_INDEX ? '' : '#tab=' + tabSlug(TAB_NAMES[index]);
+    if (location.hash === h || (!h && !location.hash)) return;
+    try { history.replaceState(null, '', location.pathname + location.search + h); } catch (e) { /* ignore */ }
+  }
+  function savedTabIndex() {
+    var m = /^#tab=([^&]+)/.exec(location.hash || '');
+    if (!m) return -1;
+    var want = decodeURIComponent(m[1]).toUpperCase();
+    for (var i = 0; i < TAB_NAMES.length; i++) if (tabSlug(TAB_NAMES[i]) === want) return i;
+    return -1;
+  }
+  function selectTab(index) {
+    var t = document.querySelectorAll('#tabstrip .tab')[index];
+    if (t) t.click();
+  }
   function showPage(index) {
     var office = el('officePage'), ph = el('placeholder');
     Object.keys(tabPages).forEach(function (k) { tabPages[k].root.hidden = true; });
     office.hidden = index !== OFFICE_MENU_INDEX;
     ph.hidden = true;
     currentTab = TAB_NAMES[index];
+    rememberTab(index);
     if (index === OFFICE_MENU_INDEX) return;
     var name = TAB_NAMES[index];
     var impl = window.OfficeTabs && window.OfficeTabs[name];
@@ -961,6 +980,7 @@
       captureCard: captureCard,
       showCardInfo: function (uid) { return showCardInfo(api, uid); }
     };
+    var restoreIdx = savedTabIndex(); // read before showPage(OFFICE MENU) below clears the hash
     drawLogo();
     buildTabs(showPage);
     var page = createOfficeMenu(api);
@@ -1023,7 +1043,10 @@
 
     var s = api.session();
     var ready = s && s.token && s.manager ? (applySession(s), page.loadMenus(s.manager.campus)) : login();
-    Promise.resolve(ready).then(function () { page.focusUid(); });
+    Promise.resolve(ready).then(function () {
+      if (restoreIdx >= 0 && restoreIdx !== OFFICE_MENU_INDEX) selectTab(restoreIdx);
+      else page.focusUid();
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
