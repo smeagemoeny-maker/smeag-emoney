@@ -10,7 +10,7 @@
      opts.font: CSS font-size for cells (default 12px) ; opts.rowHeight (default 30)
      opts.onCurrent(row), opts.onCheck(checkedRows), opts.onDblClick(row)
    Returns {
-     setRows(rows), rows(), current(), checked(), setAllChecked(bool),
+     setRows(rows), rows(), current(), checked(), setAllChecked(bool), setCheckedWhere(fn(row, i)),
      edited()   -> [{ row, changes: { key: newValue } }] (cells changed since setRows),
      clearEdits(), count(), el
    }
@@ -210,6 +210,12 @@
       if (opts.onCheck) opts.onCheck(checked());
     }
 
+    function setCheckedWhere(pred) {
+      for (var i = 0; i < data.length; i++) checkedSet[i] = !!pred(data[i], i);
+      syncChecked();
+      if (opts.onCheck) opts.onCheck(checked());
+    }
+
     function checked() {
       var out = [];
       for (var i = 0; i < data.length; i++) if (checkedSet[i]) out.push(data[i]);
@@ -335,6 +341,7 @@
       current: function () { finishEdit(true); return cur >= 0 ? data[cur] : null; },
       checked: checked,
       setAllChecked: setAllChecked,
+      setCheckedWhere: setCheckedWhere,   // (row, index) -> bool
       edited: function () {
         finishEdit(true);
         var out = [];

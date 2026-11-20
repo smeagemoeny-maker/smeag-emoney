@@ -317,9 +317,9 @@
         if (!students.length) return ctx.messageBox('No new students for ' + campus + ' in this file.', 'SMEAG', 'OK', 'warning');
         var body = { campus: campus, fileName: f.name, students: students };
         return ctx.api.request('POST', '/api/office/people/import-new', Object.assign({ dryRun: true }, body)).then(function (pre) {
-          return previewDialog(ctx, f.name, pre, setup.skipped).then(function (ok) {
-            if (!ok) return;
-            return ctx.api.request('POST', '/api/office/people/import-new', body).then(function (res) {
+          return previewDialog(ctx, body, pre, setup.skipped).then(function (res) {
+            if (!res) return;
+            return Promise.resolve(res).then(function (res) {
               var made = res.students.filter(function (s) { return s.status === 'created'; }).length;
               var dup = res.students.length - made;
               return ctx.messageBox('Created ' + made + ' new students (' + res.campus + ').' +
@@ -514,36 +514,68 @@
   }
   var PREVIEW_COLS = [
     { key: 'status', header: 'Status', width: 130, render: function (r) { return statusCell(r.status); } },
-    { key: 'name', header: 'Name', width: 230 },
-    { key: 'nat', header: 'Nat', width: 50 },
-    { key: 'age', header: 'Age', width: 45, align: 'right' },
-    { key: 'gender', header: 'Gender', width: 65 },
-    { key: 'room', header: 'Room', width: 70 },
-    { key: 'startDate', header: 'Start', width: 95 },
-    { key: 'endDate', header: 'End', width: 95 },
-    { key: 'course', header: 'Course', width: 230 },
-    { key: 'note', header: 'Note', width: 420 }
+    { key: 'name', header: 'Name', width: 230, editable: true },
+    { key: 'nat', header: 'Nat', width: 50, editable: true },
+    { key: 'age', header: 'Age', width: 45, align: 'right', editable: true },
+    { key: 'gender', header: 'Gender', width: 70, editable: true, options: ['Male', 'Female'] },
+    { key: 'room', header: 'Room', width: 110, editable: true },
+    { key: 'startDate', header: 'Start', width: 95, editable: true },
+    { key: 'endDate', header: 'End', width: 95, editable: true },
+    { key: 'course', header: 'Course', width: 230, editable: true },
+    { key: 'note', header: 'Note', width: 400 }
   ];
 
-  // resolves true when the user presses Import
-  function previewDialog(ctx, fileName, pre, skipped) {
-    var esc = OfficeKit.esc, list = pre.students || [];
-    var fresh = list.filter(function (s) { return s.status === 'new'; }).length;
-    var dup = list.length - fresh;
+  // Step 1 of the import: show what was read, let staff fix cells / untick rows, then REGISTER.
+  // body = { campus, fileName, students }. Resolves with the server result after REGISTER, or null on Cancel.
+  function previewDialog(ctx, body, pre, skipped) {
+    var esc = OfficeKit.esc;
     var skip = Object.keys(skipped || {}).map(function (k) { return k + ' ' + skipped[k]; }).join(', ');
-    var html = '<div class="dlg-title">IMPORT NEW STUDENTS — ' + esc(fileName) + ' — ' + esc(pre.campus) + X_BTN + '</div>' +
-      '<div class="rdt-bar"><span class="rdt-sum">NEW section: ' + list.length + ' · to create ' + fresh + ' · duplicates ' + dup + '</span>' +
+    var html = '<div class="dlg-title">CHECK IMPORT — ' + esc(body.fileName) + ' — ' + esc(pre.campus) + X_BTN + '</div>' +
+      '<div class="rdt-bar"><span class="rdt-sum" data-r="sum"></span>' +
       (skip ? '<span>Not imported (other sections): ' + esc(skip) + '</span>' : '') + '</div>' +
       '<div class="rdt-grid reg-imp-grid" data-r="grid"></div>' +
-      '<div class="mb-foot"><span class="rdt-note">Duplicates are skipped. New students get a Student ID and no card UID.</span>' +
-      '<button class="w10btn def" data-r="ok"' + (fresh ? ' data-autofocus' : ' disabled') + '>Create ' + fresh + ' students</button>' +
-      '<button class="w10btn" data-r="cancel"' + (fresh ? '' : ' data-autofocus') + '>Cancel</button></div>';
+      '<div class="mb-foot"><span class="rdt-note">Check every row. Double-click a cell to fix it, untick rows you do not want. Duplicates are never registered.</span>' +
+      '<button class="w10btn" data-r="recheck">Check again</button>' +
+      '<button class="w10btn def reg-imp-ok" data-r="ok">REGISTER</button>' +
+      '<button class="w10btn" data-r="cancel" data-autofocus>Cancel</button></div>';
     return ctx.openDialog(html, function (dlg, close) {
       function r(k) { return dlg.querySelector('[data-r="' + k + '"]'); }
-      OfficeKit.grid(r('grid'), { columns: PREVIEW_COLS, select: 'row', rowHeight: 26, font: '12px' }).setRows(list);
-      r('ok').addEventListener('click', function () { close(true); });
-      r('cancel').addEventListener('click', function () { close(false); });
-      return { cancelValue: false };
+      var grid = OfficeKit.grid(r('grid'), {
+        columns: PREVIEW_COLS, select: 'multi', rowHeight: 26, font: '12px',
+        onCheck: function (rows) {
+          var n = rows.filter(function (x) { return x.status === 'new'; }).length;
+          r('ok').textContent = 'REGISTER ' + n + ' STUDENTS';
+          r('ok').disabled = !n;
+        }
+      });
+      function show(res, keep) {
+        var list = res.students || [];
+        grid.setRows(list);
+        grid.setCheckedWhere(function (x, i) { return x.status === 'new' && (!keep || keep[i]); });
+        var fresh = list.filter(function (x) { return x.status === 'new'; }).length;
+        r('sum').textContent = 'Read ' + list.length + ' new students · ' + fresh + ' can be registered · ' + (list.length - fresh) + ' duplicates';
+      }
+      function current() { return grid.rows().map(function (x) { return grid.merged(x); }); }
+      function checkedFlags() { var c = grid.checked(); return grid.rows().map(function (x) { return c.indexOf(x) >= 0; }); }
+      show(pre);
+      r('recheck').addEventListener('click', function () {
+        var keep = checkedFlags();
+        OfficeKit.busy(r('recheck'), ctx.api.request('POST', '/api/office/people/import-new',
+          Object.assign({}, body, { students: current(), dryRun: true })).then(function (res) { show(res, keep); }))
+          .catch(OfficeKit.fail(ctx, 'Check again'));
+      });
+      r('ok').addEventListener('click', function () {
+        if (r('ok').disabled) return;
+        var picked = grid.checked().map(function (x) { return grid.merged(x); });
+        var changed = grid.edited().length;
+        OfficeKit.busy(r('ok'), ctx.messageBox('Register ' + picked.filter(function (x) { return x.status === 'new'; }).length + ' students to ' + pre.campus + '?' +
+          (changed ? '\n(' + changed + ' edited rows: duplicates are checked again.)' : ''), 'Confirm Register', 'YesNo', 'question').then(function (ans) {
+          if (ans !== 'Yes') return;
+          return ctx.api.request('POST', '/api/office/people/import-new', Object.assign({}, body, { students: picked })).then(close);
+        })).catch(OfficeKit.fail(ctx, 'Register Error'));
+      });
+      r('cancel').addEventListener('click', function () { close(null); });
+      return { cancelValue: null };
     });
   }
 
