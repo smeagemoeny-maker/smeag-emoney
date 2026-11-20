@@ -1586,12 +1586,17 @@
     toast('Saved to Downloads: ' + name, 3500);
   }
   // The closing report, laid out like the Bizmatech "Daily Sales Report  R1:SUMMARY". Used on screen and for printing.
-  function closingReportHtml(d) {
+  // tappable: on screen, every "missing" opens that day's Pusan Pay payments (the sales whose cost is not entered).
+  function closingReportHtml(d, tappable) {
     var pct = sharePct();
     var line = function (label, value, cls) {
       return '<div class="rl' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><span>' + value + '</span></div>';
     };
-    var na = '<span class="rmiss">missing</span>';
+    var na = tappable
+      ? '<span class="rmiss tap"' + tapAttr(function () {
+          openDetail('pay', 'Pusan Pay ' + d.date + ' · cost missing', d.date, d.date);
+        }) + '>missing ›</span>'
+      : '<span class="rmiss">missing</span>';
     var share = d.net == null ? null : Math.round(d.net * pct) / 100;
     var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
     var now = new Date();
@@ -1812,7 +1817,7 @@
     // closing report of the selected day
     var cd = dailyRow(S.costDate);
     if (cd) {
-      h += '<div class="card" style="padding:12px;margin-bottom:10px">' + closingReportHtml(cd) + spacer(10) +
+      h += '<div class="card" style="padding:12px;margin-bottom:10px">' + closingReportHtml(cd, true) + spacer(10) +
         primaryBtn('🖨 Print Closing Report', function () { printClosingReport(cd); }, false, ' style="height:38px"') + spacer(8) +
         secondaryBtn('🖨 Print X Reading (' + cd.date + ')', function () { printXReading(cd.date); }) + '</div>';
     }
