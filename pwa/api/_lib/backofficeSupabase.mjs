@@ -49,7 +49,7 @@ export async function createProduct({ campus, mMenu, sMenu, imagePath, payment, 
 // One barcode = one product per campus, so a scan at the counter always finds exactly one item.
 async function assertBarcodeFree(campus, code, exceptId) {
   const rows = await withProductColumns((_, extras) => (extras
-    ? rest(`store_menus?select=id,s_menu&barcode=eq.${encodeURIComponent(q(code))}&Campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}&limit=2`)
+    ? rest(`store_menus?select=id,s_menu&barcode=eq.${encodeURIComponent(code)}&Campus=ilike.${encodeURIComponent(escapeLike(campus))}&limit=2`)
     : []));
   const other = rows.find((r) => Number(r.id) !== Number(exceptId));
   if (other) throw httpError(409, `Barcode ${code} is already used by ${other.s_menu || `product ${other.id}`}.`);
@@ -234,7 +234,7 @@ export async function listStockMoves({ from, to, campus, productId: pid }) {
     `created_at=lte.${encodeURIComponent(end)}`,
     "order=created_at.asc,id.asc",
   ];
-  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}`);
+  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(escapeLike(campus))}`);
   if (pid) parts.push(`product_id=eq.${productId(pid)}`);
   const rows = [];
   try {
@@ -257,7 +257,7 @@ export async function listExpiring({ until, since, campus }) {
   if (since && !re.test(since)) throw httpError(400, "since must be YYYY-MM-DD.");
   const parts = ["select=*", "kind=eq.in", `expiry_date=lte.${until}`, "order=expiry_date.asc,id.asc", `limit=${PAGE_SIZE}`];
   if (since) parts.push(`expiry_date=gte.${since}`);
-  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}`);
+  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(escapeLike(campus))}`);
   try {
     return (await rest(`pusanmart_stock_moves?${parts.join("&")}`)).map(mapMove);
   } catch (e) {
