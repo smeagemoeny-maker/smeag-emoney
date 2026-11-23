@@ -297,6 +297,8 @@ async function handleCheckout(storeKey, uid) {
   };
   store.cart = [];
   store.lastLookup = null; // its balance is stale after a payment
+  store.discountLabel = "No Discount"; // every sale starts at No Discount again
+  store.discountRate = 0;
   state.status = `Paid: ${checkout.buyerName || uid} · ${money(checkout.finalTotal)} · Balance ${money(checkout.remainingBalance)}`;
   // Refresh stock without replacing the payment result message.
   if (!state.demoMode) await loadProducts(storeKey, { quiet: true });

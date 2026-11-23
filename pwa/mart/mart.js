@@ -181,7 +181,7 @@
   var session = { manager: null, access: null, token: null, selectedCampus: MART_CAMPUS };
   var vm = {
     products: [], cart: [],
-    discountLabel: 'Manager 15%', discountRate: 0.15,
+    discountLabel: 'No Discount', discountRate: 0,
     checkoutError: null,
     last: null,
     buyerResult: null, buyerLookupError: null, buyerLoading: false,
@@ -228,11 +228,11 @@
     return CAMPUS_OPTIONS.filter(function (c) { return marts.indexOf(c.toUpperCase()) >= 0; });
   }
 
+  // The register always starts at No Discount; Manager / Teacher must be picked for each sale
+  // and falls back to No Discount after the payment (2026-11-23).
   function setDefaultDiscount() {
-    var pos = session.manager && session.manager.position;
-    var mgr = pos === 'Manager' || pos === 'Admin';
-    vm.discountLabel = mgr ? 'Manager 15%' : 'Teacher 10%';
-    vm.discountRate = mgr ? 0.15 : 0.10;
+    vm.discountLabel = 'No Discount';
+    vm.discountRate = 0;
   }
   // Runs `promise` for the current screen; results are dropped if the user has left that screen.
   function screenLoad(promise, apply, onError) {
@@ -639,6 +639,7 @@
       vm.last = { cart: cart, label: label, rate: rate, finalTotal: num(c.finalTotal), remaining: num(c.remainingBalance),
         uid: uidStr, buyerName: c.buyerName, orderId: c.orderId, campus: campus };
       vm.cart = [];
+      setDefaultDiscount();
       s.paying = false;
       if (S === s) navigate('receipt');
     }, function (e) {
@@ -746,7 +747,7 @@
       vm.pz.success = 'Paid ₱' + money(p.allPayments) + ' — ' + ((p && p.name) || uidStr) +
         (p && p.studentId ? ' (' + p.studentId + ')' : '') + '. Remaining balance ₱' + money(p.remainingBalance) + '.' +
         (p && p.memo ? (p.memoSaved === false ? ' (Memo NOT saved — DB update needed)' : ' Memo: ' + p.memo) : '');
-      vm.pz.amount = ''; vm.pz.memo = '';
+      vm.pz.amount = ''; vm.pz.memo = ''; vm.pz.label = 'No Discount'; vm.pz.rate = 0;
       if (route === 'pusanpay') { S.amount = ''; S.memo = ''; }
     }, function (e) {
       beep('error');
