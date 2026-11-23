@@ -127,6 +127,145 @@ export async function getProduct(id) {
   return mapProduct(rows[0]);
 }
 
+// ---------- stock moves: Add Stock / Expired (pusanmart_stock_moves + pos_stock_move RPC) ----------
+
+const MISSING_STOCK_MOVES = "Stock in / expired is not set up yet: run api/migrations/supabase_pusanmart_stock_moves.sql in the Supabase SQL Editor.";
+const isMissingStockMoves = (e) => /pusanmart_stock_moves|pos_stock_move/.test(String(e?.message || "")) &&
+  /schema cache|does not exist|Could not find/i.test(String(e?.message || ""));
+
+function mapMove(r) {
+  return {
+    id: r.id,
+    productId: r.product_id,
+    campus: r.campus,
+    category: r.category,
+    productName: r.product_name,
+    barcode: r.barcode,
+    kind: r.kind,
+    quantity: Number(r.quantity),
+    unitCost: r.unit_cost == null ? null : Number(r.unit_cost),
+    expiryDate: r.expiry_date || null,
+    note: r.note,
+    stockBefore: Number(r.stock_before),
+    stockAfter: Number(r.stock_after),
+    staff: r.staff,
+    refNo: r.ref_no || null,
+    consignee: r.consignee || null,
+    approvedBy: r.approved_by || null,
+    charges: r.charges == null ? null : Number(r.charges),
+    date: phDateTime(r.created_at),
+  };
+}
+
+// kind 'in' (Add Stock) or 'expired' (remove expired stock). Returns { move, product }.
+export async function createStockMove(id, { kind, quantity, expiryDate, note } = {}, staffLoginId) {
+  const qty = Number(quantity);
+  if (!Number.isInteger(qty) || qty <= 0) throw httpError(400, "Quantity must be a whole number of 1 or more.");
+  if (kind !== "in" && kind !== "expired") throw httpError(400, "kind must be 'in' or 'expired'.");
+  const exp = String(expiryDate || "").trim();
+  if (exp && !/^\d{4}-\d{2}-\d{2}$/.test(exp)) throw httpError(400, "Expiry date must be YYYY-MM-DD.");
+  let result;
+  try {
+    result = await rest("rpc/pos_stock_move", {
+      method: "POST",
+      body: {
+        p_product_id: productId(id),
+        p_kind: kind,
+        p_quantity: qty,
+        p_expiry_date: exp || null,
+        p_note: String(note || "").trim() || null,
+        p_staff: staffLoginId || null,
+      },
+    });
+  } catch (e) {
+    if (isMissingStockMoves(e)) throw httpError(503, MISSING_STOCK_MOVES);
+    throw e;
+  }
+  return { move: mapMove(result.move), product: await getProduct(id) };
+}
+
+const STOCK_OUT_KINDS = ["pullout", "transfer", "return"];
+const MISSING_STOCK_OUT = "Stock Out is not set up yet: run api/migrations/supabase_pusanmart_stock_out.sql in the Supabase SQL Editor.";
+
+// Product Stock-Out document (Pull Out / Transfer / Return): several lines, one ref no, all-or-nothing.
+// Returns { refNo, moves, products }.
+export async function createStockOut({ campus, kind, consignee, approvedBy, note, lines } = {}, staffLoginId) {
+  if (!STOCK_OUT_KINDS.includes(kind)) throw httpError(400, "kind must be pullout, transfer or return.");
+  if (!String(consignee || "").trim()) throw httpError(400, "Consignee (branch / stock room / supplier) is required.");
+  if (!Array.isArray(lines) || !lines.length) throw httpError(400, "Add at least one product.");
+  if (lines.length > 300) throw httpError(400, "Too many lines (max 300).");
+  const body = lines.map((l) => {
+    const qty = Number(l?.quantity);
+    if (!Number.isInteger(qty) || qty <= 0) throw httpError(400, "Quantity must be a whole number of 1 or more.");
+    const ch = l?.charges == null || l.charges === "" ? null : Number(l.charges);
+    if (ch != null && (!Number.isFinite(ch) || ch < 0)) throw httpError(400, "Charges must be 0 or more.");
+    return { product_id: productId(l?.productId), quantity: qty, charges: ch };
+  });
+  let result;
+  try {
+    result = await rest("rpc/pos_stock_out", {
+      method: "POST",
+      body: {
+        p_campus: String(campus || ""),
+        p_kind: kind,
+        p_lines: body,
+        p_consignee: String(consignee).trim(),
+        p_approved_by: String(approvedBy || "").trim() || null,
+        p_note: String(note || "").trim() || null,
+        p_staff: staffLoginId || null,
+      },
+    });
+  } catch (e) {
+    if (/pos_stock_out|pusanmart_stock_out_seq|ref_no|consignee/.test(String(e?.message || "")) &&
+      /schema cache|does not exist|Could not find|violates check/i.test(String(e?.message || ""))) throw httpError(503, MISSING_STOCK_OUT);
+    if (isMissingStockMoves(e)) throw httpError(503, MISSING_STOCK_MOVES);
+    throw e;
+  }
+  const products = await Promise.all(body.map((l) => getProduct(l.product_id)));
+  return { refNo: result.refNo, moves: (result.moves || []).map(mapMove), products };
+}
+
+export async function listStockMoves({ from, to, campus, productId: pid }) {
+  const [start, end] = range(from, to);
+  if (from > to) throw httpError(400, "Start date must be on or before the end date.");
+  const parts = [
+    "select=*",
+    `created_at=gte.${encodeURIComponent(start)}`,
+    `created_at=lte.${encodeURIComponent(end)}`,
+    "order=created_at.asc,id.asc",
+  ];
+  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}`);
+  if (pid) parts.push(`product_id=eq.${productId(pid)}`);
+  const rows = [];
+  try {
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const page = await rest(`pusanmart_stock_moves?${parts.join("&")}&limit=${PAGE_SIZE}&offset=${offset}`);
+      rows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+  } catch (e) {
+    if (isMissingStockMoves(e)) throw httpError(503, MISSING_STOCK_MOVES);
+    throw e;
+  }
+  return rows.map(mapMove);
+}
+
+// Latest stock-in batches with an expiry date on or before `until` (for the "expiring soon" list).
+export async function listExpiring({ until, since, campus }) {
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  if (!re.test(String(until || ""))) throw httpError(400, "until must be YYYY-MM-DD.");
+  if (since && !re.test(since)) throw httpError(400, "since must be YYYY-MM-DD.");
+  const parts = ["select=*", "kind=eq.in", `expiry_date=lte.${until}`, "order=expiry_date.asc,id.asc", `limit=${PAGE_SIZE}`];
+  if (since) parts.push(`expiry_date=gte.${since}`);
+  if (campus && campus !== "All Campuses") parts.push(`campus=ilike.${encodeURIComponent(q(escapeLike(campus)))}`);
+  try {
+    return (await rest(`pusanmart_stock_moves?${parts.join("&")}`)).map(mapMove);
+  } catch (e) {
+    if (isMissingStockMoves(e)) throw httpError(503, MISSING_STOCK_MOVES);
+    throw e;
+  }
+}
+
 // ---------- sales history / report (bank) ----------
 
 // "YYYY-MM-DD".."YYYY-MM-DD" in Philippine time -> absolute timestamptz bounds.
@@ -613,6 +752,7 @@ function mapProduct(row) {
     barcode: row.barcode ?? null,
     itemCode: row.item_code ?? null,
     cost: row.cost == null ? null : Number(row.cost),
+    unit: row.unit ?? null,
   };
 }
 

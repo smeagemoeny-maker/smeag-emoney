@@ -37,6 +37,7 @@ import * as office from "./office.mjs";
 import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.mjs";
 import * as campus from "./campus.mjs";
 import * as campusBot from "./campusBot.mjs";
+import * as smeRefund from "./smeadminRefund.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -170,6 +171,36 @@ const routes = [
     if (body.campus !== undefined) assertCanManageStore(access, body.campus);
     return { product: await backoffice.updateProduct(match[1], body) };
   }],
+  ["POST", /^\/api\/products\/(\d+)\/stock-moves$/, async ({ req, match, body }) => {
+    const { session, access } = verifyRequest(req);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    const current = await backoffice.getProduct(match[1]);
+    assertCanManageStore(access, current.campus);
+    return await supabaseBackoffice.createStockMove(match[1], body, session.loginId);
+  }],
+  ["POST", /^\/api\/stock-out$/, async ({ req, body }) => {
+    const { session, access } = verifyRequest(req);
+    if (!body?.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, body.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock Out needs DB_BACKEND=supabase.");
+    return await supabaseBackoffice.createStockOut(body, session.loginId);
+  }],
+  ["GET", /^\/api\/stock-moves$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    const filter = query(url, "from", "to", "campus", "productId");
+    if (!filter.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, filter.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    return { moves: await supabaseBackoffice.listStockMoves(filter) };
+  }],
+  ["GET", /^\/api\/stock-moves\/expiring$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    const filter = query(url, "until", "since", "campus");
+    if (!filter.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, filter.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    return { moves: await supabaseBackoffice.listExpiring(filter) };
+  }],
   ["DELETE", /^\/api\/products\/(\d+)$/, async ({ req, match }) => {
     const { access } = verifyRequest(req);
     liveOnly();
@@ -251,6 +282,15 @@ const routes = [
   officeRoute("GET", /^\/api\/office\/report\/detail$/, ({ url }) => office.reportDetail(query(url, "campus", "from", "to", "category"))),
   // REPORT numbers are read-only: editing/saving corrections is disabled.
   officeRoute("PUT", /^\/api\/office\/report$/, () => { throw httpError(403, "The report cannot be edited."); }),
+  // ----- SME REFUND tab: smeadmin refund requests -> e-money refund (smeadminRefund.mjs) -----
+  officeRoute("GET", /^\/api\/office\/sme-refunds$/, ({ url, access }) => smeRefund.list(query(url, "status", "days"), access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/sync$/, ({ session }) => smeRefund.sync(session.loginId)),
+  officeRoute("GET", /^\/api\/office\/sme-refunds\/by-passport$/, ({ url, access }) =>
+    smeRefund.findByPassport(url.searchParams.get("passport"), access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/(\d+)\/link$/, ({ match, body, session, access }) =>
+    smeRefund.linkCard(match[1], body, session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/(\d+)\/pay$/, ({ match, body, session, access }) =>
+    smeRefund.pay(match[1], body, session.loginId, access)),
   officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
     activityLogScope(session);
     return listActivity(activityFilter(url));

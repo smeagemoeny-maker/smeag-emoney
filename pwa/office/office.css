@@ -88,7 +88,13 @@ body {
   background: #000;
 }
 .logo { position: absolute; left: 0; top: 0; }
-.userbox { position: absolute; right: 20px; top: 0; height: 80px; display: flex; align-items: center; gap: 14px; color: #fff; font-size: 14px; }
+.banner-right { position: absolute; right: 20px; top: 0; height: 80px; display: flex; align-items: center; gap: 18px; }
+.userbox { height: 80px; display: flex; align-items: center; gap: 14px; color: #fff; font-size: 14px; }
+/* language selector (i18n.js) — above the modal layer so it works during login */
+.langsel { position: relative; z-index: 60; display: flex; align-items: center; gap: 6px; color: #fff; cursor: pointer; }
+.langsel-ico { font-size: 16px; line-height: 1; }
+.langsel select { font: 13px var(--font); color: #fff; background: #1d1d1d; border: 1px solid #555; padding: 5px 6px; cursor: pointer; }
+.langsel select:focus { outline: 1px solid #1883D7; }
 .userbox[hidden] { display: none; }
 .ub-who { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; }
 .ub-who b { font-size: 16px; }

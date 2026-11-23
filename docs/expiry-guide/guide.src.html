@@ -1,0 +1,315 @@
+<title>Pusan Mart Expiry Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;700&family=Noto+Sans+KR:wght@400;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a shelf-label guide. Header with language + narration, then three numbered steps (the real order of work), each with a mock of the app screen. */
+:root {
+  --bg: #F1EFEA; --paper: #FFFFFF; --paper2: #F7F5F1; --ink: #1D1D1B; --ink2: #5B5850; --line: #DDD8CE;
+  --brand: #E85A24; --brand-ink: #FFFFFF; --brand-soft: #FBE6DC;
+  --low: #B9740A; --low-soft: #FBF0D9; --out: #C6483A; --out-soft: #F8E1DE; --ok: #2F7D4F; --ok-soft: #E1F1E7;
+  --f-display: "Space Grotesk", "Noto Sans KR", system-ui, sans-serif;
+  --f-body: "Inter", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17150F; --paper: #221F19; --paper2: #2A2720; --ink: #F1EDE4; --ink2: #ABA597; --line: #3A362D;
+  --brand: #F06E3A; --brand-ink: #1A0E07; --brand-soft: #3D2318;
+  --low: #E3A43A; --low-soft: #3A2E15; --out: #EE7466; --out-soft: #3F1F1B; --ok: #6CC290; --ok-soft: #1C3226; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #17150F; --paper: #221F19; --paper2: #2A2720; --ink: #F1EDE4; --ink2: #ABA597; --line: #3A362D;
+  --brand: #F06E3A; --brand-ink: #1A0E07; --brand-soft: #3D2318;
+  --low: #E3A43A; --low-soft: #3A2E15; --out: #EE7466; --out-soft: #3F1F1B; --ok: #6CC290; --ok-soft: #1C3226; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 56px; }
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
+
+/* language visibility */
+#app[data-lang="en"] .ko, #app[data-lang="ko"] .en { display: none !important; }
+#app[data-lang="both"] .ko.sub { display: block; font-size: .86em; color: var(--ink2); font-weight: 400; }
+#app[data-lang="both"] span.ko.sub { display: inline; }
+
+header { display: grid; gap: 18px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 700; letter-spacing: .5px; }
+.brand b { font-family: "Noto Sans KR", sans-serif; font-weight: 900; font-size: 20px; }
+.brand small { font-size: 11px; color: var(--ink2); letter-spacing: 1.5px; text-transform: uppercase; }
+.seg { display: inline-flex; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: transparent; color: var(--ink2); font: 600 13px var(--f-body); padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button:focus-visible, .play:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: end; }
+h1 { font-family: var(--f-display); font-size: clamp(30px, 5.4vw, 52px); line-height: 1.04; margin: 0; letter-spacing: -1px; text-wrap: balance; }
+h1 .ko { font-family: "Noto Sans KR", sans-serif; font-weight: 900; letter-spacing: -1.5px; }
+#app[data-lang="both"] h1 .ko.sub { font-size: .5em; margin-top: 8px; letter-spacing: -.5px; }
+.lede { color: var(--ink2); max-width: 60ch; margin: 12px 0 0; text-wrap: pretty; }
+
+/* EXP sticker */
+.sticker { justify-self: end; background: var(--paper); border: 2px dashed var(--brand); border-radius: 14px; padding: 14px 18px; transform: rotate(-3deg);
+  font-family: var(--f-mono); min-width: 0; max-width: 100%; }
+.sticker .k { font-size: 11px; letter-spacing: 2px; color: var(--brand); font-weight: 700; }
+.sticker .d { font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; }
+.sticker .r { font-size: 11px; color: var(--ink2); }
+
+/* narration */
+.voice { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
+.play { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--brand); color: var(--brand-ink); cursor: pointer; display: grid; place-items: center; flex: none; }
+.play svg { width: 20px; height: 20px; fill: currentColor; }
+.vmeta { flex: 1 1 200px; min-width: 0; display: grid; gap: 6px; }
+.vmeta .t { font-weight: 700; font-size: 14px; }
+.vmeta .s { font-size: 12px; color: var(--ink2); }
+.bar { height: 6px; background: var(--paper2); border-radius: 3px; overflow: hidden; cursor: pointer; }
+.bar i { display: block; height: 100%; width: 0; background: var(--brand); }
+.vlang { display: flex; gap: 6px; }
+.vlang button { border: 1px solid var(--line); background: var(--paper2); color: var(--ink); border-radius: 8px; padding: 5px 10px; font: 600 12px var(--f-body); cursor: pointer; }
+.vlang button[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+
+/* steps */
+.step { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 24px; background: var(--paper); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+.num { font-family: var(--f-mono); font-weight: 700; font-size: 13px; color: var(--brand); letter-spacing: 2px; }
+h2 { font-family: var(--f-display); font-size: clamp(22px, 3vw, 28px); margin: 4px 0 12px; line-height: 1.15; text-wrap: balance; }
+h2 .ko { font-family: "Noto Sans KR", sans-serif; font-weight: 900; }
+ol.how { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: s; }
+ol.how li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; }
+ol.how li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; background: var(--paper2); border: 1px solid var(--line); display: grid; place-items: center; font: 700 12px var(--f-mono); }
+.ui { font-family: var(--f-mono); font-size: .9em; font-weight: 700; background: var(--paper2); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; white-space: nowrap; }
+.note { margin-top: 14px; font-size: 13px; color: var(--ink2); border-top: 1px dashed var(--line); padding-top: 12px; }
+
+/* phone mock */
+.mock { background: var(--bg); border: 1px solid var(--line); border-radius: 18px; padding: 12px; display: grid; gap: 10px; align-self: start; min-width: 0; font-size: 12px; }
+.mhead { display: flex; gap: 8px; align-items: center; background: var(--brand-soft); border: 1.5px solid var(--brand); border-radius: 12px; padding: 8px 10px; }
+.mhead .ic { width: 30px; height: 30px; border-radius: 8px; background: var(--paper); display: grid; place-items: center; font-size: 16px; flex: none; }
+.mhead .n { font-weight: 700; font-size: 11.5px; min-width: 0; }
+.mhead .m { font-size: 10px; color: var(--ink2); }
+.badge { margin-left: auto; font: 700 10px var(--f-mono); padding: 3px 7px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); flex: none; }
+.box { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+.box .bt { font-weight: 700; font-size: 12px; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.f label { display: block; font-size: 9.5px; color: var(--ink2); font-weight: 600; margin-bottom: 3px; }
+.f div { background: var(--paper2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font-family: var(--f-mono); font-weight: 700; }
+.f.hl div { border: 2px solid var(--brand); }
+.btn { text-align: center; border-radius: 9px; padding: 8px; font-weight: 700; }
+.btn.p { background: var(--brand); color: var(--brand-ink); }
+.btn.s { background: var(--paper2); border: 1px solid var(--line); color: var(--out); }
+.toast { font-size: 11px; color: var(--ok); font-weight: 700; }
+
+/* stock meter */
+.meter { display: grid; gap: 8px; margin-top: 16px; }
+.mrow { display: grid; grid-template-columns: 74px minmax(0, 1fr) 42px; gap: 10px; align-items: center; font-size: 12px; }
+.mrow .lab { color: var(--ink2); font-weight: 600; }
+.track { height: 14px; background: var(--paper2); border-radius: 4px; overflow: hidden; display: flex; }
+.track i { display: block; height: 100%; }
+.mrow .v { font: 700 13px var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* expiry legend */
+.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.lg { border-radius: 10px; padding: 8px 10px; font-size: 12px; }
+.lg b { display: block; font-family: var(--f-mono); font-size: 12px; }
+.lg.g { background: var(--paper2); color: var(--ink2); }
+.lg.a { background: var(--low-soft); color: var(--low); }
+.lg.r { background: var(--out-soft); color: var(--out); }
+
+/* report mock */
+.rp { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs span { font-size: 10px; padding: 3px 8px; border-radius: 999px; background: var(--paper2); color: var(--ink2); font-weight: 600; }
+.tabs span.on { background: var(--ink); color: var(--bg); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.st { background: var(--paper2); border-radius: 8px; padding: 6px 8px; }
+.st small { display: block; font-size: 9px; font-weight: 700; color: var(--ink2); letter-spacing: .5px; text-transform: uppercase; }
+.st b { font: 700 18px var(--f-mono); }
+.line { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; border-bottom: 1px dashed var(--line); padding-bottom: 4px; }
+.line span:last-child { font-family: var(--f-mono); white-space: nowrap; }
+
+footer { font-size: 12px; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: space-between; }
+
+@media (max-width: 760px) {
+  .hero, .step { grid-template-columns: minmax(0, 1fr); }
+  .sticker { justify-self: start; }
+  .step { padding: 18px; }
+}
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width .2s linear; } }
+</style>
+
+<div id="app" data-lang="both">
+<div class="wrap">
+  <header>
+    <div class="top">
+      <div class="brand"><b>부산마트</b><small>Pusan Mart · SMEAG</small></div>
+      <div class="seg" role="group" aria-label="Language">
+        <button id="l-en" data-l="en" aria-pressed="false">English</button>
+        <button id="l-ko" data-l="ko" aria-pressed="false">한국어</button>
+        <button id="l-both" data-l="both" aria-pressed="true">EN + 한</button>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div>
+        <h1><span class="en">Stock in, expiry dates &amp; a daily report</span><span class="ko sub">입고 · 유통기한 · 일일 리포트</span></h1>
+        <p class="lede">
+          <span class="en">Every delivery you add is saved with its own expiry date. Expired items come off the shelf with one tap, and the day's report prints on paper.</span>
+          <span class="ko sub">입고할 때마다 그 묶음의 유통기한이 따로 저장돼요. 유통기한이 지난 상품은 한 번에 빼고, 하루 리포트는 종이로 인쇄할 수 있어요.</span>
+        </p>
+      </div>
+      <div class="sticker" aria-hidden="true">
+        <div class="k">EXP · 유통기한</div>
+        <div class="d">2027-01-10</div>
+        <div class="r">SEOUL MILK CHEESE · +24 in</div>
+      </div>
+    </div>
+
+    <div class="voice">
+      <button class="play" id="play" aria-label="Play narration"><svg viewBox="0 0 24 24" id="pi"><path d="M8 5v14l11-7z"/></svg></button>
+      <div class="vmeta">
+        <div class="t"><span class="en">Listen to this guide</span><span class="ko sub">음성 안내 듣기</span></div>
+        <div class="bar" id="bar"><i id="prog"></i></div>
+        <div class="s" id="vs">Voice: Hope · ElevenLabs</div>
+      </div>
+      <div class="vlang" role="group" aria-label="Narration language">
+        <button id="v-en" data-v="en" aria-pressed="true">EN</button>
+        <button id="v-ko" data-v="ko" aria-pressed="false">한국어</button>
+      </div>
+      <audio id="aud" preload="metadata"></audio>
+    </div>
+  </header>
+
+  <!-- STEP 1 -->
+  <section class="step">
+    <div>
+      <div class="num">STEP 01</div>
+      <h2><span class="en">Add stock with an expiry date</span><span class="ko sub">입고하면서 유통기한 등록</span></h2>
+      <ol class="how">
+        <li><div><span class="en">Open <span class="ui">Products</span> › <span class="ui">Edit</span>.</span><span class="ko sub"><span class="ui">Products</span> › <span class="ui">Edit</span> 화면을 열어요.</span></div></li>
+        <li><div><span class="en">Search or scan the barcode, then tap the product to open it.</span><span class="ko sub">상품을 검색하거나 바코드를 스캔한 뒤 상품을 눌러 열어요.</span></div></li>
+        <li><div><span class="en">Below <span class="ui">Barcode</span>, find the <span class="ui">📦 Add Stock</span> box.</span><span class="ko sub"><span class="ui">Barcode</span> 칸 아래 <span class="ui">📦 Add Stock (입고)</span> 박스를 찾아요.</span></div></li>
+        <li><div><span class="en">Type the quantity and pick the <b>Expiry Date</b>.</span><span class="ko sub">수량을 넣고 <b>Expiry Date(유통기한)</b>를 골라요.</span></div></li>
+        <li><div><span class="en">Tap <span class="ui">+ Add Stock</span>. Stock goes up and the date is saved with this batch.</span><span class="ko sub"><span class="ui">+ Add Stock</span>을 누르면 재고가 늘고 유통기한이 이 묶음과 함께 저장돼요.</span></div></li>
+      </ol>
+      <div class="meter" aria-label="Stock example">
+        <div class="mrow"><span class="lab"><span class="en">Before</span><span class="ko sub">전</span></span><div class="track"><i style="width:63%;background:var(--ink2)"></i></div><span class="v">41</span></div>
+        <div class="mrow"><span class="lab"><span class="en">+24 in</span><span class="ko sub">입고</span></span><div class="track"><i style="width:63%;background:var(--ink2)"></i><i style="width:37%;background:var(--brand)"></i></div><span class="v">65</span></div>
+      </div>
+      <p class="note"><span class="en">Each delivery keeps its own expiry date, so the same product can have several batches with different dates.</span><span class="ko sub">같은 상품이라도 들어온 묶음마다 유통기한이 다를 수 있어서, 입고할 때마다 따로 기록해요.</span></p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="mhead"><div class="ic">🧀</div><div style="min-width:0"><div class="n">SEOUL MILK CHEESE MASTER CHEDDAR (10PCS)</div><div class="m">₱50.00 · Stock 41 · 8801115691228</div></div><span class="badge">OK</span></div>
+      <div class="box">
+        <div class="bt">📦 Add Stock (입고)</div>
+        <div class="fields">
+          <div class="f"><label>Quantity to add</label><div>24</div></div>
+          <div class="f hl"><label>Expiry Date</label><div>2027-01-10 📅</div></div>
+        </div>
+        <div class="btn p">+ Add Stock</div>
+        <div class="toast">✅ Added 24 · Stock 41 → 65</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="step">
+    <div>
+      <div class="num">STEP 02</div>
+      <h2><span class="en">Remove expired stock</span><span class="ko sub">유통기한 지난 상품 폐기</span></h2>
+      <ol class="how">
+        <li><div><span class="en">Open the same product in <span class="ui">Edit</span>.</span><span class="ko sub">같은 방법으로 <span class="ui">Edit</span>에서 상품을 열어요.</span></div></li>
+        <li><div><span class="en">In <span class="ui">🗑 Expired Stock</span>, type how many expired.</span><span class="ko sub"><span class="ui">🗑 Expired Stock</span> 박스에 폐기할 수량을 넣어요.</span></div></li>
+        <li><div><span class="en">Tap <span class="ui">− Remove Expired</span> and confirm.</span><span class="ko sub"><span class="ui">− Remove Expired</span>를 누르고 확인해요.</span></div></li>
+      </ol>
+      <div class="legend">
+        <div class="lg g"><b>Exp 2027-01-10</b><span class="en">More than 7 days</span><span class="ko sub">7일 넘게 남음</span></div>
+        <div class="lg a"><b>Exp · 5d left</b><span class="en">7 days or less</span><span class="ko sub">7일 이내</span></div>
+        <div class="lg r"><b>Exp · expired</b><span class="en">Past the date</span><span class="ko sub">기한 지남</span></div>
+      </div>
+      <p class="note"><span class="en">You can't remove more than what's in stock. Every change records who did it, when, and the stock before and after.</span><span class="ko sub">현재 재고보다 많이 뺄 수는 없어요. 누가, 언제, 재고가 몇에서 몇으로 바뀌었는지 모두 기록돼요.</span></p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="box">
+        <div class="bt">🗑 Expired Stock (유통기한 폐기)</div>
+        <div class="fields">
+          <div class="f hl"><label>Quantity expired</label><div>3</div></div>
+          <div class="f"><label>Expiry Date</label><div>2026-11-20</div></div>
+        </div>
+        <div class="btn s">− Remove Expired</div>
+        <div class="toast">✅ Removed 3 expired · Stock 65 → 62</div>
+      </div>
+      <div class="box" style="gap:4px">
+        <div class="bt" style="font-size:11px">Recent stock in / expired</div>
+        <div style="font-size:10.5px;color:var(--ink2)">11-21 13:40 · <b style="color:var(--out)">−3 expired</b> · <b style="color:var(--out)">Exp 2026-11-20</b></div>
+        <div style="font-size:10.5px;color:var(--ink2)">11-21 09:12 · <b style="color:var(--brand)">+24 in</b> · Exp 2027-01-10 (50d left)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="step">
+    <div>
+      <div class="num">STEP 03</div>
+      <h2><span class="en">Check and print the daily report</span><span class="ko sub">일일 리포트 확인 · 인쇄</span></h2>
+      <ol class="how">
+        <li><div><span class="en">Open <span class="ui">Report</span> › <span class="ui">Stock In/Exp</span>. It opens on today.</span><span class="ko sub"><span class="ui">Report</span> › <span class="ui">Stock In/Exp</span> 탭을 열면 오늘 날짜로 열려요.</span></div></li>
+        <li><div><span class="en">See today's stock in, expired items, and what expires soon (3, 7, 14 or 30 days).</span><span class="ko sub">오늘 입고, 폐기, 곧 유통기한이 끝나는 상품(3·7·14·30일)을 확인해요.</span></div></li>
+        <li><div><span class="en">Tap <span class="ui">🖨 Print Daily Report</span>. It prints with Staff and Check By signature lines.</span><span class="ko sub"><span class="ui">🖨 Print Daily Report</span>를 누르면 Staff / Check By 서명란과 함께 인쇄돼요.</span></div></li>
+      </ol>
+      <p class="note"><span class="en">Change From / To to print a week or a month. You can also save it as PDF from the print dialog.</span><span class="ko sub">From / To 날짜를 바꾸면 일주일이나 한 달치도 인쇄돼요. 인쇄 창에서 PDF로 저장할 수도 있어요.</span></p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="rp">
+        <div class="tabs"><span>Summary</span><span>History</span><span class="on">Stock In/Exp</span><span>Pay List</span></div>
+        <div class="btn p" style="padding:6px">🖨 Print Daily Report</div>
+        <div class="stats">
+          <div class="st"><small>Stock In</small><b style="color:var(--brand)">+24</b></div>
+          <div class="st"><small>Expired</small><b style="color:var(--out)">−3</b></div>
+        </div>
+        <div class="line"><span>SEOUL MILK CHEESE</span><span>+24 · Exp 01-10</span></div>
+        <div class="line"><span>SEOUL MILK CHEESE</span><span style="color:var(--out)">−3 expired</span></div>
+        <div class="line" style="border:0"><span style="color:var(--low);font-weight:700">⏰ Expiring ≤ 7d</span><span style="color:var(--low)">2 items</span></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Pusan Mart PWA · Products › Edit · Report › Stock In/Exp</span>
+    <span>Narration: ElevenLabs “Hope – natural conversations”</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var SRC = { en: "__AUDIO_EN__", ko: "__AUDIO_KO__" };
+  var b = document.getElementById('app'), aud = document.getElementById('aud'), prog = document.getElementById('prog');
+  var vs = document.getElementById('vs'), pi = document.getElementById('pi'), play = document.getElementById('play');
+  var PLAY = '<path d="M8 5v14l11-7z"/>', PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+  var vlang = 'en';
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function setLang(l) {
+    b.setAttribute('data-lang', l);
+    document.querySelectorAll('[data-l]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.getAttribute('data-l') === l)); });
+    store('pm-guide-lang', l);
+    if (l !== 'both' && l !== vlang) setVoice(l);
+  }
+  function fmt(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  function label() { vs.textContent = 'Voice: Hope · ' + (vlang === 'en' ? 'English' : '한국어') + ' · ' + fmt(aud.currentTime) + ' / ' + fmt(aud.duration); }
+  function setVoice(l) {
+    vlang = l; aud.pause(); aud.src = SRC[l]; prog.style.width = '0';
+    document.querySelectorAll('[data-v]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.getAttribute('data-v') === l)); });
+    pi.innerHTML = PLAY; label();
+  }
+  document.querySelectorAll('[data-l]').forEach(function (x) { x.addEventListener('click', function () { setLang(x.getAttribute('data-l')); }); });
+  document.querySelectorAll('[data-v]').forEach(function (x) { x.addEventListener('click', function () { setVoice(x.getAttribute('data-v')); }); });
+  play.addEventListener('click', function () { if (aud.paused) aud.play().catch(function () {}); else aud.pause(); });
+  aud.addEventListener('play', function () { pi.innerHTML = PAUSE; play.setAttribute('aria-label', 'Pause narration'); });
+  aud.addEventListener('pause', function () { pi.innerHTML = PLAY; play.setAttribute('aria-label', 'Play narration'); });
+  aud.addEventListener('timeupdate', function () { if (aud.duration) prog.style.width = (aud.currentTime / aud.duration * 100) + '%'; label(); });
+  aud.addEventListener('loadedmetadata', label);
+  document.getElementById('bar').addEventListener('click', function (e) {
+    if (!aud.duration) return; var r = this.getBoundingClientRect(); aud.currentTime = (e.clientX - r.left) / r.width * aud.duration;
+  });
+  setVoice('en');
+  var saved = load('pm-guide-lang'); setLang(saved === 'en' || saved === 'ko' || saved === 'both' ? saved : 'both');
+})();
+</script>
+</div>

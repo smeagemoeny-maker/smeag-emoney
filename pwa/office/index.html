@@ -30,9 +30,13 @@
       <div class="banner">
         <svg id="logo" class="logo" width="260" height="80" viewBox="0 0 260 80" aria-label="SMEAG GLOBAL EDUCATION"></svg>
         <!-- signed-in staff + logout (filled by applySession in office.js) -->
-        <div class="userbox" id="userbox" hidden>
-          <span class="ub-who"><b id="ubId"></b><span id="ubRole"></span></span>
-          <button type="button" class="ub-btn" id="btnLogout">LOGOUT</button>
+        <div class="banner-right">
+          <!-- UI language (i18n.js); stays usable while the login dialog is open -->
+          <label class="langsel" title="Language"><span class="langsel-ico" aria-hidden="true">🌐</span><select id="langSel" data-noi18n aria-label="Language"></select></label>
+          <div class="userbox" id="userbox" hidden>
+            <span class="ub-who"><b id="ubId"></b><span id="ubRole"></span></span>
+            <button type="button" class="ub-btn" id="btnLogout">LOGOUT</button>
+          </div>
         </div>
       </div>
 
@@ -109,6 +113,8 @@
     </div>
   </div>
 </div>
+<script src="i18n-dict.js"></script>
+<script src="i18n.js"></script>
 <script>window.OfficeTabs = window.OfficeTabs || {};</script>
 <script src="../src/nfcService.js"></script>
 <script src="tabs/grid.js"></script>
@@ -125,6 +131,7 @@
 <script src="tabs/payment-inquiry.js"></script>
 <script src="tabs/purchases.js"></script>
 <script src="tabs/transdata.js"></script>
+<script src="tabs/sme-refund.js"></script>
 <script src="tabs/activity-log.js"></script>
 <script src="office.js"></script>
 </body>

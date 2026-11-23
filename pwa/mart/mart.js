@@ -136,6 +136,14 @@
     createProduct: function (body) { return apiCall('POST', '/api/products', body).then(function (r) { return r.product; }); },
     updateProduct: function (id, body) { return apiCall('PATCH', '/api/products/' + id, body).then(function (r) { return r.product; }); },
     deleteProduct: function (id) { return apiCall('DELETE', '/api/products/' + id); },
+    // Add Stock (kind 'in', optional expiry date) / remove expired stock (kind 'expired'). Returns { move, product }.
+    stockMove: function (id, body) { return apiCall('POST', '/api/products/' + id + '/stock-moves', body); },
+    fetchStockMoves: function (campus, s, e, productId) {
+      return apiCall('GET', '/api/stock-moves' + q({ from: s, to: e, campus: campus, productId: productId })).then(function (r) { return (r && r.moves) || []; });
+    },
+    fetchExpiring: function (campus, until, since) {
+      return apiCall('GET', '/api/stock-moves/expiring' + q({ until: until, since: since, campus: campus })).then(function (r) { return (r && r.moves) || []; });
+    },
     fetchHistory: function (campus, s, e) {
       return apiCall('GET', '/api/sales' + q({ from: s, to: e, campus: campus, store: storeParam(campus) })).then(function (r) { return (r && r.sales) || []; });
     },
@@ -392,14 +400,14 @@
     { route: 'pusanpay', label: 'Pusan Pay', icon: 'Payments' }
   ];
   // History and Pay List live inside the Report tab (chips at the top switch between them).
-  var REPORT_GROUP = ['report', 'history', 'paylist'];
+  var REPORT_GROUP = ['report', 'history', 'stock', 'paylist'];
   // Edit and Register live inside the Products tab (same chip switch as Report).
   var PRODUCT_GROUP = ['modify', 'register'];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'paylist', 'receipt']);
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'stock', 'paylist', 'receipt']);
   // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
   function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
   function routeAllowed(r) {
-    if (REPORT_ONLY && REPORT_GROUP.indexOf(r) < 0) return false;
+    if (REPORT_ONLY && (REPORT_GROUP.indexOf(r) < 0 || r === 'stock')) return false;
     return (r !== 'pusanpay' && r !== 'paylist') || canPusanPay();
   }
   function navSelected(t) {
@@ -417,7 +425,7 @@
   function reportTabs() {
     if (REPORT_ONLY) return ''; // the nav bar already switches Summary / History / Pay List
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['report', 'Summary'], ['history', 'History'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
+    [['report', 'Summary'], ['history', 'History'], ['stock', 'Stock In/Exp'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
       }) + '">' + c[1] + '</div>';
@@ -538,6 +546,9 @@
       case 'report':
         S = { campus: campus, start: ymd(today), end: ymd(today), report: null };
         runReport(); break;
+      case 'stock':
+        S = { campus: campus, start: ymd(today), end: ymd(today), moves: null, expiring: [], expDays: 7 };
+        loadProducts(S.campus); runStock(); break;
       case 'buyer':
         S = {}; break;
       case 'pusanpay':
@@ -1083,7 +1094,11 @@
       h += '<div class="mitem ' + (isSel ? 'sel' : st.toLowerCase()) + '">' +
         '<div class="mhead" data-act="' + act(function () {
           if (isSel) S.selected = null;
-          else { S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.cost = p.cost == null ? '' : String(p.cost); S.barcode = p.barcode || ''; S.message = null; }
+          else {
+            S.selected = p.id; S.stock = String(p.stock); S.minStock = String(p.minStock); S.price = String(p.payment); S.cost = p.cost == null ? '' : String(p.cost); S.barcode = p.barcode || ''; S.message = null;
+            S.inQty = ''; S.inExp = ''; S.outQty = ''; S.outExp = ''; S.moveMsg = null; S.moving = false; S.pMoves = null;
+            loadProductMoves(p);
+          }
         }) + '">' + thumb(p, 40) + '<div class="info"><div style="font-size:12.5px;font-weight:700">' + esc(p.sMenu || '-') + '</div>' +
         '<div style="font-size:10.5px;color:var(--ink2)">₱' + money(p.payment) + (p.cost != null ? ' (cost ₱' + money(p.cost) + ')' : '') + ' · Stock ' + p.stock + ' · Threshold ' + p.minStock + (p.barcode ? ' · ' + esc(p.barcode) : '') + '</div></div>' + stockBadge(st) + '</div>';
       if (isSel) {
@@ -1096,7 +1111,8 @@
             labeledField('m_price', 'Selling Price (PHP)', S.price, function (v) { S.price = v; }, '', 'decimal'),
             labeledField('m_cost', 'Cost Price (PHP)', S.cost, function (v) { S.cost = v; }, 'Not set', 'decimal')
           ) + marginLine(S.price, S.cost) +
-          (isPusan(S.campus) ? labeledField('m_barcode', 'Barcode', S.barcode, function (v) { S.barcode = v; }, 'Scan or type') : '');
+          (isPusan(S.campus) ? labeledField('m_barcode', 'Barcode', S.barcode, function (v) { S.barcode = v; }, 'Scan or type') : '') +
+          stockMoveBoxes(p);
         if (S.message) h += txt(S.message, 'color:var(--brand);font-size:12px;padding-bottom:8px');
         h += primaryBtn(S.saving ? 'Saving...' : 'Save Changes', function () { saveModify(p); }, S.saving) + spacer(8) +
           '<button class="btn-text" style="color:var(--out)" data-act="' + act(function () { S.pendingDelete = p; }) + '">Delete Product</button></div>';
@@ -1168,11 +1184,27 @@
       if (used) { S.message = 'Barcode ' + nb + ' is already used by "' + (used.sMenu || '-') + '".'; return; }
       changes.barcode = nb;
     }
+    // A stock increase typed here is recorded as a Stock In move (so it shows in Report › Stock In/Exp),
+    // not a silent overwrite. Decreases stay a plain adjustment.
+    var added = ns - p.stock, inExp = '';
+    if (added > 0) {
+      inExp = window.prompt('Stock ' + p.stock + ' → ' + ns + ': +' + added + ' will be recorded as Stock In.\n' +
+        'Expiry date (YYYY-MM-DD), or leave blank:', '');
+      if (inExp === null) return;
+      inExp = inExp.trim();
+      if (inExp && !/^\d{4}-\d{2}-\d{2}$/.test(inExp)) { S.message = 'Expiry date must be YYYY-MM-DD.'; render(); return; }
+      delete changes.stock;
+    }
     s.saving = true; s.message = null;
-    repo.updateProduct(p.id, changes).then(function (row) {
+    var first = added > 0
+      ? repo.stockMove(p.id, { kind: 'in', quantity: added, expiryDate: inExp || undefined, note: 'Products › Edit' })
+      : Promise.resolve(null);
+    first.then(function () { return repo.updateProduct(p.id, changes); }).then(function (row) {
       var np2 = normProduct(row);
       vm.products = vm.products.map(function (x) { return x.id === np2.id ? np2 : x; });
-      s.message = 'Changes saved.';
+      s.stock = String(np2.stock);
+      s.message = added > 0 ? 'Changes saved · +' + added + ' recorded as Stock In.' : 'Changes saved.';
+      if (S === s) loadProductMoves(np2);
     }, function (e) { s.message = 'Failed to save changes: ' + e.message; })
       .then(function () { s.saving = false; render(); });
   }
@@ -1184,6 +1216,162 @@
       s.message = 'Product deleted.';
       if (S === s) loadProducts(s.campus);
     }, function (e) { s.message = 'Failed to delete product: ' + e.message; render(); });
+  }
+
+  // ---------------------------------------------------------------- Add Stock / Expired (pusanmart_stock_moves)
+  function addDays(d, n) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() + n); return x; }
+  function loadProductMoves(p) {
+    var s = S;
+    repo.fetchStockMoves(s.campus, ymd(addDays(new Date(), -180)), ymd(new Date()), p.id).then(function (rows) {
+      if (S === s && s.selected === p.id) { s.pMoves = rows.slice(-5).reverse(); render(); }
+    }, function () { if (S === s) { s.pMoves = []; render(); } });
+  }
+  function expiryTag(date) {
+    if (!date) return '';
+    var days = Math.round((new Date(date + 'T00:00:00') - new Date(ymd(new Date()) + 'T00:00:00')) / 86400000);
+    var color = days < 0 ? 'var(--out)' : days <= 7 ? 'var(--low)' : 'var(--ink2)';
+    var label = days < 0 ? 'expired ' + (-days) + 'd ago' : days === 0 ? 'expires today' : days + 'd left';
+    return '<span style="color:' + color + ';font-weight:700">Exp ' + esc(date) + ' (' + label + ')</span>';
+  }
+  function stockMoveBoxes(p) {
+    var box = 'border:1px solid var(--border);border-radius:12px;padding:10px;margin:4px 0 10px;background:var(--surface2)';
+    var h = '<div style="' + box + '">' +
+      '<div style="font-size:12.5px;font-weight:800;padding-bottom:6px">📦 Add Stock (입고)</div>' +
+      half(labeledField('m_inqty', 'Quantity to add', S.inQty, function (v) { S.inQty = v; }, 'e.g. 24', 'numeric'),
+        dateField('Expiry Date (optional)', S.inExp, function (v) { S.inExp = v; })) +
+      (S.inExp ? '<button class="btn-text" style="font-size:11px;padding:0 0 6px" data-act="' + act(function () { S.inExp = ''; }) + '">Clear expiry date</button>' : '') +
+      primaryBtn(S.moving === 'in' ? 'Saving...' : '+ Add Stock', function () { doStockMove(p, 'in'); }, !!S.moving, ' style="height:40px"') +
+      '</div>' +
+      '<div style="' + box + '">' +
+      '<div style="font-size:12.5px;font-weight:800;padding-bottom:6px">🗑 Expired Stock (유통기한 폐기)</div>' +
+      half(labeledField('m_outqty', 'Quantity expired', S.outQty, function (v) { S.outQty = v; }, 'e.g. 3', 'numeric'),
+        dateField('Expiry Date (optional)', S.outExp, function (v) { S.outExp = v; })) +
+      secondaryBtn(S.moving === 'expired' ? 'Saving...' : '− Remove Expired', function () { doStockMove(p, 'expired'); }, !!S.moving, ' style="height:40px;color:var(--out)"') +
+      '</div>';
+    if (S.moveMsg) h += txt(S.moveMsg.text, 'font-size:12px;padding-bottom:8px;color:' + (S.moveMsg.ok ? 'var(--brand)' : 'var(--out)'));
+    if (S.pMoves && S.pMoves.length) {
+      h += '<div style="font-size:11px;color:var(--ink2);padding-bottom:8px"><div style="font-weight:800;padding-bottom:2px">Recent stock in / expired</div>';
+      S.pMoves.forEach(function (m) {
+        h += '<div>' + esc(m.date.slice(0, 16)) + ' · ' + (m.kind === 'in' ? '<b style="color:var(--brand)">+' + m.quantity + ' in</b>' : '<b style="color:var(--out)">−' + m.quantity + ' expired</b>') +
+          (m.expiryDate ? ' · ' + expiryTag(m.expiryDate) : '') + (m.staff ? ' · ' + esc(m.staff) : '') + '</div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+  function doStockMove(p, kind) {
+    var qty = parseIntStrict(kind === 'in' ? S.inQty : S.outQty);
+    if (qty == null || qty <= 0) { S.moveMsg = { ok: false, text: 'Please enter a quantity of 1 or more.' }; return; }
+    if (kind === 'expired' && qty > p.stock) { S.moveMsg = { ok: false, text: 'Only ' + p.stock + ' in stock.' }; return; }
+    var exp = kind === 'in' ? S.inExp : S.outExp;
+    if (kind === 'expired' && !window.confirm('Remove ' + qty + ' × "' + (p.sMenu || '') + '" as expired?\nStock ' + p.stock + ' → ' + (p.stock - qty))) return;
+    var s = S;
+    s.moving = kind; s.moveMsg = null;
+    repo.stockMove(p.id, { kind: kind, quantity: qty, expiryDate: exp || undefined }).then(function (r) {
+      var np2 = normProduct(r.product);
+      vm.products = vm.products.map(function (x) { return x.id === np2.id ? np2 : x; });
+      s.stock = String(np2.stock);
+      if (kind === 'in') { s.inQty = ''; s.inExp = ''; } else { s.outQty = ''; s.outExp = ''; }
+      s.moveMsg = { ok: true, text: (kind === 'in' ? '✅ Added ' + qty : '✅ Removed ' + qty + ' expired') + ' · Stock ' + r.move.stockBefore + ' → ' + r.move.stockAfter };
+      toast(s.moveMsg.text, 2500);
+      if (S === s) loadProductMoves(np2);
+    }, function (e) { s.moveMsg = { ok: false, text: 'Failed: ' + e.message }; })
+      .then(function () { s.moving = false; render(); });
+  }
+
+  function runStock() {
+    var s = S;
+    s.error = null;
+    var until = ymd(addDays(new Date(), s.expDays));
+    var both = Promise.all([repo.fetchStockMoves(s.campus, s.start, s.end), repo.fetchExpiring(s.campus, until, ymd(addDays(new Date(), -7)))]);
+    screenLoad(both, function (r) { s.moves = r[0]; s.expiring = r[1]; },
+      function (e) { s.moves = []; s.expiring = []; s.error = 'Failed to load stock report: ' + e.message; });
+  }
+  // Totals by product for one kind ('in' / 'expired').
+  function stockGroups(moves, kind) {
+    var map = {}, list = [];
+    moves.forEach(function (m) {
+      if (m.kind !== kind) return;
+      var k = m.productId;
+      if (!map[k]) { map[k] = { name: m.productName || '-', category: m.category || '', barcode: m.barcode || '', qty: 0, value: 0, uncosted: false, lines: [] }; list.push(map[k]); }
+      var g = map[k];
+      g.qty += m.quantity;
+      if (m.unitCost == null) g.uncosted = true; else g.value += m.unitCost * m.quantity;
+      g.lines.push(m);
+    });
+    return list;
+  }
+  function stockScreen() {
+    var moves = S.moves || [];
+    var ins = moves.filter(function (m) { return m.kind === 'in'; }), outs = moves.filter(function (m) { return m.kind === 'expired'; });
+    var sum = function (l) { return l.reduce(function (a, m) { return a + m.quantity; }, 0); };
+    var val = function (l) { return l.reduce(function (a, m) { return a + (m.unitCost || 0) * m.quantity; }, 0); };
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Stock In / Expired') + reportTabs() +
+      '<div class="filterbar">' + pillDropdown('st_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; loadProducts(v); runStock(); }, '📍') +
+      pillDropdown('st_exp', 'Expiring ≤ ' + S.expDays + 'd', ['3', '7', '14', '30'].map(function (d) { return 'Expiring ≤ ' + d + 'd'; }),
+        function (v) { S.expDays = parseInt(v.replace(/\D/g, ''), 10) || 7; runStock(); }, '⏰') + '</div>' +
+      rangeBar(runStock) + errorLine();
+    if (S.moves == null) return h + loadingOr('', 'font-size:12px;color:var(--ink3)') + '</div></div>';
+    h += primaryBtn('🖨 Print Daily Report', function () { printHtml(stockReportHtml(S.start, S.end)); }, false, ' style="height:38px"') + spacer(10) +
+      '<div class="row" style="gap:8px">' +
+      '<div class="stat"><div class="lab">Stock In</div><div class="val" style="color:var(--brand)">+' + comma(sum(ins)) + '</div><div class="lab">' + ins.length + ' entries · ₱' + comma(val(ins), 2) + '</div></div>' +
+      '<div class="stat"><div class="lab">Expired</div><div class="val" style="color:var(--out)">−' + comma(sum(outs)) + '</div><div class="lab">' + outs.length + ' entries · ₱' + comma(val(outs), 2) + '</div></div>' +
+      '</div>' + spacer(14);
+    var section = function (label, kind) {
+      var groups = stockGroups(moves, kind);
+      var out = eyebrow(label + ' (' + groups.length + ' items)') + spacer(6);
+      if (!groups.length) return out + txt(kind === 'in' ? 'No stock added in this period.' : 'No expired stock in this period.', 'font-size:12px;color:var(--ink3);padding-bottom:10px');
+      groups.forEach(function (g) {
+        out += '<div class="card histrow"><div class="sb"><b>' + esc(g.name) + '</b><b style="color:' + (kind === 'in' ? 'var(--brand)' : 'var(--out)') + '">' + (kind === 'in' ? '+' : '−') + g.qty + '</b></div>';
+        g.lines.forEach(function (m) {
+          out += '<div class="sb sub"><span>' + esc(m.date.slice(5, 16)) + ' · ' + (kind === 'in' ? '+' : '−') + m.quantity + (m.staff ? ' · ' + esc(m.staff) : '') +
+            ' · stock ' + m.stockBefore + '→' + m.stockAfter + '</span><span>' + (m.expiryDate ? expiryTag(m.expiryDate) : '') + '</span></div>';
+        });
+        out += '</div>';
+      });
+      return out + spacer(10);
+    };
+    h += section('Stock In', 'in') + section('Expired', 'expired');
+    h += eyebrow('Expiring within ' + S.expDays + ' days (stock-in records)') + spacer(6);
+    if (!S.expiring.length) h += txt('Nothing expiring soon.', 'font-size:12px;color:var(--ink3)');
+    S.expiring.forEach(function (m) {
+      var prod = vm.products.filter(function (x) { return x.id === m.productId; })[0];
+      h += '<div class="card histrow"><div class="sb"><b>' + esc(m.productName || '-') + '</b><span>' + expiryTag(m.expiryDate) + '</span></div>' +
+        '<div class="sb sub"><span>In ' + esc(m.date.slice(0, 10)) + ' · +' + m.quantity + '</span><span>' + (prod ? 'Now in stock: ' + prod.stock : '') + '</span></div></div>';
+    });
+    return h + spacer(24) + '</div></div>';
+  }
+  function stockReportHtml(from, to) {
+    var moves = S.moves || [], now = new Date();
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var table = function (kind) {
+      var rows = moves.filter(function (m) { return m.kind === kind; });
+      var out = '<div class="rsec">=== ' + (kind === 'in' ? 'STOCK IN (입고)' : 'EXPIRED (폐기)') + ' — ' + rows.length + ' entries ===</div>';
+      if (!rows.length) return out + '<div class="rsm">None.</div>';
+      var tq = 0, tv = 0;
+      out += '<table class="rtbl"><thead><tr><th>Time</th><th>Product</th><th class="n">Qty</th><th>Expiry</th><th class="n">Stock</th><th class="n">Value</th><th>Staff</th></tr></thead><tbody>';
+      rows.forEach(function (m) {
+        var v = m.unitCost == null ? null : m.unitCost * m.quantity;
+        tq += m.quantity; tv += v || 0;
+        out += '<tr><td>' + esc(from === to ? m.date.slice(11, 16) : m.date.slice(5, 16)) + '</td><td>' + esc(m.productName || '-') + (m.note ? '<br><span class="rsub">' + esc(m.note) + '</span>' : '') + '</td>' +
+          '<td class="n">' + (kind === 'in' ? '+' : '−') + m.quantity + '</td><td>' + esc(m.expiryDate || '') + '</td>' +
+          '<td class="n">' + m.stockBefore + '→' + m.stockAfter + '</td><td class="n">' + (v == null ? '-' : peso(v)) + '</td><td>' + esc(m.staff || '') + '</td></tr>';
+      });
+      return out + '</tbody><tfoot><tr><td></td><td>Total</td><td class="n">' + (kind === 'in' ? '+' : '−') + tq + '</td><td></td><td></td><td class="n">' + peso(tv) + '</td><td></td></tr></tfoot></table>';
+    };
+    var h = '<div class="rpt rpt-sales">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Stock In / Expired Report</div><div class="rsub">' + esc(S.campus) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
+      table('in') + table('expired');
+    if (S.expiring.length) {
+      h += '<div class="rsec">=== EXPIRING WITHIN ' + S.expDays + ' DAYS ===</div><table class="rtbl"><thead><tr><th>Product</th><th>Stock-in date</th><th class="n">Qty in</th><th>Expiry</th></tr></thead><tbody>';
+      S.expiring.forEach(function (m) {
+        h += '<tr><td>' + esc(m.productName || '-') + '</td><td>' + esc(m.date.slice(0, 10)) + '</td><td class="n">' + m.quantity + '</td><td>' + esc(m.expiryDate) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+    return h + '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div>' +
+      '<div class="rsign"><div><span></span>Staff</div><div><span></span>Check By</div></div></div>';
   }
 
   function runHistory() {
@@ -2039,7 +2227,7 @@
     if (!session.manager) {
       body = '<div class="content">' + loginScreen() + '</div>';
     } else {
-      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen,
+      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen, stock: stockScreen,
         buyer: buyerScreen, pusanpay: pusanPayScreen, paylist: payListScreen, receipt: receiptScreen }[route] || salesScreen;
       body = '<div class="content">' + fn() + '</div>' + navBar();
     }

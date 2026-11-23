@@ -170,6 +170,36 @@ const routes = [
     if (body.campus !== undefined) assertCanManageStore(access, body.campus);
     return { product: await backoffice.updateProduct(match[1], body) };
   }],
+  ["POST", /^\/api\/products\/(\d+)\/stock-moves$/, async ({ req, match, body }) => {
+    const { session, access } = verifyRequest(req);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    const current = await backoffice.getProduct(match[1]);
+    assertCanManageStore(access, current.campus);
+    return await supabaseBackoffice.createStockMove(match[1], body, session.loginId);
+  }],
+  ["POST", /^\/api\/stock-out$/, async ({ req, body }) => {
+    const { session, access } = verifyRequest(req);
+    if (!body?.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, body.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock Out needs DB_BACKEND=supabase.");
+    return await supabaseBackoffice.createStockOut(body, session.loginId);
+  }],
+  ["GET", /^\/api\/stock-moves$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    const filter = query(url, "from", "to", "campus", "productId");
+    if (!filter.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, filter.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    return { moves: await supabaseBackoffice.listStockMoves(filter) };
+  }],
+  ["GET", /^\/api\/stock-moves\/expiring$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    const filter = query(url, "until", "since", "campus");
+    if (!filter.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, filter.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
+    return { moves: await supabaseBackoffice.listExpiring(filter) };
+  }],
   ["DELETE", /^\/api\/products\/(\d+)$/, async ({ req, match }) => {
     const { access } = verifyRequest(req);
     liveOnly();

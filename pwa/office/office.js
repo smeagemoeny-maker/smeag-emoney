@@ -10,7 +10,7 @@
   var TAB_NAMES = [
     'REGISTRATION', 'INFORMATION', 'MODIFY INFO', 'MENU LIST', 'OFFICE MENU',
     'LIST MENU', 'Graduate', 'Default', 'REPORT', 'RECHARGE/CASHOUT',
-    'IDCARD', 'PAYMENT INQUIRY', 'PURCHASES', 'TransData', 'LOG'
+    'IDCARD', 'PAYMENT INQUIRY', 'PURCHASES', 'TransData', 'SME REFUND', 'LOG'
   ];
   // Tabs are 125px like the WinForms strip, narrowed when more of them have to fit the 1706px window.
   var TAB_W = Math.min(125, Math.floor((1706 - 6) / TAB_NAMES.length));
