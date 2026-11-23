@@ -37,6 +37,7 @@ import * as office from "./office.mjs";
 import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.mjs";
 import * as campus from "./campus.mjs";
 import * as campusBot from "./campusBot.mjs";
+import * as smeRefund from "./smeadminRefund.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -281,6 +282,15 @@ const routes = [
   officeRoute("GET", /^\/api\/office\/report\/detail$/, ({ url }) => office.reportDetail(query(url, "campus", "from", "to", "category"))),
   // REPORT numbers are read-only: editing/saving corrections is disabled.
   officeRoute("PUT", /^\/api\/office\/report$/, () => { throw httpError(403, "The report cannot be edited."); }),
+  // ----- SME REFUND tab: smeadmin refund requests -> e-money refund (smeadminRefund.mjs) -----
+  officeRoute("GET", /^\/api\/office\/sme-refunds$/, ({ url, access }) => smeRefund.list(query(url, "status", "days"), access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/sync$/, ({ session }) => smeRefund.sync(session.loginId)),
+  officeRoute("GET", /^\/api\/office\/sme-refunds\/by-passport$/, ({ url, access }) =>
+    smeRefund.findByPassport(url.searchParams.get("passport"), access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/(\d+)\/link$/, ({ match, body, session, access }) =>
+    smeRefund.linkCard(match[1], body, session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/sme-refunds\/(\d+)\/pay$/, ({ match, body, session, access }) =>
+    smeRefund.pay(match[1], body, session.loginId, access)),
   officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
     activityLogScope(session);
     return listActivity(activityFilter(url));
