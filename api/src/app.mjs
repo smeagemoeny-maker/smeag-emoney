@@ -38,6 +38,7 @@ import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.
 import * as campus from "./campus.mjs";
 import * as campusBot from "./campusBot.mjs";
 import * as smeRefund from "./smeadminRefund.mjs";
+import * as localFee from "./localFee.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -291,6 +292,19 @@ const routes = [
     smeRefund.linkCard(match[1], body, session.loginId, access)),
   officeRoute("POST", /^\/api\/office\/sme-refunds\/(\d+)\/pay$/, ({ match, body, session, access }) =>
     smeRefund.pay(match[1], body, session.loginId, access)),
+  // ----- LOCAL FEE (/simulator): fee sheets + payments received (localFee.mjs) -----
+  officeRoute("GET", /^\/api\/office\/local-fees$/, ({ url, access }) =>
+    localFee.list(query(url, "search", "status", "personId", "campus"), access)),
+  officeRoute("POST", /^\/api\/office\/local-fees$/, ({ body, session, access }) => localFee.create(body, session.loginId, access)),
+  officeRoute("GET", /^\/api\/office\/local-fees\/(\d+)$/, ({ match, access }) => localFee.get(match[1], access)),
+  officeRoute("PUT", /^\/api\/office\/local-fees\/(\d+)$/, ({ match, body, session, access }) =>
+    localFee.update(match[1], body, session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/local-fees\/(\d+)\/payments$/, ({ match, body, session, access }) =>
+    localFee.pay(match[1], body, session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/local-fees\/(\d+)\/cancel$/, ({ match, session, access }) =>
+    localFee.cancel(match[1], session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/local-fee-payments\/(\d+)\/void$/, ({ match, body, session, access }) =>
+    localFee.voidPayment(match[1], body, session.loginId, access)),
   officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
     activityLogScope(session);
     return listActivity(activityFilter(url));

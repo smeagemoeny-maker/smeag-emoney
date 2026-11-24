@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Local Fee 시뮬레이터</title>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2330;--sub:#667085;--line:#e3e6eb;--acc:#e8702a;--ok:#1a7f45;--bad:#c62828;--warn:#9a6700;--warnbg:#fff6dc;--chip:#f0f2f5}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1c2027;--ink:#e7e9ee;--sub:#98a1b0;--line:#2c323c;--acc:#ff8c45;--ok:#4cc27e;--bad:#ff6b6b;--warn:#f0c04a;--warnbg:#2c2614;--chip:#262b33}}
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2330;--sub:#667085;--line:#e3e6eb;--acc:#e8702a;--ok:#1a7f45;--bad:#c62828;--warn:#9a6700;--warnbg:#fff6dc;--chip:#f0f2f5;--sel:#fff1e7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1c2027;--ink:#e7e9ee;--sub:#98a1b0;--line:#2c323c;--acc:#ff8c45;--ok:#4cc27e;--bad:#ff6b6b;--warn:#f0c04a;--warnbg:#2c2614;--chip:#262b33;--sel:#33261c}}
+:root[data-theme="dark"]{--bg:#14171c;--card:#1c2027;--ink:#e7e9ee;--sub:#98a1b0;--line:#2c323c;--acc:#ff8c45;--ok:#4cc27e;--bad:#ff6b6b;--warn:#f0c04a;--warnbg:#2c2614;--chip:#262b33;--sel:#33261c}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
@@ -18,8 +19,13 @@ h1{font-size:20px;margin:0 0 4px}
 .card h2{font-size:15px;margin:0 0 12px}
 label{display:block;font-weight:600;margin:12px 0 4px;font-size:13px}
 label:first-child{margin-top:0}
-select,input[type=number],input[type=date]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px}
-.row{display:flex;gap:8px;align-items:center}
+select,input[type=number],input[type=date],input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px}
+button{padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:14px;cursor:pointer;white-space:nowrap}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.sm{padding:3px 10px;font-size:12px}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .chk{display:flex;gap:8px;align-items:center;font-weight:500;margin-top:10px}
 .hint{color:var(--sub);font-size:12px;margin-top:4px}
 table{width:100%;border-collapse:collapse}
@@ -27,20 +33,39 @@ th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
 th{font-size:12px;color:var(--sub);font-weight:600}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr.total td{font-weight:700;font-size:16px;border-top:2px solid var(--ink);border-bottom:none}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:var(--sel)}
+tr.void td{text-decoration:line-through;color:var(--sub)}
 .total-big{font-size:28px;font-weight:800;color:var(--acc)}
 .muted{color:var(--sub);font-size:12px}
 .ok{color:var(--ok);font-weight:700}.bad{color:var(--bad);font-weight:700}
-.flag{display:inline-block;background:var(--warnbg);color:var(--warn);border-radius:6px;padding:0 6px;font-size11px;font-size:11px;font-weight:600;margin-left:4px}
+.flag{display:inline-block;background:var(--warnbg);color:var(--warn);border-radius:6px;padding:0 6px;font-size:11px;font-weight:600;margin-left:4px}
 .warnbox{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:13px}
 .warnbox ul{margin:4px 0 0;padding-left:18px}
 .scroll{overflow-x:auto}
 .chip{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 8px;font-size:12px;margin:2px 2px 0 0}
+.st{display:inline-block;border-radius:999px;padding:0 8px;font-size:12px;font-weight:700}
+.st-unpaid{background:#fde8e8;color:#b42318}.st-partial{background:var(--warnbg);color:var(--warn)}
+.st-paid{background:#e3f4ea;color:#1a7f45}.st-overpaid{background:#ede7fb;color:#5b3cc4}.st-cancelled{background:var(--chip);color:var(--sub)}
+.msg{margin-top:8px;font-size:13px}
+.msg.err{color:var(--bad)}.msg.okm{color:var(--ok)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.payform{display:grid;grid-template-columns:1fr 110px;gap:6px;margin-top:6px}
+.payform input,.payform select{padding:5px 8px;font-size:13px}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>SMEAG Local Fee 시뮬레이터</h1>
-  <p class="sub">이민국 비자 연장표 + SMEAG Local Fee 표 기준 계산 검증용. 숫자는 왼쪽 요금표에서 바로 수정 가능.</p>
+  <div class="bar">
+    <div>
+      <h1>SMEAG Local Fee 시뮬레이터</h1>
+      <p class="sub" style="margin:0">이민국 비자 연장표 + SMEAG Local Fee 표로 계산하고, 학생별 Fee 시트와 수납을 기록합니다.</p>
+    </div>
+    <div id="authBox"></div>
+  </div>
 
   <div class="grid">
     <div>
@@ -52,22 +77,14 @@ tr.total td{font-weight:700;font-size:16px;border-top:2px solid var(--ink);borde
         <select id="entry"></select>
         <div class="hint" id="entryNote"></div>
         <label>등록 주수</label>
-        <input type="number" id="weeks" min="1" max="60" value="12">
+        <input type="number" id="weeks" min="1" max="104" value="12">
         <label>추가 체류일 (조기 도착 · 늦은 출국)</label>
-        <input type="number" id="extraDays" min="0" max="60" value="0">
+        <input type="number" id="extraDays" min="0" max="120" value="0">
         <div class="hint">비자는 실제 체류일수로 판단 → 8주라도 체류 60일 이상이면 2차 연장 + Visa I-Card 발생</div>
-        <label>입국일</label>
+        <label>입국일 (선택 · 연장 일정 표시용)</label>
         <input type="date" id="arrival">
-        <div class="hint">입력하면 비자 연장 날짜·비용을 실제 날짜 기준으로 표시. 연장 등록 학생은 필수.</div>
-        <label class="chk" id="pickupRow"><input type="checkbox" id="pickup" checked> 공항 픽업 (매니저/드라이버가 픽업한 경우)</label>
+        <label class="chk"><input type="checkbox" id="pickup" checked> 공항 픽업 (매니저/드라이버가 픽업한 경우)</label>
         <label class="chk"><input type="checkbox" id="sspAgain"> 연장 등록 학생 – SSP 재납부</label>
-        <div id="extBox" style="display:none">
-          <label>연장 등록 시작일</label>
-          <input type="date" id="extStart">
-          <div class="hint">위 "등록 주수"는 연장하는 주수. 입국일~연장 시작일 사이에 이미 낸 비자 연장·I-Card는 제외하고, 연장 기간 중 새로 필요한 비자 비용만 계산. SSP I-Card·Deposit·픽업 제외.</div>
-        </div>
-        <label class="chk"><input type="checkbox" id="outsider"> Outsider (외부 숙소 학생)</label>
-        <div class="hint" id="outHint" style="display:none">Outsider: 비자 · SSP · SSP I-Card · Visa I-Card · Deposit(₱200) · Maintenance · Meal(주당 ₱2,500)만 청구. 전기·수도, 공항 픽업 제외.</div>
       </div>
 
       <div class="card">
@@ -78,6 +95,61 @@ tr.total td{font-weight:700;font-size:16px;border-top:2px solid var(--ink);borde
     </div>
 
     <div>
+      <!-- ===== 학생 · 수납 (office login) ===== -->
+      <div class="card" id="ledgerCard">
+        <h2>학생 Fee 시트 · 수납</h2>
+        <div id="needLogin" class="muted">수납 기록은 Office 계정으로 로그인해야 합니다 (오른쪽 위 LOGIN).</div>
+        <div id="ledger" hidden>
+          <div class="tabs">
+            <button data-view="student" class="on">학생 찾기</button>
+            <button data-view="open">미수납 목록</button>
+            <button data-view="recent">최근 시트</button>
+          </div>
+
+          <div data-pane="student">
+            <div class="row">
+              <input type="text" id="q" placeholder="학생 이름 (e-money 카드 등록된 학생)" style="flex:1;min-width:180px">
+              <button id="qBtn">검색</button>
+              <button id="manualBtn">카드 없는 학생 직접 입력</button>
+            </div>
+            <div id="manualBox" hidden style="margin-top:10px">
+              <div class="row">
+                <input type="text" id="mName" placeholder="이름" style="flex:2;min-width:140px">
+                <input type="text" id="mSid" placeholder="Student ID (선택)" style="flex:1;min-width:110px">
+                <input type="text" id="mCampus" placeholder="Campus" list="campusList" style="flex:1;min-width:110px">
+                <button id="mUse">이 학생으로</button>
+              </div>
+              <datalist id="campusList"><option>Capital</option><option>Encanto</option><option>Tarlac</option></datalist>
+            </div>
+            <div class="scroll"><table id="people" style="margin-top:10px"></table></div>
+          </div>
+          <div data-pane="open" hidden><div class="scroll"><table id="openList"></table></div></div>
+          <div data-pane="recent" hidden><div class="scroll"><table id="recentList"></table></div></div>
+
+          <div id="studentBox" hidden style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="row" style="justify-content:space-between">
+              <div><b id="stuName"></b> <span class="muted" id="stuMeta"></span></div>
+              <div class="row" id="sheetPicker"></div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="pri" id="saveNew">현재 계산으로 새 시트 저장</button>
+              <button id="saveOver" hidden>현재 계산으로 이 시트 다시 계산</button>
+              <button id="cancelSheet" class="danger" hidden>시트 취소</button>
+            </div>
+            <div class="msg" id="ledgerMsg"></div>
+            <div id="sheetBox" hidden style="margin-top:12px">
+              <div class="row" style="justify-content:space-between;align-items:flex-end">
+                <div><b>시트 #<span id="sheetId"></span></b> <span id="sheetStatus"></span><div class="muted" id="sheetMeta"></div></div>
+                <div style="text-align:right"><div class="muted">미수납</div><div class="total-big" id="sheetDue"></div></div>
+              </div>
+              <div class="scroll"><table id="sheetItems" style="margin-top:10px"></table></div>
+              <h2 style="margin-top:16px">수납 내역</h2>
+              <div class="scroll"><table id="sheetPays"></table></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row" style="justify-content:space-between;align-items:flex-end">
           <div><h2 style="margin:0">계산 결과</h2><div class="muted" id="summary"></div></div>
@@ -107,10 +179,11 @@ tr.total td{font-weight:700;font-size:16px;border-top:2px solid var(--ink);borde
 </div>
 
 <script>
+/* =================== 요금 계산 =================== */
 const PRESETS = {
   '2025-07': {
     label: '2025년 7월 (현행)',
-    fees: { ssp:7800, sspIcard:4300, visaIcard:4300, deposit:3000, pickup:1200, crtv:1400, outDeposit:200, outMaint:2000, outMeal:2500 },
+    fees: { ssp:7800, sspIcard:4300, visaIcard:4300, deposit:3000, pickup:1200, crtv:1400 },
     depositNote: '방 보증금 2,500 + 키 300 + E-Money 카드 200',
     recurring: [
       { key:'maint', name:'Maintenance', per4w:2000 },
@@ -120,7 +193,7 @@ const PRESETS = {
   },
   '2027': {
     label: '2027년',
-    fees: { ssp:7800, sspIcard:4500, visaIcard:4500, deposit:2000, pickup:1200, crtv:1400, outDeposit:200, outMaint:2000, outMeal:2500 },
+    fees: { ssp:7800, sspIcard:4500, visaIcard:4500, deposit:2000, pickup:1200, crtv:1400 },
     depositNote: '방 보증금 1,500 + 키 300 + E-Money 카드 200',
     recurring: [
       { key:'util', name:'Utilities', per4w:3000 },
@@ -133,27 +206,28 @@ const PRESETS = {
 // 비자 연장 단계: [이 연장으로 커버되는 마지막 체류일, 수수료]. 표에 없는 이후 단계는 then(4주당).
 // icardAt: Visa I-Card를 함께 내는 연장 차수 (이민국 표에서 ICARD 행 위치)
 const ENTRY = {
-  G30: { name:'일반 국가 · 30일 무비자 (한국·일본·베트남 등)', free:30,
+  G30: { name:'일반 국가 · 30일 무비자 (한국·일본·베트남 등)', short:'일반 30일 무비자', free:30,
          steps:[[59,5130],[84,6400]], then:4430, icardAt:2,
          note:'30일 무비자 → 1차 연장 +29일 = 59일. 60일 이상 체류 시 Visa I-Card.' },
-  G59: { name:'59일 비자 소지 입국 (베트남 등 / 중국·대만 59일 비자)', free:59,
+  G59: { name:'59일 비자 소지 입국 (베트남 등 / 중국·대만 59일 비자)', short:'59일 비자', free:59,
          steps:[[84,6400]], then:4430, icardAt:1,
          note:'이민국 표 "59 DAYS VISA". 1차 연장(9–12주) 때 I-Card.' },
-  C30: { name:'중국·대만 · 30일 비자', free:30,
+  C30: { name:'중국·대만 · 30일 비자', short:'중국·대만 30일', free:30,
          steps:[[59,6400]], then:4430, icardAt:1,
          note:'첫 비자 연장(5–8주) 때 무조건 I-Card.' },
-  C14: { name:'중국·대만 · 14일 비자', free:14,
+  C14: { name:'중국·대만 · 14일 비자', short:'중국·대만 14일', free:14,
          steps:[[21,4430],[49,5130],[84,6400]], then:4430, icardAt:3,
          note:'표: 1차 1–3주 / 2차 4–7주 / 3차 8–12주.',
          assumed:'14일 비자: 12주 초과 구간은 표에 없음 → 4주당 4,430 가정. I-Card는 3차(60일 이상) 때로 가정.' },
-  C7:  { name:'중국·대만 · 7일 비자', free:7,
+  C7:  { name:'중국·대만 · 7일 비자', short:'중국·대만 7일', free:7,
          steps:[[21,4430],[49,5130],[84,6400]], then:4430, icardAt:3,
          note:'표: 1차 7–21일 4,430만 있음.',
          assumed:'7일 비자: 22일 이후는 표에 없음 → 14일 비자 표와 동일하게 가정.' },
 };
 
 const $ = id => document.getElementById(id);
-const peso = n => '₱' + Math.round(n).toLocaleString('en-US');
+const peso = n => (n < 0 ? '-₱' : '₱') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let cur; // 현재 편집중인 요금표 (deep copy)
 
 function loadPreset(key){
@@ -162,10 +236,9 @@ function loadPreset(key){
   const items = [
     ['ssp','SSP'],['sspIcard','SSP I-Card'],['visaIcard','Visa I-Card'],
     ['deposit','Deposit'],['pickup','공항 픽업'],['crtv','CRTV'],
-    ['outDeposit','Outsider Deposit'],['outMaint','Outsider Maintenance <span class="muted">/4주</span>'],['outMeal','Outsider Meal <span class="muted">/주</span>'],
   ];
-  let h = items.map(([k,n]) => `<div class="row" style="margin-top:6px"><span style="flex:1">${n}</span><input type="number" style="width:120px" data-fee="${k}" value="${f[k]}"></div>`).join('');
-  h += cur.recurring.map((r,i) => `<div class="row" style="margin-top:6px"><span style="flex:1">${r.name} <span class="muted">/4주</span></span><input type="number" style="width:120px" data-rec="${i}" value="${r.per4w}"></div>`).join('');
+  let h = items.map(([k,n]) => `<div class="row" style="margin-top:6px;flex-wrap:nowrap"><span style="flex:1">${n}</span><input type="number" style="width:120px" data-fee="${k}" value="${f[k]}"></div>`).join('');
+  h += cur.recurring.map((r,i) => `<div class="row" style="margin-top:6px;flex-wrap:nowrap"><span style="flex:1">${r.name} <span class="muted">/4주</span></span><input type="number" style="width:120px" data-rec="${i}" value="${r.per4w}"></div>`).join('');
   $('feeInputs').innerHTML = h;
   $('feeInputs').querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => {
     const v = Number(inp.value) || 0;
@@ -190,100 +263,60 @@ function visaPlan(entryKey, stayDays){
   return { free:e.free, exts };
 }
 
-const DAY = 86400000;
-const dayIndex = (arr, d) => Math.round((d - arr) / DAY) + 1; // 입국일 = 1일째
-
+// lines: 화면 표시용. key가 있는 금액>0 줄이 Fee 시트(수납 단위)로 저장됨.
 function compute(o){
   const f = cur.fees;
-  const ext = !!o.sspAgain;
-  // 연장 등록: 연장 시작일이 체류 몇 일째인지 → 그 이후 새로 필요한 비자 연장만 청구
-  let startDay = 1, extErr = '';
-  if (ext) {
-    if (!o.arrival || !o.extStart) extErr = '입국일과 연장 등록 시작일을 입력하세요';
-    else {
-      startDay = dayIndex(o.arrival, o.extStart);
-      if (startDay < 1) { extErr = '연장 시작일이 입국일보다 빠릅니다'; startDay = 1; }
-    }
-  }
-  const stayDays = startDay - 1 + o.weeks * 7 + o.extraDays;
+  const stayDays = o.weeks * 7 + o.extraDays;
   const plan = visaPlan(o.entry, stayDays);
-  const due = plan.exts.filter(x => x.from >= startDay); // 이번 등록 기간에 내야 하는 연장
-  const prepaid = plan.exts.length - due.length;
-  const dateOf = n => o.arrival ? fmtDate(addDays(o.arrival, n - 1)) : '';
-  const extLabel = x => `${x.n}차${o.arrival ? `(${dateOf(x.from)})` : ''} ${x.rate.toLocaleString()}`;
   const lines = [];
-  const visaSum = due.reduce((a,x) => a + x.rate, 0);
-  let visaDetail;
-  if (extErr) visaDetail = extErr;
-  else if (due.length) visaDetail = due.map(extLabel).join(' + ') + (prepaid ? ` · 기납부 ${prepaid}회 제외` : '');
-  else if (ext) visaDetail = `추가 연장 불필요 (현재 비자로 ${stayDays}일째까지 커버)`;
-  else visaDetail = `연장 불필요 (입국 허용 ${plan.free}일 ≥ 체류 ${stayDays}일)`;
-  lines.push({ name:'1) VISA 연장', amt:extErr ? 0 : visaSum, detail:visaDetail, flag: extErr ? '입력필요' : '' });
-  if (ext) {
-    lines.push({ name:'2) SSP 재납부', amt:f.ssp, detail:'연장 등록 학생' });
-  } else {
-    lines.push({ name:'2) SSP', amt:f.ssp, detail:'등록 시 필수' });
-    lines.push({ name:'3) SSP I-Card', amt:f.sspIcard, detail:'등록 시 필수' });
-  }
-  const icAll = plan.exts.find(x => x.icard);
-  const ic = due.find(x => x.icard);
-  lines.push({ name:'4) Visa I-Card', amt: ic && !extErr ? f.visaIcard : 0,
-    detail: ic ? `${ic.n}차 연장 시 발급` : icAll ? `${icAll.n}차 연장 때 기발급` : (o.entry==='G30' ? '체류 60일 미만 → 없음' : '연장 없음 → 없음') });
-  const crtv = due.find(x => x.crtv);
-  if (crtv && !extErr) lines.push({ name:'CRTV', amt:f.crtv, detail:'6차 연장 시 필요' });
-  const out = !!o.outsider;
-  if (!ext) lines.push(out
-    ? { name:'5) Deposit', amt:f.outDeposit, detail:'Outsider (E-Money 카드)' }
-    : { name:'5) Deposit', amt:f.deposit, detail:cur.depositNote });
-  const rec = out
-    ? [ { name:'Maintenance', per4w:f.outMaint }, { name:'Meal', per4w:f.outMeal * 4 } ]
-    : cur.recurring;
-  rec.forEach(r => {
+  if (!plan.exts.length) lines.push({ name:'1) VISA 연장', amt:0, detail:`연장 불필요 (입국 허용 ${plan.free}일 ≥ 체류 ${stayDays}일)` });
+  plan.exts.forEach(x => lines.push({ key:`visa_ext_${x.n}`, name:`1) VISA ${x.n}차 연장`, amt:x.rate, detail:`체류 ${x.from}–${x.end}일` }));
+  lines.push({ key:'ssp', name:'2) SSP', amt:f.ssp, detail:'등록 시 필수' });
+  if (o.sspAgain) lines.push({ key:'ssp_again', name:'2-1) SSP 재납부', amt:f.ssp, detail:'연장 등록 학생', flag:'확인필요' });
+  lines.push({ key:'ssp_icard', name:'3) SSP I-Card', amt:f.sspIcard, detail:'등록 시 필수' });
+  const ic = plan.exts.find(x => x.icard);
+  lines.push({ key:'visa_icard', name:'4) Visa I-Card', amt: ic ? f.visaIcard : 0,
+    detail: ic ? `${ic.n}차 연장 시 발급` : (o.entry==='G30' ? '체류 60일 미만 → 없음' : '연장 없음 → 없음') });
+  const crtv = plan.exts.find(x => x.crtv);
+  if (crtv) lines.push({ key:'crtv', name:'CRTV', amt:f.crtv, detail:'6차 연장 시 필요' });
+  lines.push({ key:'deposit', name:'5) Deposit', amt:f.deposit, detail:cur.depositNote });
+  cur.recurring.forEach((r,i) => {
     const perWeek = r.per4w / 4;
-    lines.push({ name:`9) ${r.name}`, amt: perWeek * o.weeks,
-      detail:`주당 ${perWeek.toLocaleString()} × ${o.weeks}주` + (r.note ? ` · ${r.note}` : '') + (out ? ' · Outsider' : '') });
+    lines.push({ key:r.key, name:`${6+i}) ${r.name}`, amt: perWeek * o.weeks,
+      detail:`주당 ${perWeek.toLocaleString()} × ${o.weeks}주` + (r.note ? ` · ${r.note}` : '') });
   });
-  if (!ext && !out) lines.push({ name:'공항 픽업', amt: o.pickup ? f.pickup : 0, detail: o.pickup ? '픽업 이용' : '미이용' });
-  let no = 0;
-  lines.forEach(l => { if (/^\d+\) /.test(l.name)) l.name = l.name.replace(/^\d+\)/, `${++no})`); });
+  lines.push({ key:'pickup', name:'공항 픽업', amt: o.pickup ? f.pickup : 0, detail: o.pickup ? '픽업 이용' : '미이용' });
   const total = lines.reduce((a,l) => a + l.amt, 0);
-  return { stayDays, startDay, plan, due, lines, total };
+  return { stayDays, plan, lines, total };
 }
 
 function readOpts(){
   return {
+    preset: $('preset').value,
     entry: $('entry').value,
     weeks: Math.max(1, Number($('weeks').value) || 1),
     extraDays: Math.max(0, Number($('extraDays').value) || 0),
+    arrival: $('arrival').value || '',
     pickup: $('pickup').checked,
     sspAgain: $('sspAgain').checked,
-    outsider: $('outsider').checked,
-    arrival: $('arrival').value ? new Date($('arrival').value + 'T00:00:00') : null,
-    extStart: $('extStart').value ? new Date($('extStart').value + 'T00:00:00') : null,
   };
 }
 
-function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function addDays(base, n){ const d = new Date(base); d.setDate(d.getDate() + n); return d; }
 
 function render(){
   const o = readOpts();
   const e = ENTRY[o.entry];
   $('entryNote').textContent = e.note;
-  $('extBox').style.display = o.sspAgain ? '' : 'none';
-  $('pickupRow').style.display = (o.sspAgain || o.outsider) ? 'none' : '';
-  $('outHint').style.display = o.outsider ? '' : 'none';
   const r = compute(o);
 
-  $('summary').textContent = (o.outsider ? 'Outsider · ' : '') + (o.sspAgain
-    ? `${e.name} · 연장 ${o.weeks}주 · 체류 ${r.startDay}–${r.stayDays}일째 · 이번 비자 연장 ${r.due.length}회`
-    : `${e.name} · ${o.weeks}주 · 체류 ${r.stayDays}일 · 연장 ${r.plan.exts.length}회`);
+  $('summary').textContent = `${e.name} · ${o.weeks}주 · 체류 ${r.stayDays}일 · 연장 ${r.plan.exts.length}회`;
   $('totalBig').textContent = peso(r.total);
   $('breakdown').innerHTML = `<tr><th>항목</th><th>근거</th><th class="n">금액</th></tr>` +
     r.lines.map(l => `<tr><td>${l.name}${l.flag ? `<span class="flag">${l.flag}</span>` : ''}</td><td class="muted">${l.detail}</td><td class="n">${l.amt ? peso(l.amt) : '—'}</td></tr>`).join('') +
     `<tr class="total"><td>TOTAL</td><td></td><td class="n">${peso(r.total)}</td></tr>`;
 
-  // 경고/확인 필요
   const w = [];
   if (e.assumed) w.push(e.assumed);
   if (o.weeks >= 24) w.push('24주 이상: 2x2 사진 4장 (ECC용). ECC(Exit Clearance Certificate) 발급 비용은 표에 없음.');
@@ -293,17 +326,14 @@ function render(){
   w.push('여권 사진 1장 (학생 프로필).');
   $('warnings').innerHTML = `<div class="warnbox"><b>참고 / 확인 필요</b><ul>${w.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
 
-  // 비자 스케줄
-  const arr = o.arrival;
+  const arr = o.arrival ? new Date(o.arrival + 'T00:00:00') : null;
   const dcol = d => arr ? `<td>${fmtDate(addDays(arr, d-1))}</td>` : '';
   let vt = `<tr><th>단계</th><th>체류일 범위</th>${arr?'<th>만료일</th>':''}<th class="n">수수료</th><th>추가</th></tr>`;
   vt += `<tr><td>입국 허용</td><td>1–${r.plan.free}일</td>${dcol(r.plan.free)}<td class="n">—</td><td></td></tr>`;
-  vt += r.plan.exts.map(x => { const paid = o.sspAgain && x.from < r.startDay;
-    return `<tr${paid?' class="muted"':''}><td>${x.n}차 연장</td><td>${x.from}–${x.end}일 <span class="muted">(~${Math.ceil(x.end/7)}주)</span></td>${dcol(x.end)}<td class="n">${peso(x.rate)}</td><td>${x.icard?'<span class="chip">Visa I-Card</span>':''}${x.crtv?'<span class="chip">CRTV</span>':''}${paid?'<span class="chip">기납부</span>':''}</td></tr>`; }).join('');
+  vt += r.plan.exts.map(x => `<tr><td>${x.n}차 연장</td><td>${x.from}–${x.end}일 <span class="muted">(~${Math.ceil(x.end/7)}주)</span></td>${dcol(x.end)}<td class="n">${peso(x.rate)}</td><td>${x.icard?'<span class="chip">Visa I-Card</span>':''}${x.crtv?'<span class="chip">CRTV</span>':''}</td></tr>`).join('');
   if (arr) vt += `<tr><td colspan="5" class="muted">출국 예정: ${fmtDate(addDays(arr, r.stayDays-1))} (체류 ${r.stayDays}일째)</td></tr>`;
   $('visaTable').innerHTML = vt;
 
-  // 포스터 대조
   const wk = Object.keys(cur.poster).map(Number);
   let v = `<tr><th>주수</th>${wk.map(x => `<th class="n">${x}주</th>`).join('')}</tr>`;
   const calc = wk.map(x => compute({ entry:'G30', weeks:x, extraDays:0, pickup:true, sspAgain:false }).total);
@@ -312,21 +342,279 @@ function render(){
   v += `<tr><td>일치</td>${calc.map((c,i) => c === cur.poster[wk[i]] ? `<td class="n ok">✓</td>` : `<td class="n bad">✗ ${(c-cur.poster[wk[i]]).toLocaleString()}</td>`).join('')}</tr>`;
   $('verify').innerHTML = v;
 
-  // 유형별 매트릭스
   const mw = [4,8,12,16,20,24,28,32,40,52];
   let m = `<tr><th>입국 유형</th>${mw.map(x => `<th class="n">${x}주</th>`).join('')}</tr>`;
   m += Object.keys(ENTRY).map(k => `<tr><td>${ENTRY[k].name}</td>${mw.map(x => `<td class="n">${peso(compute({ entry:k, weeks:x, extraDays:0, pickup:true, sspAgain:false }).total)}</td>`).join('')}</tr>`).join('');
   $('matrix').innerHTML = m;
 }
 
-// init
+/* =================== API (office login) =================== */
+const IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === 'file:';
+const API = IS_LOCAL ? 'http://localhost:8787' : location.origin;
+function ssGet(k){ try { return sessionStorage.getItem(k); } catch(e){ return null; } }
+function ssSet(k,v){ try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k,v); } catch(e){} }
+let session = null;
+try { session = JSON.parse(ssGet('officeSession') || 'null'); } catch(e){ session = null; }
+
+async function api(method, path, body){
+  const headers = { Accept:'application/json' };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (session?.token) headers.Authorization = 'Bearer ' + session.token;
+  let res;
+  try { res = await fetch(API + path, { method, headers, cache:'no-store', body: body === undefined ? undefined : JSON.stringify(body) }); }
+  catch(e){ throw new Error('서버에 연결할 수 없습니다.'); }
+  const t = await res.text();
+  let data = null; try { data = t ? JSON.parse(t) : null; } catch(e){}
+  if (res.status === 401 && path !== '/api/auth/login'){ setSession(null); throw new Error('로그인이 만료되었습니다. 다시 로그인하세요.'); }
+  if (!res.ok) throw new Error(data?.error || data?.message || ('HTTP ' + res.status));
+  return data;
+}
+function setSession(s){
+  session = s;
+  ssSet('officeSession', s ? JSON.stringify(s) : null);
+  renderAuth();
+}
+function renderAuth(){
+  const box = $('authBox');
+  if (session?.token){
+    const m = session.manager || {};
+    box.innerHTML = `<div class="row"><span class="muted">${esc(m.name || m.login_id)} · ${esc(m.position || '')} ${esc(m.campus || '')}</span><button class="sm" id="logoutBtn">LOGOUT</button></div>`;
+    $('logoutBtn').onclick = () => { api('POST','/api/auth/logout',{ app:'office' }).catch(()=>{}); setSession(null); };
+    $('needLogin').hidden = true; $('ledger').hidden = false;
+  } else {
+    box.innerHTML = `<form class="row" id="loginForm"><input type="text" id="loginId" placeholder="Office Login ID" autocomplete="username" style="width:180px"><button class="pri">LOGIN</button></form><div class="msg err" id="loginMsg"></div>`;
+    $('loginForm').onsubmit = async ev => {
+      ev.preventDefault();
+      $('loginMsg').textContent = '';
+      try {
+        const r = await api('POST','/api/auth/login',{ loginId: $('loginId').value.trim(), app:'office' });
+        if (!r?.manager) throw new Error('ID를 확인하세요.');
+        if (!r.access?.office) throw new Error('이 계정은 Office 프로그램을 사용할 수 없습니다.');
+        setSession({ token:r.token, manager:r.manager, access:r.access });
+      } catch(e){ $('loginMsg').textContent = e.message; }
+    };
+    $('needLogin').hidden = false; $('ledger').hidden = true;
+  }
+}
+
+/* =================== 학생 · 시트 · 수납 =================== */
+const STATUS_KO = { unpaid:'미납', partial:'일부 납부', paid:'완납', overpaid:'초과 납부', cancelled:'취소' };
+const METHODS = ['CASH','GCASH','BANK','CARD','OTHER'];
+const stBadge = s => `<span class="st st-${s}">${STATUS_KO[s] || s}</span>`;
+let student = null;   // { personId?, name, studentId, campus, uid, sDate, eDate }
+let sheets = [];      // sheets of this student
+let sheet = null;     // { record, payments }
+let lastPeople = [];
+
+function msg(text, ok){ const m = $('ledgerMsg'); m.textContent = text || ''; m.className = 'msg ' + (ok ? 'okm' : 'err'); }
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== b.dataset.view);
+  if (b.dataset.view === 'open') loadList('open', 'openList');
+  if (b.dataset.view === 'recent') loadList('all', 'recentList');
+});
+
+async function searchPeople(){
+  const name = $('q').value.trim();
+  if (!name) return;
+  $('people').innerHTML = `<tr><td class="muted">검색 중…</td></tr>`;
+  try {
+    const r = await api('GET', '/api/office/people?name=' + encodeURIComponent(name));
+    lastPeople = (r.people || []).filter(p => !/^g/i.test(p.uid || '')).slice(-50).reverse();
+    $('people').innerHTML = lastPeople.length
+      ? `<tr><th>이름</th><th>Student ID</th><th>Campus</th><th>기간</th></tr>` + lastPeople.map((p,i) =>
+        `<tr class="pick" data-i="${i}"><td>${esc(p.name)}</td><td>${esc(p.studentId)}</td><td>${esc(p.campus)}</td><td class="muted">${esc(p.startDate || '')} ~ ${esc(p.endDate || '')}</td></tr>`).join('')
+      : `<tr><td class="muted">찾는 학생이 없습니다.</td></tr>`;
+    $('people').querySelectorAll('tr.pick').forEach(tr => tr.onclick = () => {
+      const p = lastPeople[+tr.dataset.i];
+      pickStudent({ personId:p.id, name:p.name, studentId:p.studentId, campus:p.campus, uid:p.uid, sDate:p.startDate, eDate:p.endDate });
+    });
+  } catch(e){ $('people').innerHTML = `<tr><td class="bad">${esc(e.message)}</td></tr>`; }
+}
+$('qBtn').onclick = searchPeople;
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') searchPeople(); });
+$('manualBtn').onclick = () => { $('manualBox').hidden = !$('manualBox').hidden; };
+$('mUse').onclick = () => {
+  const name = $('mName').value.trim(), campus = $('mCampus').value.trim();
+  if (!name || !campus) { alert('이름과 Campus를 입력하세요.'); return; }
+  pickStudent({ personId:null, name, studentId:$('mSid').value.trim(), campus });
+};
+
+function isoDay(s){ const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s || '')); return m ? m[1] : ''; }
+
+async function pickStudent(s, sheetIdToOpen){
+  student = s; sheet = null; sheets = [];
+  $('studentBox').hidden = false; $('sheetBox').hidden = true; msg('');
+  $('stuName').textContent = s.name;
+  $('stuMeta').textContent = [s.studentId, s.campus, (s.sDate || s.eDate) ? `${isoDay(s.sDate)} ~ ${isoDay(s.eDate)}` : '', s.personId ? '' : '(카드 없음)'].filter(Boolean).join(' · ');
+  // 새 학생: 등록 기간으로 주수·입국일 제안 (화면의 값만 바뀜, 저장은 버튼으로)
+  const sd = isoDay(s.sDate), ed = isoDay(s.eDate);
+  if (sd && ed && !sheetIdToOpen){
+    const days = (new Date(ed) - new Date(sd)) / 86400000;
+    if (days > 0){ $('weeks').value = Math.max(1, Math.round(days / 7)); $('arrival').value = sd; $('extraDays').value = 0; render(); }
+  }
+  updateButtons();
+  if (s.personId){
+    try {
+      const r = await api('GET', `/api/office/local-fees?personId=${s.personId}&status=all`);
+      sheets = r.records || [];
+    } catch(e){ msg(e.message); }
+  }
+  renderPicker();
+  const open = sheetIdToOpen || sheets.find(x => x.status !== 'cancelled')?.id;
+  if (open) openSheet(open);
+}
+
+function renderPicker(){
+  const box = $('sheetPicker');
+  box.innerHTML = sheets.length
+    ? `<span class="muted">시트</span>` + sheets.map(x => `<button class="sm" data-id="${x.id}">#${x.id} ${STATUS_KO[x.status]}</button>`).join('')
+    : `<span class="muted">저장된 시트 없음</span>`;
+  box.querySelectorAll('button').forEach(b => b.onclick = () => openSheet(+b.dataset.id));
+}
+
+function updateButtons(){
+  const active = sheet && sheet.record.status !== 'cancelled';
+  $('saveOver').hidden = !active;
+  $('cancelSheet').hidden = !active;
+}
+
+function sheetPayload(){
+  const o = readOpts();
+  const r = compute(o);
+  return {
+    preset:o.preset, entryType:o.entry, weeks:o.weeks, extraDays:o.extraDays, arrivalDate:o.arrival || null,
+    pickup:o.pickup, sspAgain:o.sspAgain,
+    items: r.lines.filter(l => l.key && l.amt > 0).map(l => ({ key:l.key, name:l.name.replace(/^[\d-]+\)\s*/, ''), amount:l.amt, detail:l.detail })),
+  };
+}
+
+$('saveNew').onclick = async () => {
+  if (!student) return;
+  const body = { ...sheetPayload(), personId: student.personId || undefined,
+    studentName: student.name, studentId: student.studentId, campus: student.campus };
+  if (!confirm(`${student.name}\n현재 계산(${peso(compute(readOpts()).total)})으로 새 Fee 시트를 저장할까요?`)) return;
+  try {
+    const r = await api('POST', '/api/office/local-fees', body);
+    sheets.unshift(r.record); renderPicker(); showSheet(r); msg(`시트 #${r.record.id} 저장됨`, true);
+  } catch(e){ msg(e.message); }
+};
+$('saveOver').onclick = async () => {
+  if (!sheet) return;
+  if (!confirm(`시트 #${sheet.record.id}을(를) 현재 계산(${peso(compute(readOpts()).total)})으로 바꿀까요?\n이미 받은 돈은 항목별로 그대로 남습니다.`)) return;
+  try { const r = await api('PUT', `/api/office/local-fees/${sheet.record.id}`, sheetPayload()); showSheet(r); refreshPicker(r.record); msg('다시 계산해서 저장했습니다.', true); }
+  catch(e){ msg(e.message); }
+};
+$('cancelSheet').onclick = async () => {
+  if (!sheet || !confirm(`시트 #${sheet.record.id}을(를) 취소할까요? (수납 내역이 있으면 먼저 수납 취소 필요)`)) return;
+  try { const r = await api('POST', `/api/office/local-fees/${sheet.record.id}/cancel`); showSheet(r); refreshPicker(r.record); msg('시트를 취소했습니다.', true); }
+  catch(e){ msg(e.message); }
+};
+function refreshPicker(rec){ sheets = sheets.map(x => x.id === rec.id ? rec : x); renderPicker(); }
+
+async function openSheet(id){
+  try {
+    const r = await api('GET', `/api/office/local-fees/${id}`);
+    showSheet(r);
+    // 저장된 조건을 왼쪽 계산 화면에 다시 채움
+    const rec = r.record;
+    if (PRESETS[rec.preset] && $('preset').value !== rec.preset){ $('preset').value = rec.preset; loadPreset(rec.preset); }
+    if (ENTRY[rec.entryType]) $('entry').value = rec.entryType;
+    $('weeks').value = rec.weeks; $('extraDays').value = rec.extraDays || 0;
+    $('arrival').value = rec.arrivalDate || ''; $('pickup').checked = !!rec.pickup; $('sspAgain').checked = !!rec.sspAgain;
+    render();
+  } catch(e){ msg(e.message); }
+}
+
+function showSheet(r){
+  sheet = r;
+  const rec = r.record;
+  $('sheetBox').hidden = false;
+  $('sheetId').textContent = rec.id;
+  $('sheetStatus').innerHTML = stBadge(rec.status);
+  $('sheetMeta').textContent = `${PRESETS[rec.preset]?.label || rec.preset} · ${ENTRY[rec.entryType]?.short || rec.entryType} · ${rec.weeks}주` +
+    (rec.extraDays ? ` +${rec.extraDays}일` : '') + (rec.arrivalDate ? ` · 입국 ${rec.arrivalDate}` : '') +
+    ` · 총 ${peso(rec.total)} · 저장 ${rec.updatedBy || rec.createdBy || ''}`;
+  $('sheetDue').textContent = peso(rec.due);
+  const live = rec.status !== 'cancelled';
+  $('sheetItems').innerHTML = `<tr><th>항목</th><th class="n">금액</th><th class="n">받은 돈</th><th class="n">남은 돈</th><th></th></tr>` +
+    rec.items.map(it => `<tr>
+      <td>${esc(it.name)}${it.removed ? '<span class="flag">재계산으로 빠짐 · 환불 확인</span>' : ''}<div class="muted">${esc(it.detail || '')}</div></td>
+      <td class="n">${peso(it.amount)}</td><td class="n">${it.paid ? peso(it.paid) : '—'}</td>
+      <td class="n ${it.due > 0 ? 'bad' : it.due < 0 ? '' : 'ok'}">${it.due === 0 ? '완납' : peso(it.due)}</td>
+      <td>${live && it.due > 0 ? `<button class="sm pri" data-pay="${esc(it.key)}">수납</button>` : ''}</td></tr>
+      <tr data-form="${esc(it.key)}" hidden><td colspan="5"><div class="payform">
+        <input type="number" min="1" step="1" value="${it.due}" data-amt>
+        <select data-method>${METHODS.map(m => `<option>${m}</option>`).join('')}</select>
+        <input type="text" placeholder="메모 (영수증 번호 등)" data-memo>
+        <button class="pri" data-ok>확인</button>
+      </div></td></tr>`).join('') +
+    `<tr class="total"><td>TOTAL</td><td class="n">${peso(rec.total)}</td><td class="n">${peso(rec.paid)}</td><td class="n">${peso(rec.due)}</td><td></td></tr>`;
+  $('sheetItems').querySelectorAll('[data-pay]').forEach(b => b.onclick = () => {
+    const tr = $('sheetItems').querySelector(`tr[data-form="${b.dataset.pay}"]`);
+    tr.hidden = !tr.hidden;
+    if (!tr.hidden){ tr.dataset.ck = 'lf-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); tr.querySelector('[data-amt]').focus(); }
+  });
+  $('sheetItems').querySelectorAll('tr[data-form]').forEach(tr => tr.querySelector('[data-ok]').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    const it = rec.items.find(x => x.key === tr.dataset.form);
+    const amount = Number(tr.querySelector('[data-amt]').value);
+    const method = tr.querySelector('[data-method]').value;
+    if (!(amount > 0)) { alert('금액을 입력하세요.'); return; }
+    if (!confirm(`${it.name}  ${peso(amount)}  (${method})\n수납 기록할까요?`)) return;
+    btn.disabled = true;
+    try {
+      const r2 = await api('POST', `/api/office/local-fees/${rec.id}/payments`,
+        { itemKey:it.key, amount, method, memo:tr.querySelector('[data-memo]').value, clientKey:tr.dataset.ck });
+      showSheet(r2); refreshPicker(r2.record); msg(r2.repeated ? '이미 기록된 수납입니다 (중복 방지).' : `${it.name} ${peso(amount)} 수납 기록됨`, true);
+    } catch(e){ btn.disabled = false; msg(e.message); }
+  });
+
+  const pays = r.payments || [];
+  $('sheetPays').innerHTML = pays.length
+    ? `<tr><th>일시</th><th>항목</th><th>방법</th><th class="n">금액</th><th>받은 사람</th><th>메모</th><th></th></tr>` +
+      pays.slice().reverse().map(p => `<tr class="${p.voidedAt ? 'void' : ''}">
+        <td class="muted">${esc(new Date(p.receivedAt).toLocaleString('ko-KR'))}</td><td>${esc(p.itemName || p.itemKey)}</td><td>${esc(p.method)}</td>
+        <td class="n">${peso(p.amount)}</td><td>${esc(p.receivedBy)}</td>
+        <td class="muted">${esc(p.memo || '')}${p.voidedAt ? `<div>취소: ${esc(p.voidedBy)} – ${esc(p.voidReason)}</div>` : ''}</td>
+        <td>${p.voidedAt ? '' : `<button class="sm danger" data-void="${p.id}">수납 취소</button>`}</td></tr>`).join('')
+    : `<tr><td class="muted">아직 받은 돈이 없습니다.</td></tr>`;
+  $('sheetPays').querySelectorAll('[data-void]').forEach(b => b.onclick = async () => {
+    const reason = prompt('수납 취소 사유를 입력하세요 (필수)');
+    if (!reason || !reason.trim()) return;
+    try { const r2 = await api('POST', `/api/office/local-fee-payments/${b.dataset.void}/void`, { reason }); showSheet(r2); refreshPicker(r2.record); msg('수납을 취소했습니다.', true); }
+    catch(e){ msg(e.message); }
+  });
+  updateButtons();
+}
+
+async function loadList(status, tableId){
+  const t = $(tableId);
+  t.innerHTML = `<tr><td class="muted">불러오는 중…</td></tr>`;
+  try {
+    const r = await api('GET', `/api/office/local-fees?status=${status}`);
+    const rows = r.records || [];
+    t.innerHTML = rows.length
+      ? `<tr><th>#</th><th>학생</th><th>Campus</th><th>조건</th><th class="n">총액</th><th class="n">미수납</th><th>상태</th></tr>` +
+        rows.map((x,i) => `<tr class="pick" data-i="${i}"><td>${x.id}</td><td>${esc(x.studentName)}<div class="muted">${esc(x.studentId || '')}</div></td><td>${esc(x.campus)}</td>
+          <td class="muted">${esc(ENTRY[x.entryType]?.short || x.entryType)} · ${x.weeks}주</td><td class="n">${peso(x.total)}</td><td class="n">${peso(x.due)}</td><td>${stBadge(x.status)}</td></tr>`).join('')
+      : `<tr><td class="muted">해당 시트가 없습니다.</td></tr>`;
+    t.querySelectorAll('tr.pick').forEach(tr => tr.onclick = () => {
+      const x = rows[+tr.dataset.i];
+      pickStudent({ personId:x.personId, name:x.studentName, studentId:x.studentId, campus:x.campus, uid:x.uid }, x.id);
+    });
+  } catch(e){ t.innerHTML = `<tr><td class="bad">${esc(e.message)}</td></tr>`; }
+}
+
+/* =================== init =================== */
 $('preset').innerHTML = Object.entries(PRESETS).map(([k,p]) => `<option value="${k}">${p.label}</option>`).join('');
 $('entry').innerHTML = Object.entries(ENTRY).map(([k,e]) => `<option value="${k}">${e.name}</option>`).join('');
 $('preset').addEventListener('change', () => { loadPreset($('preset').value); render(); });
-['entry','weeks','extraDays','arrival','extStart','pickup','sspAgain','outsider'].forEach(id => $(id).addEventListener('input', render));
-$('sspAgain').addEventListener('change', () => { if ($('sspAgain').checked && !$('extStart').value) $('extStart').value = fmtDate(new Date()); render(); });
+['entry','weeks','extraDays','arrival','pickup','sspAgain'].forEach(id => $(id).addEventListener('input', render));
 loadPreset('2025-07');
 render();
+renderAuth();
 </script>
 </body>
 </html>
