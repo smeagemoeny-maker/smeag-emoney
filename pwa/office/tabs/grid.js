@@ -354,6 +354,14 @@
         var i = data.indexOf(row);
         return Object.assign({}, row, i >= 0 ? edits[i] || {} : {});
       },
+      // A card tap while a text cell of column `key` is open: put the value in that cell and commit it.
+      fillEditing: function (key, v) {
+        if (!editing || editing.col.key !== key || editing.col.options) return false;
+        editing.input.value = v;
+        finishEdit(true);
+        container.focus();
+        return true;
+      },
       clearEdits: function () { editing = null; edits = []; renderBody(); }
     };
   }

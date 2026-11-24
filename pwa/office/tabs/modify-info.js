@@ -294,9 +294,11 @@
         });
       });
 
-      // NFC tap: load this card's student for editing (other filters cleared)
+      // NFC tap: while a uid cell is being edited, the tapped card becomes that row's new uid (card reissue).
+      // Otherwise load this card's student for editing (other filters cleared).
       return {
         onNfc: function (uid) {
+          if (grid && grid.fillEditing('uid', uid)) return;
           if (btnSearch.disabled) return;
           txtUid.value = uid; txtName.value = ''; cbCampus.value = 'All';
           search();
