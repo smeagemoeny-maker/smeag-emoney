@@ -39,6 +39,7 @@ import * as campus from "./campus.mjs";
 import * as campusBot from "./campusBot.mjs";
 import * as smeRefund from "./smeadminRefund.mjs";
 import * as localFee from "./localFee.mjs";
+import * as outing from "./outing.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -305,6 +306,15 @@ const routes = [
     localFee.cancel(match[1], session.loginId, access)),
   officeRoute("POST", /^\/api\/office\/local-fee-payments\/(\d+)\/void$/, ({ match, body, session, access }) =>
     localFee.voidPayment(match[1], body, session.loginId, access)),
+  // ----- OUTING tab: students going out / overnight and coming back (outing.mjs) -----
+  officeRoute("GET", /^\/api\/office\/outings$/, ({ url, access }) => outing.list(query(url, "view", "day", "from", "to", "campus"), access)),
+  officeRoute("GET", /^\/api\/office\/outings\/by-uid\/([^/]+)$/, ({ match, access }) => outing.byUid(decodeURIComponent(match[1]), access)),
+  officeRoute("POST", /^\/api\/office\/outings$/, ({ body, session, access }) => outing.checkOut(body, session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/outings\/(\d+)\/return$/, ({ match, session, access }) => outing.checkIn(match[1], session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/outings\/(\d+)\/undo-return$/, ({ match, session, access }) =>
+    outing.undoReturn(match[1], session.loginId, access)),
+  officeRoute("POST", /^\/api\/office\/outings\/(\d+)\/void$/, ({ match, body, session, access }) =>
+    outing.voidOuting(match[1], body, session.loginId, access)),
   officeRoute("GET", /^\/api\/office\/activity-log$/, ({ url, session }) => {
     activityLogScope(session);
     return listActivity(activityFilter(url));
