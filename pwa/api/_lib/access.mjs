@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import "./env.mjs";
 import { httpError } from "./repository.mjs";
-import { PUSAN_MART } from "./stores.mjs";
+import { PUSAN_MART, PUSAN_MART_ENCANTO, isPusanMart } from "./stores.mjs";
 
 // mgperson.campus enum uses the typo 'Talrac'; store_menus / the PWA use 'Tarlac'.
 const CAFE_CAMPUS_BY_ACCOUNT = { CAPITAL: "Capital", ENCANTO: "Encanto", TALRAC: "Tarlac", TARLAC: "Tarlac" };
@@ -11,6 +11,8 @@ const PUSAN_PAY_MANAGERS = new Set(["key"]);
 
 // What a manager account may do in the POS.
 //   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
+//   Admin/Manager @ Pusan Mart Encanto -> ONLY the Encanto Pusan Mart (own products / stock / sales), no Pusan Pay
+//                                        (Pusan Pay / Pay List are the Capital Pusan Mart's PusanmartPayments)
 //   Admin/Manager @ Capital/Encanto/Talrac -> ONLY the own campus: cafe AND mart sales, buyer lookup, office program
 //                                        (Admin, and Managers in PUSAN_PAY_MANAGERS, also keep PusanMart pay)
 //   Admin @ a campus that is none of the above -> every campus (incl. the office program)
@@ -22,6 +24,9 @@ export function accessFor(manager) {
   const campus = String(manager?.campus || "").toUpperCase();
   const loginId = String(manager?.login_id ?? manager?.loginId ?? "").toLowerCase();
 
+  if ((position === "Admin" || position === "Manager") && campus === PUSAN_MART_ENCANTO.toUpperCase()) {
+    return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART_ENCANTO], canCharge: false, canPusanPay: false, office: false };
+  }
   if ((position === "Admin" || position === "Manager") && campus === "PUSAN MART") {
     return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART], canCharge: false, canPusanPay: true, office: false };
   }
@@ -30,7 +35,7 @@ export function accessFor(manager) {
     return { stores: ["cafe", "mart"], cafeCampuses: [own], martCampuses: [own], canCharge: false, canPusanPay: position === "Admin" || PUSAN_PAY_MANAGERS.has(loginId), office: true };
   }
   if (position === "Admin") {
-    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, martCampuses: [...ALL_CAFE_CAMPUSES, PUSAN_MART], canCharge: false, canPusanPay: true, office: true };
+    return { stores: ["cafe", "mart"], cafeCampuses: ALL_CAFE_CAMPUSES, martCampuses: [...ALL_CAFE_CAMPUSES, PUSAN_MART, PUSAN_MART_ENCANTO], canCharge: false, canPusanPay: true, office: true };
   }
   return null;
 }
@@ -118,9 +123,9 @@ export function assertCanPusanPay(access) {
   if (!access.canPusanPay) throw httpError(403, "This account cannot record PusanMart payments.");
 }
 
-// Products/history/report belong to one store: "PUSAN MART" is the mart, every other campus a cafe.
+// Products/history/report belong to one store: the Pusan Marts are marts, every other campus a cafe.
 export function storeForCampus(campus) {
-  return String(campus || "").toUpperCase() === "PUSAN MART" ? "mart" : "cafe";
+  return isPusanMart(campus) ? "mart" : "cafe";
 }
 
 export function assertCanManageStore(access, campus) {

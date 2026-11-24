@@ -9,7 +9,11 @@
 // Campuses are never mixed: a product only shows for its own campus.
 // If a store column is added later, set it on the product (`store: "cafe" | "mart"`) and it wins.
 
-export const PUSAN_MART = "Pusan Mart";
+export const PUSAN_MART = "Pusan Mart";                  // the Pusan Mart in the Capital campus (store_menus Campus 'PUSAN MART')
+export const PUSAN_MART_ENCANTO = "Pusan Mart Encanto";  // second Pusan Mart, Encanto campus, opened 2026-11-25
+                                                         // (store_menus Campus 'PUSAN MART ENCANTO': own products, stock and sales)
+export const PUSAN_MARTS = [PUSAN_MART, PUSAN_MART_ENCANTO];
+export const isPusanMart = (campus) => PUSAN_MARTS.some((c) => c.toUpperCase() === String(campus ?? "").trim().toUpperCase());
 export const CAMPUS_STORES = ["Capital", "Encanto", "Tarlac"]; // campuses with both a cafe and a mart
 
 // bank.category written by each campus store terminal today, so reports keep working.
