@@ -46,8 +46,13 @@
   function ssSet(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } }
 
   // ------------------------------------------------------------------ config
-  var CAMPUS_OPTIONS = ['Capital', 'Encanto', 'Tarlac', 'Baydream', 'Restobar', 'Pusan Mart'];
-  var MART_CAMPUS = 'Pusan Mart';
+  var CAMPUS_OPTIONS = ['Capital', 'Encanto', 'Tarlac', 'Baydream', 'Restobar', 'Pusan Mart', 'Pusan Mart Encanto'];
+  var MART_CAMPUS = 'Pusan Mart';                  // Pusan Mart in the Capital campus (also the Pusan Pay / Pay List store)
+  var MART_ENCANTO = 'Pusan Mart Encanto';         // second Pusan Mart, Encanto campus (own products / stock / sales)
+  var PUSAN_MARTS = [MART_CAMPUS, MART_ENCANTO];
+  // Names shown in the campus pickers and printouts so the two Pusan Marts are never confused.
+  var CAMPUS_LABEL = { 'Pusan Mart': 'Pusan Mart (Capital)', 'Pusan Mart Encanto': 'Pusan Mart (Encanto)' };
+  function campusLabel(c) { return CAMPUS_LABEL[c] || c; }
   var PARAMS = new URLSearchParams(location.search);
   // /report/ sets window.MART_REPORT_ONLY: same app, only Summary / History / Pay List, no writes.
   var REPORT_ONLY = !!window.MART_REPORT_ONLY;
@@ -119,7 +124,7 @@
   // This screen is the MART of the selected campus (each campus has its own mart; cafes use /cafe/).
   function storeFor() { return 'mart'; }
   // Pusan Mart keeps its campus-wide history/report; the other campuses only show their mart's sales.
-  function storeParam(campus) { return String(campus).toUpperCase() === MART_CAMPUS.toUpperCase() ? undefined : 'mart'; }
+  function storeParam(campus) { return isPusan(campus) ? undefined : 'mart'; }
   // m_menu for products registered here (same names as the campus store terminals) — api/src/stores.mjs.
   var MART_MENU = { CAPITAL: 'Capital Mart', ENCANTO: 'ENCANTO MART', TARLAC: 'Tarlac Store' };
   function martMenuFor(campus) { return MART_MENU[String(campus).toUpperCase()] || campus; }
@@ -249,7 +254,10 @@
     });
   }
   // ----- barcode scanning (Pusan Mart counter only; products come from the POS import with barcodes)
-  function isPusan(campus) { return String(campus || '').toUpperCase() === MART_CAMPUS.toUpperCase(); }
+  function isPusan(campus) {
+    var c = String(campus || '').trim().toUpperCase();
+    return PUSAN_MARTS.some(function (m) { return m.toUpperCase() === c; });
+  }
   function cleanCode(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase(); }
   // Exact barcode first; then the forms scanners send differently: Codabar start/stop letters
   // ("A4897001196414967A"), UPC-A (12) vs EAN-13 with a leading 0, and the POS item code ("000124").
@@ -447,12 +455,12 @@
   function dropdown(key, selected, options, onSelect, label) {
     ddRegistry[key] = { options: options, onSelect: onSelect };
     return '<div class="field"><div class="field-label">' + esc(label || 'Campus') + '</div>' +
-      '<button class="btn btn-secondary" data-dd="' + esc(key) + '"><span>' + esc(selected) + '</span></button></div>';
+      '<button class="btn btn-secondary" data-dd="' + esc(key) + '"><span>' + esc(campusLabel(selected)) + '</span></button></div>';
   }
   // Compact one-line selector (Sales header): same dropdown overlay as dropdown(), much less height.
   function pillDropdown(key, selected, options, onSelect, label) {
     ddRegistry[key] = { options: options, onSelect: onSelect };
-    return '<button class="pill" data-dd="' + esc(key) + '"><span class="k">' + esc(label) + '</span> ' + esc(selected) + ' ▾</button>';
+    return '<button class="pill" data-dd="' + esc(key) + '"><span class="k">' + esc(label) + '</span> ' + esc(campusLabel(selected)) + ' ▾</button>';
   }
   function labeledField(id, label, value, onChange, placeholder, mode, plain) {
     actions['in_' + id] = onChange;
@@ -1142,7 +1150,7 @@
     var now = new Date(), cell = 'padding:4px 6px;border-bottom:1px solid #ccc;font-size:11px;text-align:left';
     var h = '<div class="rpt">' +
       '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
-      '<div style="text-align:right"><div class="rtitle">Products Without Cost</div><div class="rsub">' + esc(S.campus || '') + ' · ' + list.length + ' items</div></div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Products Without Cost</div><div class="rsub">' + esc(campusLabel(S.campus || '')) + ' · ' + list.length + ' items</div></div></div>' +
       '<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr>' +
       ['#', 'Category', 'Product', 'Barcode', 'Price', 'Stock', 'Sold', 'Cost'].map(function (t) { return '<th style="' + cell + ';font-weight:800">' + t + '</th>'; }).join('') +
       '</tr></thead><tbody>';
@@ -1362,7 +1370,7 @@
     };
     var h = '<div class="rpt rpt-sales">' +
       '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
-      '<div style="text-align:right"><div class="rtitle">Stock In / Expired Report</div><div class="rsub">' + esc(S.campus) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Stock In / Expired Report</div><div class="rsub">' + esc(campusLabel(S.campus)) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
       table('in') + table('expired');
     if (S.expiring.length) {
       h += '<div class="rsec">=== EXPIRING WITHIN ' + S.expDays + ' DAYS ===</div><table class="rtbl"><thead><tr><th>Product</th><th>Stock-in date</th><th class="n">Qty in</th><th>Expiry</th></tr></thead><tbody>';
@@ -1739,6 +1747,56 @@
     }).then(function () { if (S === s) { s.costSaving = false; render(); } });
   }
   function peso(n) { return comma(n, 2); } // 7,025.30
+
+  // ----- 부산마트 주간보고 / Pusan Mart Weekly Report (shared/pusan-weekly.js): the same report as the office REPORT tab,
+  // built from this period's daily closing. Cost = barcode (auto) + typed Pusan Pay cost; a day still missing its Pusan Pay
+  // cost uses the cost known so far and is marked orange. Language: 한국어 / English (remembered on this device).
+  var WK_LANG_KEY = 'mart.weekly.lang';
+  function wkLang() { try { return localStorage.getItem(WK_LANG_KEY) === 'en' ? 'en' : 'ko'; } catch (e) { return 'ko'; } }
+  function weeklyData(r) {
+    if (!window.PusanWeekly || !r || !r.days || !r.days.length) return null;
+    return window.PusanWeekly.build({
+      share: r.settleShare || 0.5, campus: 'Pusan Mart', from: S.start, to: S.end || S.start,
+      days: r.days.map(function (d) {
+        return { date: d.date, sales: d.sales, cost: d.cost != null ? d.cost : d.knownCost, missing: d.pay && d.pay.missing ? d.pay.sales : 0 };
+      })
+    });
+  }
+  function weeklyCard(r) {
+    var P = weeklyData(r);
+    if (!P) return '';
+    if (!document.getElementById('pmwStyle')) {
+      var st = document.createElement('style'); st.id = 'pmwStyle';
+      st.textContent = window.PusanWeekly.CSS + '.pmw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;} .pmw-scroll .pmw table.wk{min-width:780px;}';
+      document.head.appendChild(st);
+    }
+    var lang = wkLang(), en = lang === 'en';
+    var h = '<div class="card" style="padding:12px;margin-bottom:10px">' +
+      '<div class="sb" style="padding-bottom:8px"><span style="font-size:12px;font-weight:800">' + (en ? 'Weekly Report' : '부산마트 주간보고') +
+      ' <span style="font-weight:400;color:var(--ink3)">· ' + esc(P.from) + ' ~ ' + esc(P.to) + '</span></span>' +
+      '<span class="chips" style="padding:0">';
+    [['ko', '한국어'], ['en', 'English']].forEach(function (c) {
+      h += '<span class="chip' + (lang === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
+        try { localStorage.setItem(WK_LANG_KEY, c[0]); } catch (e) { /* ignore */ }
+      }) + '">' + c[1] + '</span>';
+    });
+    h += '</span></div>';
+    h += '<div class="sb" style="font-size:11.5px;padding-bottom:8px"><span>' + (en ? 'Pusan Mart (cost + SME ' : 'Pusan Mart (원가 + SME ') +
+      Math.round(P.share * 100) + '%)</span><b style="color:var(--brand)">₱' + peso(P.tot.pusan) + '</b></div>';
+    if (S.wkOpen) h += '<div class="pmw-scroll" style="padding-bottom:10px">' + window.PusanWeekly.html(P, lang) + '</div>';
+    h += secondaryBtn(S.wkOpen ? (en ? 'Hide report' : '보고서 닫기') : (en ? '👁 Show report' : '👁 보고서 보기'), function () { S.wkOpen = !S.wkOpen; }) + spacer(8) +
+      '<div class="row" style="gap:8px">' +
+      primaryBtn(en ? '⬇ Excel (Weekly)' : '⬇ 주간보고 Excel', function () {
+        window.PusanWeekly.excel(P, lang).then(function () { toast(en ? 'Saved to Downloads.' : '다운로드 폴더에 저장했습니다.', 3000); },
+          function (e) { toast('Excel: ' + e.message, 4000); });
+      }, false, ' style="height:38px;flex:1"') +
+      primaryBtn(en ? '🖨 Print' : '🖨 주간보고 인쇄', function () { window.PusanWeekly.print(P, lang); }, false, ' style="height:38px;flex:1"') +
+      '</div>' +
+      txt(en ? 'Pick a Mon–Sun range above for one week. Orange = Pusan Pay cost not entered yet.'
+             : '위 기간을 월~일로 고르면 한 주 보고서가 됩니다. 주황색 = Pusan Pay 원가 미입력.', 'font-size:10.5px;color:var(--ink3);padding-top:6px') +
+      '</div>';
+    return h;
+  }
   function sharePct() { return Math.round(((S.daily && S.daily.settleShare) || 0.5) * 100); }
   function downloadDailyCsv() {
     var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -1834,7 +1892,7 @@
     var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
     var h = '<div class="rpt rpt-sales">' +
       '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
-      '<div style="text-align:right"><div class="rtitle">Sales Report</div><div class="rsub">' + esc(S.campus) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Sales Report</div><div class="rsub">' + esc(campusLabel(S.campus)) + ' · ' + esc(rangeText(from, to)) + '</div></div></div>' +
       '<div class="rsec">=== SUMMARY ===</div>' +
       line('Total Revenue', '₱' + peso(r.totalRevenue)) +
       line('Transactions', comma(r.transactionCount)) +
@@ -2002,6 +2060,7 @@
         'Cost + ' + pct + '% of PFT' + (prov ? ' · final after Pusan Pay cost is saved' : '')) + '</div>' + spacer(12);
 
     if (r.costTableMissing) h += txt('The cost table is not set up yet (admin: run supabase_pusanmart_daily_cost.sql).', 'font-size:11.5px;color:var(--out);padding-bottom:8px');
+    h += weeklyCard(r);
 
     // closing report of the selected day
     var cd = dailyRow(S.costDate);
@@ -2268,7 +2327,7 @@
     var left = a.left - frame.left;
     style += 'left:' + left + 'px;max-height:' + maxH + 'px;';
     var h = '<div class="scrim" data-ddclose="1"></div><div class="ddmenu" style="' + style + '">';
-    reg.options.forEach(function (o, i) { h += '<div class="dditem" data-ddopt="' + i + '">' + esc(o) + '</div>'; });
+    reg.options.forEach(function (o, i) { h += '<div class="dditem" data-ddopt="' + i + '">' + esc(campusLabel(o)) + '</div>'; });
     return h + '</div>';
   }
   function fixDropdownPosition() {
