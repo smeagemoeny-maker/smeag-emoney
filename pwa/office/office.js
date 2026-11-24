@@ -348,6 +348,15 @@
 
   function buildTabs(onSelect) {
     var strip = el('tabstrip');
+    // One wrapper per row. On the PC layout the tabs are absolutely placed (left/top below) and the wrappers
+    // take no space; the mobile view (office-mobile.css) lays the rows out itself: row 1 fills the width,
+    // row 2 scrolls sideways.
+    var rows = [0, 1].map(function (r) {
+      var d = document.createElement('div');
+      d.className = 'tabrow tabrow-' + (r + 1);
+      strip.appendChild(d);
+      return d;
+    });
     TAB_ORDER.forEach(function (i, pos) {
       var name = TAB_NAMES[i];
       var row = pos < ROW1_TABS.length ? 0 : 1;
@@ -366,9 +375,14 @@
         if (t.classList.contains('sel')) return;
         strip.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('sel'); });
         t.classList.add('sel');
+        // Mobile: bring a row-2 tab that was partly scrolled off back into view.
+        if (row === 1 && document.body.classList.contains('m')) {
+          var r2 = rows[1], tl = t.offsetLeft, tr = tl + t.offsetWidth;
+          if (tl < r2.scrollLeft || tr > r2.scrollLeft + r2.clientWidth) r2.scrollLeft = Math.max(0, tl - 24);
+        }
         onSelect(i);
       });
-      strip.appendChild(t);
+      rows[row].appendChild(t);
     });
     // Fallback fonts (no Segoe UI on macOS/Linux) are wider: squeeze any label that would overflow its tab.
     strip.querySelectorAll('.tab-text').forEach(function (s) {

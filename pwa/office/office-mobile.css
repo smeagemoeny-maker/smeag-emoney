@@ -27,19 +27,37 @@ body.m .banner { position: static; width: 100%; height: 48px; overflow: hidden; 
 body.m .logo { transform: scale(.6); transform-origin: 0 0; }
 body.m .tabstrip {
   position: sticky; top: 34px; z-index: 19;
-  width: 100%; height: auto; display: flex; overflow-x: auto; overflow-y: hidden;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none; border-bottom: 1px solid var(--border);
+  width: 100%; height: auto; display: block; overflow: visible;
+  border-bottom: 1px solid var(--border);
 }
-body.m .tabstrip::-webkit-scrollbar { display: none; }
 body.m .tabstrip::before, body.m .tabstrip::after { display: none; }
+/* row 1 (OFFICE MENU / REPORT / PAYMENT INQUIRY / LIST MENU): four equal tabs filling the width, never scrolls */
+body.m .tabrow-1 { display: flex; }
+body.m .tabrow-1 .tab {
+  flex: 1 1 0; min-width: 0; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+  white-space: normal; line-height: 1.15; font-size: 12.5px; font-weight: 600;
+}
+body.m .tabrow-1 .tab + .tab { border-left: 1px solid var(--tabsep); }
+/* row 2 (every other tab): one line, swipe sideways */
+body.m .tabrow-2 {
+  display: flex; overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  border-top: 1px solid var(--border); background: rgba(0, 0, 0, .03);
+}
+body.m .tabrow-2::-webkit-scrollbar { display: none; }
 body.m .tab {
   position: relative; left: auto !important; top: auto !important; flex: 0 0 auto;
   width: auto !important; height: 42px; line-height: 42px; padding: 0 14px; font-size: 13px;
 }
-body.m .tab.sel { line-height: 40px; border-bottom: 3px solid var(--blue); border-top: 0; border-left: 0; border-right: 0; font-weight: 700; color: var(--blue); }
+body.m .tabrow-2 .tab { height: 38px; line-height: 38px; font-size: 12.5px; }
+body.m .tab::after { display: none; }
+body.m .tab.sel { border-bottom: 3px solid var(--blue); border-top: 0; border-left: 0; border-right: 0; font-weight: 700; color: var(--blue); background: #fff; }
+body.m .tabrow-2 .tab.sel { line-height: 35px; }
+body.m .tabrow-1 .tab.sel { padding-top: 3px; }
 body.m .tab-text { transform: none !important; }
 
-body.m .content { position: static; width: 100%; height: auto; min-height: calc(100vh - 124px); }
+body.m .content { position: static; width: 100%; height: auto; min-height: calc(100vh - 164px); }
 body.m .page { position: relative; width: 100%; height: auto; }
 body.m .placeholder { position: static; padding: 60px 16px; }
 
