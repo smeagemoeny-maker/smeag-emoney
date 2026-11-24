@@ -6,7 +6,9 @@
    - Phrases: multi-word or "Label:" keys replaced inside longer text (dialog messages, "Name: Kim").
    Data is protected: table body cells only get whole-sentence messages, inputs/textarea values are
    never touched, and an <option> keeps its English value (value attribute) so select.value is unchanged.
-   The original English is remembered per node, so switching language (or back to English) is lossless. */
+   The original English is remembered per node, so switching language (or back to English) is lossless.
+   List content (DB values such as menu categories/items) is translated only inside [data-i18n="data"],
+   using i18n-data.js (whole-value match, case-insensitive, plus '~' word rules). */
 (function () {
   'use strict';
 
@@ -46,6 +48,45 @@
     templates.sort(function (a, b) { return b.len - a.len; });
   }
   load(window.OFFICE_I18N_DICT || {});
+
+  /* ---------- data dictionary (i18n-data.js): list content inside [data-i18n="data"] ---------- */
+  var dExact = {};     // normalised English value -> [8 translations]
+  var dRules = [];     // { re, out[], len } word/phrase rules, longest first
+  function norm(s) { return String(s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+  (function loadData(raw) {
+    Object.keys(raw).forEach(function (en) {
+      var out = String(raw[en]).split('|');
+      if (en.charAt(0) !== '~') { dExact[norm(en)] = out; return; }
+      var key = en.slice(1);
+      var src = reEsc(key).replace(/\\\{n\\\}/g, '(\\d[\\d,.]*)');
+      // A rule must not start/end inside a word ("Car" in "Carrot").
+      var pre = /^[A-Za-z0-9{]/.test(key) ? '(^|[^A-Za-z0-9])' : '()';
+      var post = /[A-Za-z]$/.test(key) ? '(?![A-Za-z])' : '';
+      dRules.push({ re: new RegExp(pre + src + post, 'gi'), out: out, len: key.length });
+    });
+    dRules.sort(function (a, b) { return b.len - a.len; });
+  })(window.OFFICE_I18N_DATA || {});
+
+  function translateData(text) {
+    if (col < 0 || !text || !/[A-Za-z]/.test(text)) return text;
+    var m = /^(\s*)([\s\S]*?)(\s*)$/.exec(text);
+    var hit = dExact[norm(m[2])];
+    if (hit) { var t = pick(hit); return t == null ? text : m[1] + t + m[3]; }
+    // Rules: replace with placeholders first so one rule never re-matches another rule's output.
+    var s = m[2], parts = [], changed = false;
+    dRules.forEach(function (r) {
+      var tr = pick(r.out); if (tr == null) return;
+      s = s.replace(r.re, function (all, before, num) {
+        changed = true;
+        parts.push(tr.replace('{n}', num || ''));
+        return before + '\u0001' + (parts.length - 1) + '\u0002';
+      });
+    });
+    if (!changed) return text;
+    s = s.replace(/\u0001(\d+)\u0002/g, function (a, i) { return parts[+i]; });
+    return m[1] + s + m[3];
+  }
+  function inData(elm) { return !!elm.closest('[data-i18n="data"]'); }
 
   function pick(out) { var t = out[col]; return t == null || t === '' ? null : t; }
   function isLetter(ch) { return !!ch && /[A-Za-z0-9]/.test(ch); }
@@ -106,7 +147,7 @@
     var cur = node.nodeValue;
     if (!rec || cur !== rec.out) rec = { src: cur, out: cur };   // new text written by the page
     if (p.tagName === 'OPTION' && !p.hasAttribute('value')) p.setAttribute('value', rec.src);
-    var t = translate(rec.src, inBodyCell(p));
+    var t = inData(p) ? translateData(rec.src) : translate(rec.src, inBodyCell(p));
     rec.out = t;
     nodeSrc.set(node, rec);
     if (t !== cur) node.nodeValue = t;
@@ -197,6 +238,7 @@
 
   window.OfficeI18n = {
     t: function (s) { return translate(s, false); },
+    data: function (s) { return translateData(s); },
     lang: function () { return lang; },
     setLang: applyLang,
     languages: LANGS.slice()

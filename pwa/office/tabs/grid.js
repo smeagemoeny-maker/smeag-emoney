@@ -4,7 +4,8 @@
      opts.columns: [{ key, header, width (px), align: 'left'|'right'|'center',
                       format: 'money' (#,##0.00, also in CSV) | 'int' | 'text' (default),
                       editable: bool, options: [..] (editable as a drop-down),
-                      render: function (row) -> HTML string (overrides format; not editable) }]
+                      render: function (row) -> HTML string (overrides format; not editable),
+                      i18n: 'data' -> cell text shown in the UI language via i18n-data.js (value stays English) }]
      opts.select:  'row' (single current row, default) | 'multi' (check-box column + header "select all")
      opts.rowHeader: true -> grey WinForms row-header column (default true unless select = 'multi')
      opts.font: CSS font-size for cells (default 12px) ; opts.rowHeight (default 30)
@@ -150,7 +151,7 @@
         (multi ? '<td class="ck"><input type="checkbox" data-ck' + (checkedSet[ri] ? ' checked' : '') + '></td>' : '') +
         cols.map(function (c, ci) {
           var cls = (c.align === 'right' ? 'r' : c.align === 'center' ? 'c' : '') + (Object.prototype.hasOwnProperty.call(e, c.key) ? ' ed' : '');
-          return '<td data-ci="' + ci + '" class="' + cls + '">' + cellHtml(ri, c) + '</td>';
+          return '<td data-ci="' + ci + '" class="' + cls + '"' + (c.i18n === 'data' ? ' data-i18n="data"' : '') + '>' + cellHtml(ri, c) + '</td>';
         }).join('') + '</tr>';
     }
 

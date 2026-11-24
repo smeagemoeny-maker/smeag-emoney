@@ -632,9 +632,9 @@
         var tip = l.memo ? ' title="' + escapeHtml('Reason: ' + l.memo) + '"' : '';
         html += '<tr data-i="' + i + '" class="t-' + l.type.toLowerCase() + '"' + tip + '>' +
           '<td class="rh"></td>' +
-          '<td>' + l.type + '</td>' +
-          '<td>' + escapeHtml(l.mainMenu) + '</td>' +
-          '<td>' + escapeHtml(l.subMenu) + '</td>' +
+          '<td data-i18n="data">' + l.type + '</td>' +
+          '<td data-i18n="data">' + escapeHtml(l.mainMenu) + '</td>' +
+          '<td data-i18n="data">' + escapeHtml(l.subMenu) + '</td>' +
           '<td class="r">' + sign + money(l.unitPrice) + '</td>' +
           '<td class="c">' + l.qty + '</td>' +
           '<td class="r">' + money(running) + '</td></tr>';

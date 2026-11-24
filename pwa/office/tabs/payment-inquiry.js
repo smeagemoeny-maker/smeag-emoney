@@ -169,15 +169,15 @@
         { key: 'studentId', header: 'STUDENT ID', width: 100 },
         { key: 'name', header: 'NAME', width: 140 },
         { key: 'campus', header: 'CAMPUS', width: 85 },
-        { key: 'category', header: 'CATEGORY', width: 110 },
-        { key: 'subcategory', header: 'SUB CATEGORY', width: 120 },
-        { key: 'type', header: 'TYPE', width: 80 },
+        { key: 'category', header: 'CATEGORY', width: 110, i18n: 'data' },
+        { key: 'subcategory', header: 'SUB CATEGORY', width: 120, i18n: 'data' },
+        { key: 'type', header: 'TYPE', width: 80, i18n: 'data' },
         { key: 'beforeAmount', header: 'BEFORE AMOUNT', width: 135, format: 'money', align: 'right' },
         { key: 'payment', header: 'PAYMENT', width: 95, format: 'money', align: 'right' },
         { key: 'totalMoney', header: 'TOTAL MONEY', width: 115, format: 'money', align: 'right' },
         { key: 'quantity', header: 'QTY', width: 50, format: 'int', align: 'right' },
-        { key: 'remark', header: 'REMARK', width: 110 },
-        { key: 'source', header: 'SOURCE', width: 95 },
+        { key: 'remark', header: 'REMARK', width: 110, i18n: 'data' },
+        { key: 'source', header: 'SOURCE', width: 95, i18n: 'data' },
         { key: 'date', header: 'TRANSACTION DATE', width: 150 }
       ];
       var grid = OfficeKit.grid(k.box('g3-white a2-dark', 20, 230, 1658, 555), { columns: COLUMNS });
