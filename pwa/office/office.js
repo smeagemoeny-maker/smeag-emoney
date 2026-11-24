@@ -5,15 +5,21 @@
 (function () {
   'use strict';
 
-  var WIN_W = 1708, WIN_H = 1030;
+  var WIN_W = 1708, WIN_H = 1066;   // 1030 + one more 36px tab row
   var OFFICE_MENU_INDEX = 4;
   var TAB_NAMES = [
     'REGISTRATION', 'INFORMATION', 'MODIFY INFO', 'MENU LIST', 'OFFICE MENU',
     'LIST MENU', 'Graduate', 'Default', 'REPORT', 'RECHARGE/CASHOUT',
     'IDCARD', 'PAYMENT INQUIRY', 'PURCHASES', 'TransData', 'SME REFUND', 'OUTING', 'LOG'
   ];
-  // Tabs are 125px like the WinForms strip, narrowed when more of them have to fit the 1706px window.
-  var TAB_W = Math.min(125, Math.floor((1706 - 6) / TAB_NAMES.length));
+  // Two tab rows: the everyday tabs on row 1 (in this order), every other tab on row 2 in TAB_NAMES order.
+  var ROW1_TABS = ['OFFICE MENU', 'REPORT', 'PAYMENT INQUIRY', 'LIST MENU'];
+  var TAB_ROW_H = 36;
+  var TAB_ORDER = ROW1_TABS.map(function (n) { return TAB_NAMES.indexOf(n); })
+    .concat(TAB_NAMES.map(function (n, i) { return i; }).filter(function (i) { return ROW1_TABS.indexOf(TAB_NAMES[i]) < 0; }));
+  // Tabs are 125px like the WinForms strip, narrowed when a row has more of them than fit the 1706px window.
+  var TAB_W = Math.min(125, Math.floor((1706 - 6) / Math.max(ROW1_TABS.length, TAB_NAMES.length - ROW1_TABS.length)));
+  var tabEls = [];   // tabEls[i] = tab element of TAB_NAMES[i] (DOM order is TAB_ORDER)
   var COLORS = { INCREASE: '#2E7D32', DECREASE: '#C62828', EXCEPTION: '#1976D2' };
 
   /* ================= backend API client ================= */
@@ -342,10 +348,15 @@
 
   function buildTabs(onSelect) {
     var strip = el('tabstrip');
-    TAB_NAMES.forEach(function (name, i) {
+    TAB_ORDER.forEach(function (i, pos) {
+      var name = TAB_NAMES[i];
+      var row = pos < ROW1_TABS.length ? 0 : 1;
+      var col = row === 0 ? pos : pos - ROW1_TABS.length;
       var t = document.createElement('div');
+      tabEls[i] = t;
       t.className = 'tab' + (i === OFFICE_MENU_INDEX ? ' sel' : '');
-      t.style.left = (3 + i * TAB_W) + 'px';
+      t.style.left = (3 + col * TAB_W) + 'px';
+      t.style.top = (2 + row * TAB_ROW_H) + 'px';
       t.style.width = TAB_W + 'px';
       var label = document.createElement('span');
       label.className = 'tab-text';
@@ -394,7 +405,7 @@
     return -1;
   }
   function selectTab(index) {
-    var t = document.querySelectorAll('#tabstrip .tab')[index];
+    var t = tabEls[index];
     if (t) t.click();
   }
   function showPage(index) {
@@ -1037,7 +1048,7 @@
       var m = /[?&]tab=([^&]+)/.exec(location.search);
       var want = m ? decodeURIComponent(m[1]).toUpperCase() : '';
       var idx = TAB_NAMES.map(function (n) { return n.toUpperCase(); }).indexOf(want);
-      if (idx >= 0) document.querySelectorAll('#tabstrip .tab')[idx].click();
+      if (idx >= 0) tabEls[idx].click();
       return;
     }
 

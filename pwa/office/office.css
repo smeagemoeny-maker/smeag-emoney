@@ -1,5 +1,5 @@
 /* SMEAG OFFICE ONLINE PROGRAM — static replica of the WinForms OFFICE MENU screen.
-   All coordinates are design pixels (window 1708 x 1030, client 1706 x 998).
+   All coordinates are design pixels (window 1708 x 1066, client 1706 x 1034; two 36px tab rows).
    pt -> px at 96 dpi: 8.25pt=11px, 9pt=12px, 9.75pt=13px, 10pt=13.33px, 10.5pt=14px, 11pt=14.67px, 13pt=17.33px */
 
 :root {
@@ -37,7 +37,7 @@ body {
 .win {
   position: absolute;
   left: 0; top: 0;
-  width: 1708px; height: 1030px;
+  width: 1708px; height: 1066px;
   background: var(--body);
   border: 1px solid #8C8C8C;
   transform-origin: 0 0;
@@ -76,7 +76,7 @@ body {
 
 .client {
   position: absolute; left: 0; top: 30px;
-  width: 1706px; height: 998px;
+  width: 1706px; height: 1034px;
   background: var(--body);
   overflow: hidden;
 }
@@ -105,12 +105,15 @@ body {
 /* ---------- ② tab strip ---------- */
 .tabstrip {
   position: absolute; left: 0; top: 80px;
-  width: 1706px; height: 38px;
+  width: 1706px; height: 74px;
   background: var(--tabbar);
   user-select: none;
 }
-.tabstrip::after { /* bottom border line */
+.tabstrip::before { /* line between the two tab rows */
   content: ""; position: absolute; left: 0; right: 0; top: 37px; height: 1px; background: var(--border);
+}
+.tabstrip::after { /* bottom border line */
+  content: ""; position: absolute; left: 0; right: 0; top: 73px; height: 1px; background: var(--border);
 }
 .tab {
   position: absolute; top: 2px;
@@ -134,7 +137,7 @@ body {
 
 /* ---------- content ---------- */
 .content {
-  position: absolute; left: 0; top: 118px;
+  position: absolute; left: 0; top: 154px;
   width: 1706px; height: 880px;
   background: var(--body);
 }
