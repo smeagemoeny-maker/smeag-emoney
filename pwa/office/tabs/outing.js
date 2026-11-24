@@ -53,7 +53,24 @@
           '[data-tab="OUTING"] .ot-kind{position:absolute;height:46px;width:168px;border:2px solid #B8B8C0;background:#FFF;font-weight:700;font-size:15px;cursor:pointer;border-radius:4px}' +
           '[data-tab="OUTING"] .ot-kind.on{border-color:#0078D7;background:#0078D7;color:#FFF}' +
           '[data-tab="OUTING"] .ot-panel input[type=datetime-local]{font:inherit;font-size:14px;padding:3px 6px;border:1px solid #7A7A7A}' +
-          '[data-tab="OUTING"] .ot-blink{animation:otBlink 1s step-start infinite}@keyframes otBlink{50%{opacity:.35}}';
+          '[data-tab="OUTING"] .ot-blink{animation:otBlink 1s step-start infinite}@keyframes otBlink{50%{opacity:.35}}' +
+          // Phone (body.m, office.js flowPage): tapped student + CHECK OUT/IN first, the list last; form stacked.
+          'body.m [data-tab="OUTING"] .ot-tile{flex:0 0 calc(50% - 4px) !important;width:auto !important;height:64px;padding:6px 10px}' +
+          'body.m [data-tab="OUTING"] .ot-tile b{font-size:24px;line-height:28px}' +
+          'body.m [data-tab="OUTING"] .ot-tile span{font-size:11px}' +
+          'body.m [data-tab="OUTING"] [data-k="info"]{flex:0 0 100% !important;white-space:normal}' +
+          'body.m [data-tab="OUTING"] [data-k="who"],body.m [data-tab="OUTING"] [data-k="form"],body.m [data-tab="OUTING"] [data-k="hist"]' +
+          '{flex:0 0 100% !important;width:100% !important;height:auto !important;box-sizing:border-box;background:#FFF;border:1px solid #D8D8DE;padding:10px;scroll-margin-top:150px}' +
+          'body.m [data-tab="OUTING"] [data-k="who"]{border-width:2px;border-color:#0078D7}' +
+          'body.m [data-tab="OUTING"] [data-k="form"]>*{position:static !important;width:auto !important;margin:0 0 10px}' +
+          'body.m [data-tab="OUTING"] [data-k="form"] .ot-kind{display:inline-block;width:calc(50% - 5px) !important;height:56px;margin:0 6px 10px 0}' +
+          'body.m [data-tab="OUTING"] [data-k="form"] .ot-kind+.ot-kind{margin-right:0}' +
+          'body.m [data-tab="OUTING"] [data-k="form"] input[type=datetime-local],body.m [data-tab="OUTING"] [data-k="form"] .g3-txt' +
+          '{width:100% !important;height:40px !important;box-sizing:border-box}' +
+          'body.m [data-tab="OUTING"] [data-k="form"] .flat.big{display:block;width:100% !important;height:60px !important;font-size:17px}' +
+          'body.m [data-tab="OUTING"] [data-k="form"] button[data-f="rowBack"],body.m [data-tab="OUTING"] [data-k="form"] button[data-f="undo"],' +
+          'body.m [data-tab="OUTING"] [data-k="form"] button[data-f="void"]{width:calc(33% - 6px) !important;height:40px !important}' +
+          'body.m [data-tab="OUTING"] [data-k="grid"]{order:10000 !important}';
         document.head.appendChild(st);
       }
       var A = 'position:absolute;';
@@ -165,6 +182,8 @@
           kind = 'OUTING';
           renderWho();
           renderForm();
+          // Phone: the student panel sits above the list; bring it (and CHECK OUT / CHECK IN) into view.
+          if (document.body.classList.contains('m')) q('who').scrollIntoView({ block: 'start', behavior: 'smooth' });
           // Out now and the card is tapped again -> the student is back.
           if (res.open && autoReturn()) return checkIn(res.open, true);
         }).catch(function (e) {
