@@ -40,6 +40,7 @@ import * as campusBot from "./campusBot.mjs";
 import * as smeRefund from "./smeadminRefund.mjs";
 import * as localFee from "./localFee.mjs";
 import * as outing from "./outing.mjs";
+import * as cardRelay from "./cardRelay.mjs";
 
 const corsOrigin = process.env.CORS_ORIGIN || "*";
 const useMockDb = process.env.USE_MOCK_DB === "true";
@@ -131,6 +132,32 @@ const routes = [
     assertCanCharge(access, body.campus);
     // The staff id recorded in bank.`order` comes from the session, not the request body.
     return { charge: await repo.createCharge({ ...body, staffLoginId: session.loginId }) };
+  }],
+  // Phone as the PC's card reader (cardRelay.mjs): the PC pairs (4-digit code), the phone joins and sends taps.
+  ["POST", /^\/api\/card-relay$/, async ({ req, body }) => {
+    const { session } = verifyRequest(req);
+    supabaseOnly();
+    return cardRelay.create(session.loginId, body?.campus);
+  }],
+  ["POST", /^\/api\/card-relay\/(\d{4})\/poll$/, async ({ req, match, body }) => {
+    verifyRequest(req);
+    supabaseOnly();
+    return cardRelay.poll(match[1], body?.key, body?.after, body?.phone);
+  }],
+  ["POST", /^\/api\/card-relay\/(\d{4})\/join$/, async ({ req, match }) => {
+    const { session } = verifyRequest(req);
+    supabaseOnly();
+    return cardRelay.join(match[1], session.loginId);
+  }],
+  ["POST", /^\/api\/card-relay\/(\d{4})\/tap$/, async ({ req, match, body }) => {
+    const { session } = verifyRequest(req);
+    supabaseOnly();
+    return cardRelay.tap(match[1], body?.uid, session.loginId);
+  }],
+  ["POST", /^\/api\/card-relay\/(\d{4})\/close$/, async ({ req, match, body }) => {
+    verifyRequest(req);
+    supabaseOnly();
+    return cardRelay.close(match[1], body?.key);
   }],
   ["POST", /^\/api\/pusanmart\/payments$/, async ({ req, body }) => {
     const { session, access } = verifyRequest(req);

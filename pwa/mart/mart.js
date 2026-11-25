@@ -215,6 +215,8 @@
     } catch (e) { /* ignore broken session */ }
   }
   function logout(notice) {
+    if (relayHost) relayStopHost();   // before the token is gone (the close call needs it)
+    relayPhone = null; relaySave();
     session.manager = null; session.access = null; session.token = null;
     saveSession();
     vm.cart = []; vm.last = null; vm.buyerResult = null; vm.buyerLookupError = null;
@@ -411,6 +413,131 @@
     render();
   }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState !== 'visible') closeCameraScan(); });
+
+  // ----- phone as the PC's card reader (api/src/cardRelay.mjs) -----
+  // PC (no NFC reader): "Use a phone as the card reader" -> 4-digit code. The PC long-polls the server and
+  // every new tap becomes an 'nfc-tag' event here, exactly like a tap on a local reader.
+  // Phone: "Use this phone as a PC's card reader" -> enter the code -> reader screen; each card tap is sent to the PC.
+  var IS_PHONE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  var relayHost = null;    // PC:    { code, key, seq, phone }
+  var relayPhone = null;   // phone: { code, pcBy, last, lastOk, sending }
+  var RELAY_HOST_KEY = 'pusanRelayHost', RELAY_PHONE_KEY = 'pusanRelayPhone';
+  function relaySave() {
+    try {
+      if (relayHost) localStorage.setItem(RELAY_HOST_KEY, JSON.stringify({ code: relayHost.code, key: relayHost.key, seq: relayHost.seq }));
+      else localStorage.removeItem(RELAY_HOST_KEY);
+      if (relayPhone) localStorage.setItem(RELAY_PHONE_KEY, JSON.stringify({ code: relayPhone.code, pcBy: relayPhone.pcBy }));
+      else localStorage.removeItem(RELAY_PHONE_KEY);
+    } catch (e) { /* storage unavailable */ }
+  }
+  function relayRestore() {
+    try {
+      var h = JSON.parse(localStorage.getItem(RELAY_HOST_KEY) || 'null');
+      if (h && h.code && h.key) { relayHost = { code: h.code, key: h.key, seq: Number(h.seq) || 0, phone: null }; relayHostLoop(relayHost); }
+      var ph = JSON.parse(localStorage.getItem(RELAY_PHONE_KEY) || 'null');
+      if (ph && ph.code) { relayPhone = { code: ph.code, pcBy: ph.pcBy, last: null, lastOk: true }; relayPing(); }
+    } catch (e) { /* ignore */ }
+  }
+  function relayStartHost() {
+    if (relayHost) return;
+    apiCall('POST', '/api/card-relay', { campus: S.campus }).then(function (r) {
+      relayHost = { code: r.code, key: r.key, seq: 0, phone: null };
+      relaySave(); render();
+      relayHostLoop(relayHost);
+    }, function (e) { toast('Could not start the phone reader: ' + e.message, 4000); });
+  }
+  function relayStopHost() {
+    var h = relayHost;
+    if (!h) return;
+    relayHost = null; relaySave(); render();
+    apiCall('POST', '/api/card-relay/' + h.code + '/close', { key: h.key }).catch(function () { /* expires anyway */ });
+  }
+  function relayHostLoop(h) {
+    if (relayHost !== h) return;
+    if (!session.token) { setTimeout(function () { relayHostLoop(h); }, 3000); return; }   // wait for the login
+    apiCall('POST', '/api/card-relay/' + h.code + '/poll', { key: h.key, after: h.seq, phone: h.phone || '' }).then(function (r) {
+      if (relayHost !== h) return;
+      var phoneChanged = (r.phone || null) !== h.phone;
+      h.phone = r.phone || null;
+      if (r.seq > h.seq) {
+        h.seq = r.seq; relaySave();
+        // A tap older than 20 s (made while this PC was closed / offline) is not replayed.
+        if (r.uid && r.tapAt && Date.now() - new Date(r.tapAt).getTime() < 20000) {
+          window.dispatchEvent(new CustomEvent('nfc-tag', { detail: { uid: r.uid, source: 'phone-relay', timestamp: Date.now() } }));
+        }
+      }
+      if (phoneChanged) { if (h.phone) toast('Phone reader connected (' + h.phone + ')', 2500); render(); }
+      relayHostLoop(h);
+    }, function (e) {
+      if (relayHost !== h) return;
+      if (e.status === 404 || e.status === 403 || e.status === 501) {
+        relayHost = null; relaySave(); render();
+        toast('Phone reader stopped: ' + e.message, 5000);
+        return;
+      }
+      setTimeout(function () { relayHostLoop(h); }, 3000);   // offline / server hiccup: keep trying
+    });
+  }
+  function relayJoin() {
+    var code = window.prompt('Enter the 4-digit code shown on the PC (Sales › Phone reader):', '');
+    if (code == null) return;
+    code = String(code).replace(/\D/g, '');
+    if (!/^\d{4}$/.test(code)) { toast('The code is 4 digits.', 2500); return; }
+    apiCall('POST', '/api/card-relay/' + code + '/join').then(function (r) {
+      relayPhone = { code: code, pcBy: r.pcBy, last: null, lastOk: true };
+      relaySave(); render();
+    }, function (e) { beep('error'); toast(e.message, 4000); });
+  }
+  function relayLeave() { relayPhone = null; relaySave(); render(); }
+  function relayPing() {
+    if (!relayPhone || !session.token || document.visibilityState !== 'visible') return;
+    var ph = relayPhone;
+    apiCall('POST', '/api/card-relay/' + ph.code + '/join').catch(function (e) {
+      if (relayPhone === ph && (e.status === 404 || e.status === 501)) { relayPhone = null; relaySave(); toast('The PC closed the phone reader.', 4000); render(); }
+    });
+  }
+  setInterval(relayPing, 30000);
+  document.addEventListener('visibilitychange', relayPing);
+  function relaySendTap(uid) {
+    var ph = relayPhone;
+    ph.sending = true; render();
+    apiCall('POST', '/api/card-relay/' + ph.code + '/tap', { uid: uid }).then(function () {
+      if (relayPhone !== ph) return;
+      ph.sending = false; ph.last = { uid: uid, at: new Date() }; ph.lastOk = true;
+      beep('ok'); if (navigator.vibrate) try { navigator.vibrate(80); } catch (e) { /* optional */ }
+      render();
+    }, function (e) {
+      if (relayPhone !== ph) return;
+      ph.sending = false; ph.last = { uid: uid, at: new Date(), error: e.message }; ph.lastOk = false;
+      beep('error');
+      if (e.status === 404) { relayPhone = null; relaySave(); toast(e.message, 5000); }
+      render();
+    });
+  }
+  // Line under the NFC box on Sales: PC = pair a phone; phone = become a PC's reader.
+  function relayLine() {
+    if (relayHost) {
+      return '<div class="relayline on">' + (relayHost.phone
+        ? '📱 <b>Phone reader connected</b> (' + esc(relayHost.phone) + ') · code ' + relayHost.code + ' — tap cards on the phone.'
+        : '📱 Phone reader code <b class="relaycode">' + relayHost.code + '</b><br><span>On the phone: Mart app › Sales › “Use this phone as a PC’s card reader” › enter ' + relayHost.code + '</span>') +
+        ' <button class="pill" data-act="' + act(relayStopHost) + '">Stop</button></div>';
+    }
+    if (IS_PHONE) return '<div class="relayline"><button class="pill" data-act="' + act(relayJoin) + '">🖥 Use this phone as a PC’s card reader</button></div>';
+    return '<div class="relayline">No card reader on this PC? <button class="pill" data-act="' + act(relayStartHost) + '">📱 Use a phone as the card reader</button></div>';
+  }
+  // Phone in reader mode: the whole screen (no tabs), so it is clear the taps go to the PC.
+  function relayReaderScreen() {
+    var ph = relayPhone, l = ph.last;
+    var two = function (n) { return ('0' + n).slice(-2); };
+    return '<div class="screen relayreader">' +
+      '<div class="rr-title">PC CARD READER</div>' +
+      '<div class="rr-code">Code ' + ph.code + (ph.pcBy ? ' · PC ' + esc(ph.pcBy) : '') + '</div>' +
+      '<div class="rr-icon' + (ph.sending ? ' busy' : '') + '">📶</div>' +
+      '<div class="rr-msg">' + (ph.sending ? 'Sending to the PC…' : 'Tap the student card on the back of this phone.<br>The payment opens on the PC.') + '</div>' +
+      (l ? '<div class="rr-last ' + (ph.lastOk ? 'ok' : 'bad') + '">' + (ph.lastOk ? '✓ Sent to PC' : '✕ Not sent: ' + esc(l.error || '')) +
+        ' · ' + esc(String(l.uid).toUpperCase()) + ' · ' + two(l.at.getHours()) + ':' + two(l.at.getMinutes()) + ':' + two(l.at.getSeconds()) + '</div>' : '') +
+      '<button class="btn btn-secondary rr-stop" data-act="' + act(relayLeave) + '"><span>Stop reader mode</span></button></div>';
+  }
 
   function removeOne(p) {
     var line = vm.cart.filter(function (c) { return c.product.id === p.id; })[0];
@@ -675,6 +802,7 @@
     uidStr = String(uidStr || '').trim();
     if (!uidStr) return;
     if (!session.manager) { toast('NFC tag read: ' + uidStr); return; }
+    if (relayPhone) { if (!relayPhone.sending) relaySendTap(uidStr); return; }   // reader mode: the tap belongs to the PC
     // The phone reader is always on, so a tap can come before the NFC box was pressed: pay right away when
     // the screen is ready (the box says "Payment completes as soon as you tap"), otherwise say why not.
     if (route === 'sales') {
@@ -958,6 +1086,7 @@
       '<div style="font-size:12px;font-weight:700">' + (S.paying ? 'Processing payment...' : S.awaitingTap ? 'Please tap your NFC card...' : 'Tap your NFC card on the back of the phone') + '</div>' +
       '<div style="font-size:10.5px;color:var(--ink2)">' + (vm.cart.length ? 'Check the student info, then confirm payment' : 'Empty cart: tap to check student info and balance') + '</div></div>';
     }
+    h += relayLine();
     h += '</div>';
     if (wide) { h += '</div></div>'; return h; }   // .salesMain, .screen (cart always visible: no scroll-to-cart button)
     h += '<button class="fab" data-act="' + act(function () {
@@ -2374,7 +2503,7 @@
     } else {
       var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen, stock: stockScreen,
         buyer: buyerScreen, pusanpay: pusanPayScreen, paylist: payListScreen, receipt: receiptScreen }[route] || salesScreen;
-      body = '<div class="content">' + fn() + '</div>' + navBar();
+      body = relayPhone ? '<div class="content">' + relayReaderScreen() + '</div>' : '<div class="content">' + fn() + '</div>' + navBar();
     }
     if (ui.dropdown) body += dropdownOverlay();
     if (ui.toast) body += '<div class="toast">' + esc(ui.toast) + '</div>';
@@ -2575,6 +2704,7 @@
       }
     }
     restoreSession();
+    relayRestore();
     window.addEventListener('popstate', routeFromHash);
     window.addEventListener('hashchange', function () { if (location.hash === '#logout') logout(); });
     var lastWide = isWide();

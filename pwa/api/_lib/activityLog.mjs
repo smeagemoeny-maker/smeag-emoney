@@ -40,6 +40,9 @@ const ACTIONS = [
   ["PATCH", /^\/api\/people\/\d+$/, "Edit buyer"],
   ["GET", /^\/api\/office\/menus$/, "Office: load menus"],
   ["POST", /^\/api\/office\/transactions$/, "Office: confirm transaction"],
+  ["POST", /^\/api\/card-relay$/, "Phone reader: PC pairing opened"],
+  ["POST", /^\/api\/card-relay\/\d{4}\/join$/, "Phone reader: phone joined"],
+  ["POST", /^\/api\/card-relay\/\d{4}\/tap$/, "Phone reader: card tap"],
   ["GET", /^\/api\/office\/people$/, "Office: search people"],
   ["POST", /^\/api\/office\/people$/, "Office: register people"],
   ["POST", /^\/api\/office\/people\/import-new$/, "Office: import new students"],
@@ -86,6 +89,8 @@ const ACTIONS = [
 
 export function shouldLog(method, pathname) {
   // Student app calls (/api/campus/...) are not staff activity, and their bodies carry PINs: never logged here.
+  // The PC's card-relay long-poll runs all day (and its body holds the PC's key): not logged, nor the close.
+  if (/^\/api\/card-relay\/\d{4}\/(poll|close)$/.test(pathname)) return false;
   return method !== "OPTIONS" && method !== "HEAD" && pathname !== "/api/health" && !pathname.startsWith("/api/campus/");
 }
 
