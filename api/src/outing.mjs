@@ -65,11 +65,28 @@ function status(r, now = Date.now()) {
   return now > Date.parse(r.expected_return_at) ? "late" : "out";
 }
 
+// OVERNIGHT check points: 12:00 and 24:00 of the (Philippine) day after the student left.
+export function overnightDeadlines(outAt) {
+  const t = Date.parse(outAt);
+  const nextDay = Date.parse(phDayRange(new Date(t + PH_OFFSET_MS).toISOString().slice(0, 10)).end);
+  return { noon: new Date(nextDay + 12 * 3600000).toISOString(), midnight: new Date(nextDay + 24 * 3600000).toISOString() };
+}
+
+// 0 = fine, 1 = not back by next day 12:00, 2 = not back by next day 24:00 (by the return time, or now if still out)
+function overnightStage(r, now) {
+  if (r.kind !== "OVERNIGHT" || r.voided_at) return 0;
+  const d = overnightDeadlines(r.out_at);
+  const t = r.returned_at ? Date.parse(r.returned_at) : now;
+  return t > Date.parse(d.midnight) ? 2 : t > Date.parse(d.noon) ? 1 : 0;
+}
+
 function map(r, now = Date.now()) {
   const st = status(r, now);
   const end = r.returned_at ? Date.parse(r.returned_at) : now;
   const lateMin = Math.max(0, Math.round((end - Date.parse(r.expected_return_at)) / 60000));
+  const dl = r.kind === "OVERNIGHT" ? overnightDeadlines(r.out_at) : null;
   return {
+    nextNoon: dl ? dl.noon : null, nextMidnight: dl ? dl.midnight : null, overnightStage: overnightStage(r, now),
     id: Number(r.id), personId: r.person_id, uid: r.uid, studentId: r.student_id, studentName: r.student_name, campus: r.campus,
     kind: r.kind, destination: r.destination, memo: r.memo, outAt: r.out_at, expectedReturnAt: r.expected_return_at, outBy: r.out_by,
     returnedAt: r.returned_at, returnedBy: r.returned_by, voidedAt: r.voided_at, voidedBy: r.voided_by, voidReason: r.void_reason,
@@ -110,7 +127,9 @@ export async function byUid(uid, access) {
   return { person: mapPerson(p), open: open ? map(open) : null, recent: recent.map((r) => map(r)) };
 }
 
+// view: out | out_outing | out_overnight | overnight_noon | overnight_midnight | day | range
 export async function list({ view, day, from, to, campus } = {}, access) {
+  const OPEN_VIEWS = ["out", "out_outing", "out_overnight", "overnight_noon", "overnight_midnight"];
   const now = Date.now();
   const f = [`select=${COLS}`, "voided_at=is.null", "limit=1000"];
   let range = null;
@@ -118,8 +137,10 @@ export async function list({ view, day, from, to, campus } = {}, access) {
     const a = phDayRange(from), b = phDayRange(to || from);
     if (a.start > b.start) throw httpError(400, "From date is after To date.");
     f.push(`out_at=gte.${enc(a.start)}`, `out_at=lt.${enc(b.end)}`, "order=out_at.desc");
-  } else if (view === "out") {
-    f.push("returned_at=is.null", "order=expected_return_at.asc");
+  } else if (OPEN_VIEWS.includes(view)) {
+    f.push("returned_at=is.null", "order=out_at.asc");
+    if (view === "out_outing") f.push("kind=eq.OUTING");
+    else if (view !== "out") f.push("kind=eq.OVERNIGHT");
   } else {
     range = phDayRange(day);
     // left that day, came back that day, or still out now
@@ -127,7 +148,8 @@ export async function list({ view, day, from, to, campus } = {}, access) {
       "order=out_at.desc");
   }
   if (campus && campus !== "All") f.push(`campus=ilike.${enc(String(campus).replace(/[*,()]/g, ""))}`);
-  const rows = (await db(`student_outing?${f.join("&")}`)).filter((r) => campusAllowed(access, r.campus)).map((r) => map(r, now));
+  const rows = (await db(`student_outing?${f.join("&")}`)).filter((r) => campusAllowed(access, r.campus)).map((r) => map(r, now))
+    .filter((r) => view === "overnight_noon" ? r.overnightStage >= 1 : view === "overnight_midnight" ? r.overnightStage === 2 : true);
 
   // counters: always about "now" (+ today's PH day), whatever the list shows
   const today = phDayRange();
@@ -140,6 +162,9 @@ export async function list({ view, day, from, to, campus } = {}, access) {
     outing: openRows.filter((r) => r.kind === "OUTING").length,
     overnight: openRows.filter((r) => r.kind === "OVERNIGHT").length,
     late: openRows.filter((r) => r.status === "late").length,
+    outingLate: openRows.filter((r) => r.kind === "OUTING" && r.status === "late").length,
+    overnightNoon: openRows.filter((r) => r.overnightStage >= 1).length,
+    overnightMidnight: openRows.filter((r) => r.overnightStage === 2).length,
     returnedToday: backToday.length,
   };
   return { outings: rows, summary, day: range ? range.day : null, now: new Date(now).toISOString() };

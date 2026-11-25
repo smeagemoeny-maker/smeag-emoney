@@ -13,7 +13,23 @@
     returned_late: { text: 'BACK (LATE)', bg: '#FFF3D6', fg: '#8A4B00' },
     voided: { text: 'VOIDED', bg: '#EDEDED', fg: '#555' }
   };
-  var KIND = { OUTING: 'OUTING', OVERNIGHT: 'OVERNIGHT' };
+  var KIND = { OUTING: 'OUTING 외출', OVERNIGHT: 'OVERNIGHT 외박' };
+  var VIEWS = [
+    ['out', 'Still out — all'],
+    ['out_outing', 'Still out — OUTING 외출'],
+    ['out_overnight', 'Still out — OVERNIGHT 외박'],
+    ['overnight_noon', '외박 · not back by next day 12:00'],
+    ['overnight_midnight', '외박 · not back by next day 24:00'],
+    ['day', 'One day'],
+    ['range', 'Date range']
+  ];
+  var TITLES = {
+    out: 'Students still out', out_outing: 'OUTING (외출) — still out', out_overnight: 'OVERNIGHT (외박) — still out',
+    overnight_noon: 'OVERNIGHT (외박) — NOT BACK by next day 12:00', overnight_midnight: 'OVERNIGHT (외박) — NOT BACK by next day 24:00'
+  };
+  function stageText(r) {
+    return r.overnightStage === 2 ? 'NOT BACK 24:00' : r.overnightStage === 1 ? 'NOT BACK 12:00' : '';
+  }
 
   function pill(st) {
     var s = STATUS[st] || { text: st, bg: '#EEE', fg: '#333' };
@@ -47,9 +63,10 @@
         st.id = 'outingCss';
         st.textContent =
           '[data-tab="OUTING"] tr.cur .ot-tint{color:#FFF !important;background:transparent !important;}' +
-          '[data-tab="OUTING"] .ot-tile{position:absolute;top:76px;height:74px;width:200px;border-radius:6px;color:#FFF;padding:8px 14px;box-sizing:border-box;cursor:pointer;user-select:none}' +
-          '[data-tab="OUTING"] .ot-tile b{display:block;font-size:30px;line-height:34px}' +
-          '[data-tab="OUTING"] .ot-tile span{font-size:12px;font-weight:700;letter-spacing:.5px}' +
+          '[data-tab="OUTING"] .ot-tile{position:absolute;top:76px;height:62px;width:186px;border-radius:6px;color:#FFF;padding:8px 14px;box-sizing:border-box;cursor:pointer;user-select:none}' +
+          '[data-tab="OUTING"] .ot-tile.on{outline:3px solid #222;outline-offset:2px}' +
+          '[data-tab="OUTING"] .ot-tile b{display:block;font-size:26px;line-height:30px}' +
+          '[data-tab="OUTING"] .ot-tile span{font-size:11px;white-space:nowrap;font-weight:700;letter-spacing:.5px}' +
           '[data-tab="OUTING"] .ot-kind{position:absolute;height:46px;width:168px;border:2px solid #B8B8C0;background:#FFF;font-weight:700;font-size:15px;cursor:pointer;border-radius:4px}' +
           '[data-tab="OUTING"] .ot-kind.on{border-color:#0078D7;background:#0078D7;color:#FFF}' +
           '[data-tab="OUTING"] .ot-panel input[type=datetime-local]{font:inherit;font-size:14px;padding:3px 6px;border:1px solid #7A7A7A}' +
@@ -74,6 +91,9 @@
         document.head.appendChild(st);
       }
       var A = 'position:absolute;';
+      function tile(k, v, i, bg, label) {
+        return '<div class="ot-tile" data-k="' + k + '" data-view="' + v + '" style="left:' + (16 + i * 194) + 'px;background:' + bg + '"><span>' + label + '</span><b>0</b></div>';
+      }
       root.innerHTML =
         '<div class="g3-page">' +
         '<div class="g3-top g3-abs" style="left:0;top:0;width:1698px;height:64px"></div>' +
@@ -81,7 +101,7 @@
         '<input class="g3-txt g3-abs" data-k="uid" type="text" maxlength="20" spellcheck="false" autocomplete="off" placeholder="tap card or type UID, Enter" style="left:52px;top:17px;width:220px;height:29px">' +
         '<span class="g3-lbl g3-abs b" style="left:300px;top:22px">SHOW:</span>' +
         '<div class="g3-combo g3-abs" style="left:352px;top:17px;width:200px;height:29px"><select data-k="view">' +
-        '<option value="out">Still out now</option><option value="day">One day</option><option value="range">Date range</option>' +
+        VIEWS.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('') +
         '</select><span class="g3-chev"></span></div>' +
         '<input class="g3-txt g3-abs" data-k="from" type="date" style="left:566px;top:17px;width:150px;height:29px">' +
         '<span class="g3-lbl g3-abs" data-k="tilde" style="left:724px;top:22px">~</span>' +
@@ -94,13 +114,15 @@
         '<span class="g3-lbl g3-abs b" style="left:1470px;top:22px">CURFEW:</span>' +
         '<input class="g3-txt g3-abs" data-k="curfew" type="time" style="left:1540px;top:17px;width:140px;height:29px" title="Default return time for OUTING (today) and OVERNIGHT (next day)">' +
 
-        '<div class="ot-tile" data-k="tOut" data-view="out" style="left:16px;background:#1976D2"><span>OUTING · OUT NOW</span><b>0</b></div>' +
-        '<div class="ot-tile" data-k="tNight" data-view="out" style="left:228px;background:#6A1B9A"><span>OVERNIGHT · OUT NOW</span><b>0</b></div>' +
-        '<div class="ot-tile" data-k="tLate" data-view="out" style="left:440px;background:#C62828"><span>LATE · NOT BACK YET</span><b>0</b></div>' +
-        '<div class="ot-tile" data-k="tBack" data-view="day" style="left:652px;background:#2E7D32"><span>BACK TODAY</span><b>0</b></div>' +
-        '<span class="g3-lbl g3-abs" data-k="info" style="left:870px;top:104px;color:#555"></span>' +
+        tile('tOut', 'out_outing', 0, '#1976D2', '외출 OUTING · OUT') +
+        tile('tOutLate', 'out_outing', 1, '#E65100', '외출 · PAST RETURN TIME') +
+        tile('tNight', 'out_overnight', 2, '#6A1B9A', '외박 OVERNIGHT · OUT') +
+        tile('tNoon', 'overnight_noon', 3, '#AD1457', '외박 · NOT BACK 다음날 12:00') +
+        tile('tMid', 'overnight_midnight', 4, '#B71C1C', '외박 · NOT BACK 다음날 24:00') +
+        tile('tBack', 'day', 5, '#2E7D32', 'BACK TODAY 오늘 복귀') +
+        '<span class="g3-lbl g3-abs" data-k="info" style="left:16px;top:142px;color:#555"></span>' +
 
-        '<div data-k="grid" style="' + A + 'left:16px;top:162px;width:1150px;height:700px"></div>' +
+        '<div data-k="grid" style="' + A + 'left:16px;top:164px;width:1150px;height:698px"></div>' +
 
         '<div class="g3-white g3-abs ot-panel" style="left:1180px;top:76px;width:502px;height:786px;border:1px solid #D8D8DE"></div>' +
         '<div data-k="who" style="' + A + 'left:1196px;top:88px;width:470px;height:150px;font-size:13.33px;line-height:1.6"></div>' +
@@ -111,6 +133,7 @@
       function q(k) { return root.querySelector('[data-k="' + k + '"]'); }
       var view = q('view'), from = q('from'), to = q('to'), curfew = q('curfew');
       view.value = lsGet('outingView', 'out');
+      if (!view.value) view.value = 'out';
       curfew.value = lsGet('outingCurfew', '22:00');
       from.value = to.value = OfficeKit.iso(new Date());
 
@@ -125,29 +148,36 @@
         onCurrent: function () { renderForm(); },
         onDblClick: function (r) { if (r && r.uid) lookup(r.uid); },
         columns: [
-          { key: 'studentName', header: 'Student', width: 200 },
-          { key: 'campus', header: 'Campus', width: 80 },
-          { key: 'kind', header: 'Type', width: 95, render: function (r) {
+          { key: 'studentName', header: 'Student', width: 180 },
+          { key: 'campus', header: 'Campus', width: 70 },
+          { key: 'kind', header: 'Type', width: 120, render: function (r) {
             return '<b class="ot-tint" style="color:' + (r.kind === 'OVERNIGHT' ? '#6A1B9A' : '#1976D2') + '">' + OfficeKit.esc(KIND[r.kind] || r.kind) + '</b>';
           } },
-          { key: 'outAt', header: 'Out', width: 100, render: function (r) { return OfficeKit.esc(short(r.outAt)); } },
-          { key: 'expectedReturnAt', header: 'Return by', width: 100, render: function (r) { return OfficeKit.esc(short(r.expectedReturnAt)); } },
-          { key: 'returnedAt', header: 'Back', width: 100, render: function (r) { return OfficeKit.esc(short(r.returnedAt)); } },
+          { key: 'outAt', header: 'Out', width: 90, render: function (r) { return OfficeKit.esc(short(r.outAt)); } },
+          { key: 'expectedReturnAt', header: 'Return by', width: 90, render: function (r) { return OfficeKit.esc(short(r.expectedReturnAt)); } },
+          { key: 'returnedAt', header: 'Back', width: 90, render: function (r) { return OfficeKit.esc(short(r.returnedAt)); } },
           { key: 'status', header: 'Status', width: 135, render: function (r) {
             return pill(r.status) + (r.lateMinutes ? ' <span class="ot-tint" style="color:#C62828;font-size:11px">+' + duration(r.lateMinutes) + '</span>' : '');
           } },
-          { key: 'destination', header: 'Where', width: 120 },
-          { key: 'outBy', header: 'Staff', width: 90, render: function (r) {
+          { key: 'overnightStage', header: '외박 check', width: 125, render: function (r) {
+            if (r.kind !== 'OVERNIGHT') return '';
+            if (!r.overnightStage) return '<span class="ot-tint" style="color:#2E7D32;font-size:11px">OK</span>';
+            var bg = r.overnightStage === 2 ? '#B71C1C' : '#AD1457';
+            return '<span class="ot-tint" style="display:inline-block;padding:1px 6px;border-radius:9px;font-size:11px;font-weight:700;color:#FFF;background:' + bg + '">' +
+              (r.returnedAt ? 'LATE ' : '') + stageText(r) + '</span>';
+          } },
+          { key: 'destination', header: 'Where', width: 100 },
+          { key: 'outBy', header: 'Staff', width: 80, render: function (r) {
             return OfficeKit.esc((r.outBy || '') + (r.returnedBy && r.returnedBy !== r.outBy ? ' / ' + r.returnedBy : ''));
           } },
-          { key: 'uid', header: 'UID', width: 90 }
+          { key: 'uid', header: 'UID', width: 80 }
         ]
       });
 
       /* ---------- list ---------- */
       function syncDateInputs() {
         var v = view.value;
-        from.style.display = v === 'out' ? 'none' : '';
+        from.style.display = v === 'day' || v === 'range' ? '' : 'none';
         to.style.display = q('tilde').style.display = v === 'range' ? '' : 'none';
       }
       function filtered() {
@@ -161,12 +191,13 @@
         return ctx.api.request('GET', p).then(function (res) {
           rows = res.outings || [];
           var s = res.summary || {};
-          q('tOut').querySelector('b').textContent = s.outing || 0;
-          q('tNight').querySelector('b').textContent = s.overnight || 0;
-          q('tLate').querySelector('b').textContent = s.late || 0;
-          q('tLate').classList.toggle('ot-blink', !!s.late);
-          q('tBack').querySelector('b').textContent = s.returnedToday || 0;
-          q('info').textContent = rows.length + ' record(s) · updated ' + short(res.now).slice(6);
+          [['tOut', s.outing], ['tOutLate', s.outingLate], ['tNight', s.overnight], ['tNoon', s.overnightNoon],
+            ['tMid', s.overnightMidnight], ['tBack', s.returnedToday]].forEach(function (t) {
+            q(t[0]).querySelector('b').textContent = t[1] || 0;
+            q(t[0]).classList.toggle('on', t[0] !== 'tBack' && q(t[0]).getAttribute('data-view') === view.value);
+          });
+          q('tMid').classList.toggle('ot-blink', !!s.overnightMidnight);
+          q('info').textContent = (TITLES[view.value] || title()) + ' · ' + rows.length + ' student(s) · updated ' + short(res.now).slice(6);
           grid.setRows(filtered());
           renderForm();
         }).catch(OfficeKit.fail(ctx, 'Cannot load the outing list'));
@@ -208,7 +239,9 @@
           '<div>Course: ' + OfficeKit.esc(p.startDate || '?') + ' ~ ' + OfficeKit.esc(p.endDate || '?') + '</div>' +
           '<div style="margin-top:6px;font-size:15px">' + (o
             ? pill(o.status) + ' <b>' + o.kind + '</b> since ' + short(o.outAt) + ', return by <b>' + short(o.expectedReturnAt) + '</b>' +
-              (o.lateMinutes ? ' <b style="color:#C62828">(' + duration(o.lateMinutes) + ' late)</b>' : '')
+              (o.lateMinutes ? ' <b style="color:#C62828">(' + duration(o.lateMinutes) + ' late)</b>' : '') +
+              (o.kind === 'OVERNIGHT' ? '<br><span style="font-size:13px">외박 check: 다음날 12:00 = ' + short(o.nextNoon) + ' · 24:00 = ' + short(o.nextMidnight) +
+                (o.overnightStage ? ' <b style="color:#B71C1C">' + stageText(o) + '</b>' : '') + '</span>' : '')
             : '<span style="color:#1B5E20;font-weight:700">ON CAMPUS</span>') + '</div>';
         var h = (student.recent || []).filter(function (r) { return !o || r.id !== o.id; });
         q('hist').innerHTML = '<b>Recent</b><br>' + (h.length ? h.map(function (r) {
@@ -222,7 +255,7 @@
         var d = new Date();
         d.setSeconds(0, 0);
         d.setHours(Number(t[0]) || 22, Number(t[1]) || 0);
-        if (k === 'OVERNIGHT') d.setDate(d.getDate() + 1);
+        if (k === 'OVERNIGHT') { d.setDate(d.getDate() + 1); d.setHours(12, 0); }
         else if (d.getTime() <= Date.now()) d = new Date(Date.now() + 2 * 3600000); // after curfew: 2 hours
         return d;
       }
@@ -335,18 +368,20 @@
         { key: 'kind', header: 'Type', width: 90 }, { key: 'outAtText', header: 'Out', width: 110 },
         { key: 'expText', header: 'Return by', width: 110 }, { key: 'backText', header: 'Back', width: 110 },
         { key: 'statusText', header: 'Status', width: 120 }, { key: 'lateText', header: 'Late', width: 70 },
+        { key: 'checkText', header: '외박 check', width: 120 },
         { key: 'destination', header: 'Where', width: 160 }, { key: 'memo', header: 'Memo', width: 160 },
         { key: 'outBy', header: 'Out staff', width: 90 }, { key: 'returnedBy', header: 'Back staff', width: 90 }, { key: 'uid', header: 'UID', width: 110 }
       ];
       function exportRows() {
         return filtered().map(function (r) {
           return Object.assign({}, r, { outAtText: short(r.outAt), expText: short(r.expectedReturnAt), backText: short(r.returnedAt),
-            statusText: (STATUS[r.status] || {}).text || r.status, lateText: duration(r.lateMinutes) });
+            statusText: (STATUS[r.status] || {}).text || r.status, lateText: duration(r.lateMinutes),
+            checkText: r.kind === 'OVERNIGHT' ? (stageText(r) || 'OK') : '' });
         });
       }
       function title() {
-        return view.value === 'out' ? 'Students still out (' + OfficeKit.iso(new Date()) + ')'
-          : view.value === 'day' ? 'Outings ' + from.value : 'Outings ' + from.value + ' ~ ' + to.value;
+        if (TITLES[view.value]) return TITLES[view.value] + ' (' + OfficeKit.iso(new Date()) + ' ' + short(new Date().toISOString()).slice(6) + ')';
+        return view.value === 'day' ? 'Outings ' + from.value : 'Outings ' + from.value + ' ~ ' + to.value;
       }
 
       /* ---------- events ---------- */

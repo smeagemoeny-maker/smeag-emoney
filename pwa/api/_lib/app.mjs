@@ -21,6 +21,7 @@ import {
   assertCanEditPeople,
   assertCanManageStore,
   assertCanPusanPay,
+  assertCanPayList,
   assertCanSell,
   assertCanUseOffice,
   activityLogScope,
@@ -32,7 +33,7 @@ import { listActivity, recordActivity, shouldLog } from "./activityLog.mjs";
 import * as mysqlBackoffice from "./backoffice.mjs";
 import * as supabaseBackoffice from "./backofficeSupabase.mjs";
 import { httpError } from "./repository.mjs";
-import { checkoutCategory, filterProductsForStore } from "./stores.mjs";
+import { PUSAN_MART, checkoutCategory, filterProductsForStore } from "./stores.mjs";
 import * as office from "./office.mjs";
 import { adminPurchases, purchaseCampuses, studentPurchases } from "./purchases.mjs";
 import * as campus from "./campus.mjs";
@@ -93,6 +94,20 @@ const routes = [
   ["POST", /^\/api\/student\/purchases$/, async ({ body }) => {
     supabaseOnly();
     return studentPurchases(body || {});
+  }],
+  // My Purchases on a PC without a card reader: a staff phone (Mart / Office "PC reader") sends the taps.
+  // No login on this screen: the pairing's secret key is what lets it read the taps (cardRelay.createKiosk).
+  ["POST", /^\/api\/card-relay\/kiosk$/, async () => {
+    supabaseOnly();
+    return cardRelay.createKiosk();
+  }],
+  ["POST", /^\/api\/card-relay\/kiosk\/(\d{4})\/poll$/, async ({ match, body }) => {
+    supabaseOnly();
+    return cardRelay.poll(match[1], body?.key, body?.after, body?.phone);
+  }],
+  ["POST", /^\/api\/card-relay\/kiosk\/(\d{4})\/close$/, async ({ match, body }) => {
+    supabaseOnly();
+    return cardRelay.close(match[1], body?.key);
   }],
   // Everything below needs a login token; sales/charges are checked against the account's access.
   // Store purchase history (receipts + items): Admin = every campus, campus Admin/Manager = own campus only.
@@ -170,15 +185,19 @@ const routes = [
   // ----- back-office screens (MySQL or Supabase; the DBSQL mock does not have these tables) -----
   ["GET", /^\/api\/pusanmart\/payments$/, async ({ req, url }) => {
     const { access } = verifyRequest(req);
-    assertCanPusanPay(access);
+    const filter = query(url, "from", "to", "campus");
+    const campusName = assertCanPayList(access, filter.campus);
     liveOnly();
-    return { payments: await backoffice.listPusanmartPayments(query(url, "from", "to")) };
+    // Pusan Pay (PusanmartPayments) exists only at the Capital Pusan Mart.
+    if (campusName !== PUSAN_MART) return { payments: [] };
+    return { payments: await backoffice.listPusanmartPayments(filter) };
   }],
   ["GET", /^\/api\/pusanmart\/daily$/, async ({ req, url }) => {
     const { access } = verifyRequest(req);
-    assertCanPusanPay(access);
+    const filter = query(url, "from", "to", "campus");
+    const campusName = assertCanPayList(access, filter.campus);
     if (dbBackend !== "supabase") throw httpError(501, "The PusanMart daily summary needs DB_BACKEND=supabase.");
-    return supabaseBackoffice.pusanmartDaily(query(url, "from", "to"));
+    return supabaseBackoffice.pusanmartDaily({ ...filter, campus: campusName });
   }],
   ["PUT", /^\/api\/pusanmart\/daily\/(\d{4}-\d{2}-\d{2})$/, async ({ req, match, body }) => {
     const { session, access } = verifyRequest(req);
@@ -221,6 +240,14 @@ const routes = [
     assertCanManageStore(access, filter.campus);
     if (dbBackend !== "supabase") throw httpError(501, "Stock in / expired needs DB_BACKEND=supabase.");
     return { moves: await supabaseBackoffice.listStockMoves(filter) };
+  }],
+  ["GET", /^\/api\/pusanmart\/restock$/, async ({ req, url }) => {
+    const { access } = verifyRequest(req);
+    const filter = query(url, "campus", "date");
+    if (!filter.campus) throw httpError(400, "campus is required.");
+    assertCanManageStore(access, filter.campus);
+    if (dbBackend !== "supabase") throw httpError(501, "The restock list needs DB_BACKEND=supabase.");
+    return supabaseBackoffice.pusanmartRestock(filter);
   }],
   ["GET", /^\/api\/stock-moves\/expiring$/, async ({ req, url }) => {
     const { access } = verifyRequest(req);

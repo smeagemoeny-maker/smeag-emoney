@@ -169,8 +169,12 @@
       return apiCall('POST', '/api/pusanmart/payments', { uid: uid, totalAmount: Math.round(amount * 100) / 100,
         discountLabel: discountLabel, clientKey: clientKey, memo: memo || '' }).then(function (r) { return r.payment; });
     },
-    fetchPusanmartDaily: function (s, e) {
-      return apiCall('GET', '/api/pusanmart/daily' + q({ from: s, to: e }));
+    // 적정재고 / 입고 예정 list of one Pusan Mart as of `date` (api pusanmartRestock).
+    fetchRestock: function (campus, date) {
+      return apiCall('GET', '/api/pusanmart/restock' + q({ campus: campus, date: date }));
+    },
+    fetchPusanmartDaily: function (s, e, campus) {
+      return apiCall('GET', '/api/pusanmart/daily' + q({ from: s, to: e, campus: campus || MART_CAMPUS }));
     },
     savePusanmartCost: function (date, cost) {
       return apiCall('PUT', '/api/pusanmart/daily/' + encodeURIComponent(date), { cost: cost }).then(function (r) { return r.day; });
@@ -618,15 +622,23 @@
     { route: 'pusanpay', label: 'Pusan Pay', icon: 'Payments' }
   ];
   // History and Pay List live inside the Report tab (chips at the top switch between them).
-  var REPORT_GROUP = ['report', 'history', 'stock', 'paylist'];
+  var REPORT_GROUP = ['report', 'history', 'stock', 'inventory', 'restock', 'paylist'];
   // Edit and Register live inside the Products tab (same chip switch as Report).
   var PRODUCT_GROUP = ['modify', 'register'];
-  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'stock', 'paylist', 'receipt']);
-  // Pusan Pay and Pay List need access.canPusanPay; accounts without it never see those tabs.
+  var ROUTES = TABS.map(function (t) { return t.route; }).concat(['register', 'history', 'stock', 'inventory', 'restock', 'paylist', 'receipt']);
+  // Pusan Pay needs access.canPusanPay. Pay List is per Pusan Mart: the Capital one (Pusan Pay payments) needs
+  // canPusanPay, the Encanto one (barcode sales only) every account running that mart (api payListCampuses).
   function canPusanPay() { return !!(session.access && session.access.canPusanPay); }
+  function payListCampuses() {
+    return allowedCampuses().filter(function (c) {
+      return c.toUpperCase() === MART_CAMPUS.toUpperCase() ? canPusanPay() : c.toUpperCase() === 'PUSAN MART ENCANTO';
+    });
+  }
+  function payListIsCapital() { return String(S.campus || MART_CAMPUS).toUpperCase() === MART_CAMPUS.toUpperCase(); }
   function routeAllowed(r) {
     if (REPORT_ONLY && (REPORT_GROUP.indexOf(r) < 0 || r === 'stock')) return false;
-    return (r !== 'pusanpay' && r !== 'paylist') || canPusanPay();
+    if (r === 'paylist') return payListCampuses().length > 0;
+    return r !== 'pusanpay' || canPusanPay();
   }
   function navSelected(t) {
     return route === t || (t === 'report' && REPORT_GROUP.indexOf(route) >= 0) || (t === 'modify' && PRODUCT_GROUP.indexOf(route) >= 0);
@@ -643,7 +655,7 @@
   function reportTabs() {
     if (REPORT_ONLY) return ''; // the nav bar already switches Summary / History / Pay List
     var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['report', 'Summary'], ['history', 'History'], ['stock', 'Stock In/Exp'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
+    [['report', 'Summary'], ['history', 'History'], ['inventory', 'Stock Status'], ['restock', 'Restock'], ['stock', 'Stock In/Exp'], ['paylist', 'Pay List']].filter(function (c) { return routeAllowed(c[0]); }).forEach(function (c) {
       h += '<div class="chip' + (route === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (route !== c[0]) navigate(c[0], true);
       }) + '">' + c[1] + '</div>';
@@ -767,13 +779,20 @@
       case 'stock':
         S = { campus: campus, start: ymd(today), end: ymd(today), moves: null, expiring: [], expDays: 7 };
         loadProducts(S.campus); runStock(); break;
+      case 'inventory':
+        S = { campus: campus, category: 'All', status: 'All', q: '' };
+        loadProducts(S.campus); break;
+      case 'restock':
+        S = { campus: isPusan(campus) ? campus : (restockCampuses()[0] || MART_CAMPUS), date: ymd(today), data: null };
+        runRestock(); break;
       case 'buyer':
         S = {}; break;
       case 'pusanpay':
         S = { store: vm.pz.store, amount: vm.pz.amount, memo: vm.pz.memo, awaitingTap: false }; break;
       case 'paylist':
         // campus: the sales drill-down reads the same Pusan Mart rows as the Report Summary
-        S = { view: 'daily', campus: MART_CAMPUS, start: ymd(today), end: ymd(today), results: [], daily: null,
+        S = { view: 'daily', campus: payListCampuses().indexOf(campus) >= 0 ? campus : (payListCampuses()[0] || MART_CAMPUS),
+          start: ymd(today), end: ymd(today), results: [], daily: null,
           costDate: ymd(today), costInput: '', costMsg: null, costSaving: false };
         runPayList(); break;
       case 'receipt':
@@ -1598,6 +1617,214 @@
       '<div class="rsign"><div><span></span>Staff</div><div><span></span>Check By</div></div></div>';
   }
 
+  // ----- Stock Status (재고현황): current stock of every product, by category, as of now.
+  // Value at cost = stock × cost (products without a cost count 0 and are flagged); retail = stock × price.
+  var INV_STATUS = ['All', 'OK', 'LOW', 'OUT'];
+  function invRows() {
+    var q = String(S.q || '').trim().toLowerCase();
+    return noCostSort(vm.products.filter(function (p) {
+      return (S.category === 'All' || p.mMenu === S.category) && (S.status === 'All' || stockStatus(p) === S.status) &&
+        (!q || String(p.sMenu || '').toLowerCase().indexOf(q) >= 0 || (p.barcode && p.barcode.toLowerCase().indexOf(q) >= 0));
+    }));
+  }
+  // [{ category, rows, qty, costValue, retailValue, low, out, noCost }] sorted by category name.
+  function invGroups(rows) {
+    var map = {}, list = [];
+    rows.forEach(function (p) {
+      var k = p.mMenu || '-';
+      if (!map[k]) { map[k] = { category: k, rows: [], qty: 0, costValue: 0, retailValue: 0, low: 0, out: 0, noCost: 0 }; list.push(map[k]); }
+      var g = map[k], st = stockStatus(p), n = Math.max(p.stock, 0);
+      g.rows.push(p); g.qty += n; g.retailValue += n * p.payment;
+      if (noCost(p)) g.noCost++; else g.costValue += n * p.cost;
+      if (st === 'LOW') g.low++; if (st === 'OUT') g.out++;
+    });
+    return list.sort(function (a, b) { return a.category.localeCompare(b.category); });
+  }
+  function invTotals(groups) {
+    return groups.reduce(function (t, g) {
+      t.items += g.rows.length; t.qty += g.qty; t.costValue += g.costValue; t.retailValue += g.retailValue;
+      t.low += g.low; t.out += g.out; t.noCost += g.noCost; return t;
+    }, { items: 0, qty: 0, costValue: 0, retailValue: 0, low: 0, out: 0, noCost: 0 });
+  }
+  function invFilterText() {
+    return (S.category === 'All' ? 'All categories' : S.category) + (S.status === 'All' ? '' : ' · ' + S.status + ' only') + (S.q ? ' · "' + S.q + '"' : '');
+  }
+  function inventoryScreen() {
+    var catOpts = ['All'].concat(uniqSorted(vm.products.map(function (p) { return p.mMenu; })));
+    if (catOpts.indexOf(S.category) < 0) S.category = 'All';
+    var rows = invRows(), groups = invGroups(rows), t = invTotals(groups);
+    actions.in_inv_q = function (v) { S.q = v; };
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Stock Status') + reportTabs() +
+      '<div class="filterbar">' + pillDropdown('inv_campus', S.campus, allowedCampuses(), function (v) { S.campus = v; S.category = 'All'; loadProducts(v); }, '📍') +
+      pillDropdown('inv_cat', S.category, catOpts, function (v) { S.category = v; }, 'Cat') +
+      pillDropdown('inv_st', S.status, INV_STATUS, function (v) { S.status = v; }, 'Status') + '</div>' +
+      '<div class="sb" style="padding-bottom:8px"><input class="tf search" id="inv_q" data-in="in_inv_q" type="search" placeholder="🔍 Product name or barcode" value="' +
+      esc(S.q || '') + '" autocomplete="off" spellcheck="false"></div>' + errorLine();
+    if (S.loading && !vm.products.length) return h + loadingOr('', 'font-size:12px;color:var(--ink3)') + '</div></div>';
+    h += '<div class="row" style="gap:8px">' +
+      primaryBtn('🖨 Print Report', function () { printHtml(inventoryReportHtml()); }, !rows.length, ' style="height:38px"') +
+      secondaryBtn('⬇ Download Excel', downloadInventoryCsv, !rows.length, ' style="height:38px"') + '</div>' + spacer(10) +
+      '<div class="row" style="gap:8px">' +
+      '<div class="stat"><div class="lab">Items</div><div class="val">' + comma(t.items) + '</div><div class="lab">' + groups.length + ' categories</div></div>' +
+      '<div class="stat"><div class="lab">Stock Qty</div><div class="val" style="color:var(--brand)">' + comma(t.qty) + '</div><div class="lab">LOW ' + t.low + ' · OUT ' + t.out + '</div></div>' +
+      '<div class="stat"><div class="lab">Value (cost)</div><div class="val">₱' + comma(t.costValue) + '</div><div class="lab">Retail ₱' + comma(t.retailValue) + '</div></div>' +
+      '</div>' + (t.noCost ? txt(t.noCost + ' products have no cost price — counted as ₱0 in Value (cost).', 'font-size:11px;color:var(--ink3);padding-top:6px') : '') + spacer(12);
+    if (!rows.length) return h + txt('No products match.', 'font-size:12px;color:var(--ink3)') + '</div></div>';
+    groups.forEach(function (g) {
+      var open = S.category !== 'All' || (S.openCat && S.openCat[g.category]);
+      h += '<div class="card histrow" data-act="' + act(function () { S.openCat = S.openCat || {}; S.openCat[g.category] = !S.openCat[g.category]; }) + '">' +
+        '<div class="sb"><b>' + (S.category === 'All' ? (open ? '▾ ' : '▸ ') : '') + esc(g.category) + '</b><b>' + comma(g.qty) + ' pcs</b></div>' +
+        '<div class="sb sub"><span>' + g.rows.length + ' items' + (g.low ? ' · LOW ' + g.low : '') + (g.out ? ' · OUT ' + g.out : '') + '</span><span>₱' + comma(g.costValue, 2) + ' (cost) · ₱' + comma(g.retailValue, 2) + ' (retail)</span></div>';
+      if (open) g.rows.forEach(function (p) {
+        h += '<div class="sb sub" style="padding-top:4px"><span>' + esc(p.sMenu || '-') + ' · ₱' + money(p.payment) + (p.barcode ? ' · ' + esc(p.barcode) : '') +
+          '</span><span>' + p.stock + ' ' + stockBadge(stockStatus(p)) + '</span></div>';
+      });
+      h += '</div>';
+    });
+    return h + spacer(24) + '</div></div>';
+  }
+  function inventoryReportHtml() {
+    var groups = invGroups(invRows()), t = invTotals(groups), now = new Date();
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var h = '<div class="rpt rpt-sales">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Stock Status Report (재고현황)</div><div class="rsub">' + esc(campusLabel(S.campus)) + ' · ' + esc(invFilterText()) +
+      ' · as of ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div></div></div>';
+    h += '<div class="rsec">=== SUMMARY BY CATEGORY ===</div><table class="rtbl"><thead><tr><th>Category</th><th class="n">Items</th><th class="n">Stock</th><th class="n">LOW</th><th class="n">OUT</th><th class="n">Value (cost)</th><th class="n">Value (retail)</th></tr></thead><tbody>';
+    groups.forEach(function (g) {
+      h += '<tr><td>' + esc(g.category) + '</td><td class="n">' + g.rows.length + '</td><td class="n">' + comma(g.qty) + '</td><td class="n">' + g.low + '</td><td class="n">' + g.out +
+        '</td><td class="n">' + peso(g.costValue) + '</td><td class="n">' + peso(g.retailValue) + '</td></tr>';
+    });
+    h += '</tbody><tfoot><tr><td>Total</td><td class="n">' + t.items + '</td><td class="n">' + comma(t.qty) + '</td><td class="n">' + t.low + '</td><td class="n">' + t.out +
+      '</td><td class="n">' + peso(t.costValue) + '</td><td class="n">' + peso(t.retailValue) + '</td></tr></tfoot></table>';
+    if (t.noCost) h += '<div class="rsm">' + t.noCost + ' products have no cost price (counted as 0 in Value (cost)).</div>';
+    groups.forEach(function (g) {
+      h += '<div class="rsec">=== ' + esc(g.category) + ' — ' + g.rows.length + ' items ===</div><table class="rtbl"><thead><tr><th>#</th><th>Product</th><th>Barcode</th><th class="n">Price</th><th class="n">Cost</th><th class="n">Stock</th><th class="n">Min</th><th>Status</th><th class="n">Value (cost)</th></tr></thead><tbody>';
+      g.rows.forEach(function (p, i) {
+        h += '<tr><td>' + (i + 1) + '</td><td>' + esc(p.sMenu || '-') + '</td><td>' + esc(p.barcode || '') + '</td><td class="n">' + peso(p.payment) + '</td><td class="n">' +
+          (noCost(p) ? '-' : peso(p.cost)) + '</td><td class="n">' + p.stock + '</td><td class="n">' + p.minStock + '</td><td>' + stockStatus(p) + '</td><td class="n">' +
+          (noCost(p) ? '-' : peso(Math.max(p.stock, 0) * p.cost)) + '</td></tr>';
+      });
+      h += '</tbody><tfoot><tr><td></td><td>Subtotal</td><td></td><td></td><td></td><td class="n">' + comma(g.qty) + '</td><td></td><td></td><td class="n">' + peso(g.costValue) + '</td></tr></tfoot></table>';
+    });
+    return h + '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div>' +
+      '<div class="rsign"><div><span></span>Staff</div><div><span></span>Check By</div></div></div>';
+  }
+  function downloadInventoryCsv() {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var out = [['Category', 'Product', 'Barcode', 'Item Code', 'Selling Price (PHP)', 'Cost (PHP)', 'Stock', 'Min Stock', 'Status', 'Value at Cost (PHP)', 'Value at Retail (PHP)']];
+    var groups = invGroups(invRows());
+    groups.forEach(function (g) {
+      g.rows.forEach(function (p) {
+        var n = Math.max(p.stock, 0);
+        out.push([g.category, p.sMenu || '', p.barcode || '', p.itemCode || '', money(p.payment), noCost(p) ? '' : money(p.cost), p.stock, p.minStock, stockStatus(p),
+          noCost(p) ? '' : money(n * p.cost), money(n * p.payment)]);
+      });
+      out.push([g.category + ' subtotal', g.rows.length + ' items', '', '', '', '', g.qty, '', '', money(g.costValue), money(g.retailValue)]);
+    });
+    var t = invTotals(groups);
+    out.push(['TOTAL', t.items + ' items', '', '', '', '', t.qty, '', '', money(t.costValue), money(t.retailValue)]);
+    var name = 'stock_status_' + String(S.campus || '').replace(/\s+/g, '_') + (S.category === 'All' ? '' : '_' + S.category.replace(/[^\w-]+/g, '_')) + '_' + ymd(new Date()) + '.csv';
+    downloadFile(name, 'text/csv;charset=utf-8', '\ufeff' + out.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Saved to Downloads: ' + name, 3500);
+  }
+
+  // ----- Restock (적정재고 / 입고 예정): sales rate of the last 14 days -> target stock -> quantity to order.
+  // Downloaded at the daily closing (also from Pay List › Daily). Rules: api/src/backofficeSupabase.mjs pusanmartRestock.
+  var RESTOCK_GRADE = { A: 'A · 하루 1개 이상', B: 'B · 주 3개 이상', C: 'C · 주 1~2개', D: 'D · 판매 없음 (진열용/최소재고)' };
+  function restockCampuses() { return allowedCampuses().filter(isPusan); }
+  function runRestock() {
+    screenLoad(repo.fetchRestock(S.campus, S.date), function (v) { S.data = v; },
+      function (e) { S.data = null; S.error = 'Failed to load restock list: ' + e.message; });
+  }
+  function restockBasis(r) {
+    var p = r.params;
+    var src = p.refCampus
+      ? (p.weight >= 1 ? '자체 판매 ' + p.ownDays + '일' : '자체 판매 ' + p.ownDays + '일 × ' + Math.round(p.weight * 100) + '% + ' + campusLabel(p.refCampus) + ' 판매 ' + p.refDays + '일 × ' + Math.round((1 - p.weight) * 100) + '%')
+      : '판매 ' + p.ownDays + '일';
+    return r.from + ' ~ ' + r.to + ' (' + src + ') · 적정재고 = 일평균 × ' + p.coverDays + '일, 최소 ' + p.minFace + '개';
+  }
+  function restockScreen() {
+    var r = S.data;
+    var h = '<div class="screen"><div class="vscroll fill">' + eyebrow('Report') + title('Restock (적정재고)') + reportTabs() +
+      '<div class="filterbar">' + pillDropdown('rs_campus', S.campus, restockCampuses(), function (v) { S.campus = v; runRestock(); }, '📍') +
+      datePill('Date', S.date, function (v) { S.date = v; runRestock(); }) + '</div>' + errorLine();
+    if (!r) return h + loadingOr('No data.', 'font-size:12px;color:var(--ink3)') + '</div></div>';
+    h += '<div class="row" style="gap:8px">' +
+      primaryBtn('⬇ Download Excel', function () { downloadRestockCsv(r); }, !r.rows.length, ' style="height:38px"') +
+      secondaryBtn('🖨 Print', function () { printHtml(restockReportHtml(r)); }, !r.rows.length, ' style="height:38px"') + '</div>' + spacer(10) +
+      '<div class="row" style="gap:8px">' +
+      '<div class="stat"><div class="lab">Items</div><div class="val">' + comma(r.totals.items) + '</div><div class="lab">A–C ' + (r.byGrade.A.items + r.byGrade.B.items + r.byGrade.C.items) + ' · D ' + r.byGrade.D.items + '</div></div>' +
+      '<div class="stat"><div class="lab">Order Qty</div><div class="val" style="color:var(--brand)">' + comma(r.totals.qty) + '</div><div class="lab">pcs</div></div>' +
+      '<div class="stat"><div class="lab">Cost</div><div class="val">₱' + comma(r.totals.amount) + '</div><div class="lab">A–C ₱' + comma(r.byGrade.A.amount + r.byGrade.B.amount + r.byGrade.C.amount) + '</div></div>' +
+      '</div>' + txt(restockBasis(r), 'font-size:11px;color:var(--ink3);padding-top:6px') + spacer(12);
+    if (!r.rows.length) return h + txt('Nothing to order — every product is at or above its target stock.', 'font-size:12px;color:var(--ink3)') + '</div></div>';
+    ['A', 'B', 'C', 'D'].forEach(function (g) {
+      var list = r.rows.filter(function (x) { return x.grade === g; });
+      if (!list.length) return;
+      var open = S.openGrade ? !!S.openGrade[g] : g !== 'D';
+      h += '<div class="card histrow" data-act="' + act(function () { S.openGrade = S.openGrade || { A: true, B: true, C: true }; S.openGrade[g] = !open; }) + '">' +
+        '<div class="sb"><b>' + (open ? '▾ ' : '▸ ') + esc(RESTOCK_GRADE[g]) + '</b><b>' + comma(r.byGrade[g].qty) + ' pcs</b></div>' +
+        '<div class="sb sub"><span>' + list.length + ' items</span><span>₱' + comma(r.byGrade[g].amount, 2) + ' (cost)</span></div>';
+      if (open) list.forEach(function (x) {
+        h += '<div class="sb sub" style="padding-top:4px"><span>' + esc(x.name) + ' · ' + esc(x.category) + ' · ' + x.rate + '/day · stock ' + x.stock + ' → ' + x.target +
+          '</span><b>+' + x.order + '</b></div>';
+      });
+      h += '</div>';
+    });
+    return h + spacer(24) + '</div></div>';
+  }
+  function restockReportHtml(r) {
+    var now = new Date(), ref = !!r.params.refCampus;
+    var by = session.manager ? (session.manager.login_id || session.manager.loginId || '') + ' ' + (session.manager.name || '') : '';
+    var h = '<div class="rpt rpt-sales">' +
+      '<div class="rhead"><div><div class="rbrand">부산마트</div><div class="rsub">PUSAN MART · SMEAG</div></div>' +
+      '<div style="text-align:right"><div class="rtitle">Restock List (적정재고 입고 예정)</div><div class="rsub">' + esc(campusLabel(r.campus)) + ' · ' + esc(r.date) + '</div></div></div>' +
+      '<div class="rsm">' + esc(restockBasis(r)) + '</div>';
+    ['A', 'B', 'C', 'D'].forEach(function (g) {
+      var list = r.rows.filter(function (x) { return x.grade === g; });
+      if (!list.length) return;
+      h += '<div class="rsec">=== ' + esc(RESTOCK_GRADE[g]) + ' — ' + list.length + ' items ===</div><table class="rtbl"><thead><tr><th>#</th><th>Product</th><th>Category</th><th>Barcode</th>' +
+        '<th class="n">Sold</th>' + (ref ? '<th class="n">Capital sold</th>' : '') + '<th class="n">/day</th><th class="n">Target</th><th class="n">Stock</th><th class="n">Order</th><th class="n">Received</th><th class="n">Cost</th></tr></thead><tbody>';
+      list.forEach(function (x, i) {
+        h += '<tr><td>' + (i + 1) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.category) + '</td><td>' + esc(x.barcode) + '</td><td class="n">' + x.soldOwn + '</td>' +
+          (ref ? '<td class="n">' + x.soldRef + '</td>' : '') + '<td class="n">' + x.rate + '</td><td class="n">' + x.target + '</td><td class="n">' + x.stock +
+          '</td><td class="n"><b>' + x.order + '</b></td><td class="n"></td><td class="n">' + (x.amount == null ? '-' : peso(x.amount)) + '</td></tr>';
+      });
+      h += '</tbody><tfoot><tr><td></td><td>Subtotal</td><td></td><td></td><td></td>' + (ref ? '<td></td>' : '') + '<td></td><td></td><td></td><td class="n">' + comma(r.byGrade[g].qty) +
+        '</td><td></td><td class="n">' + peso(r.byGrade[g].amount) + '</td></tr></tfoot></table>';
+    });
+    h += '<div class="rsm">Total ' + r.totals.items + ' items · ' + comma(r.totals.qty) + ' pcs · ₱' + peso(r.totals.amount) + ' (cost)</div>';
+    return h + '<div class="rfoot">Printed By: ' + esc(by.trim() || '-') + ' | ' + esc(ymd(now) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())) + '</div>' +
+      '<div class="rsign"><div><span></span>Staff</div><div><span></span>Check By</div></div></div>';
+  }
+  function downloadRestockCsv(r) {
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var ref = !!r.params.refCampus;
+    var out = [['적정재고 입고 예정 — ' + campusLabel(r.campus) + ' — ' + r.date], ['기준: ' + restockBasis(r)], [],
+      ['Grade', 'Category', 'Product', 'Item Code', 'Barcode', 'Sold (' + r.params.windowDays + 'd)'].concat(ref ? ['Capital Sold (' + r.params.windowDays + 'd)'] : [])
+        .concat(['Per Day', 'Target Stock', 'Stock Now', 'Order Qty', 'Received', 'Cost (PHP)', 'Selling Price (PHP)', 'Order Cost (PHP)'])];
+    r.rows.forEach(function (x) {
+      out.push([x.grade, x.category, x.name, x.itemCode, x.barcode, x.soldOwn].concat(ref ? [x.soldRef] : [])
+        .concat([x.rate, x.target, x.stock, x.order, '', x.cost == null ? '' : money(x.cost), money(x.price), x.amount == null ? '' : money(x.amount)]));
+    });
+    out.push([]);
+    ['A', 'B', 'C', 'D'].forEach(function (g) { out.push(['', RESTOCK_GRADE[g], r.byGrade[g].items + ' items', '', '', 'Qty ' + r.byGrade[g].qty, 'Cost ' + money(r.byGrade[g].amount)]); });
+    out.push(['', 'TOTAL', r.totals.items + ' items', '', '', 'Qty ' + r.totals.qty, 'Cost ' + money(r.totals.amount)]);
+    var name = 'restock_' + String(r.campus).replace(/\s+/g, '_') + '_' + r.date + '.csv';
+    downloadFile(name, 'text/csv;charset=utf-8', '﻿' + out.map(function (x) { return x.map(cell).join(','); }).join('\r\n'));
+    toast('Saved to Downloads: ' + name, 3500);
+  }
+  // Daily closing: one restock file per Pusan Mart this account manages, for the closing day.
+  function downloadClosingRestock(date) {
+    var list = restockCampuses();
+    if (!list.length) return;
+    toast('Making restock list...', 2000);
+    list.reduce(function (p, c) {
+      return p.then(function () { return repo.fetchRestock(c, date).then(downloadRestockCsv); });
+    }, Promise.resolve()).catch(function (e) { toast('Restock list failed: ' + e.message, 4000); });
+  }
+
   function runHistory() {
     screenLoad(repo.fetchHistory(S.campus, S.start, S.end), function (rows) { S.all = rows; },
       function (e) { S.all = []; S.error = 'Failed to load history: ' + e.message; });
@@ -1930,7 +2157,7 @@
 
   function runPayList() {
     if (S.view === 'daily') {
-      screenLoad(repo.fetchPusanmartDaily(S.start, S.end), function (r) { S.daily = r; syncCostInput(); },
+      screenLoad(repo.fetchPusanmartDaily(S.start, S.end, S.campus), function (r) { S.daily = r; syncCostInput(); },
         function (e) { S.daily = null; S.error = 'Search failed: ' + e.message; });
       return;
     }
@@ -1971,7 +2198,7 @@
   function weeklyData(r) {
     if (!window.PusanWeekly || !r || !r.days || !r.days.length) return null;
     return window.PusanWeekly.build({
-      share: r.settleShare || 0.5, campus: 'Pusan Mart', from: S.start, to: S.end || S.start,
+      share: r.settleShare || 0.5, campus: r.campus || S.campus || MART_CAMPUS, from: S.start, to: S.end || S.start,
       days: r.days.map(function (d) {
         return { date: d.date, sales: d.sales, cost: d.cost != null ? d.cost : d.knownCost, missing: d.pay && d.pay.missing ? d.pay.sales : 0 };
       })
@@ -2212,7 +2439,7 @@
     if (!date) return;
     var end = toDate && toDate >= date ? toDate : date;
     toast('Preparing X Reading...', 1500);
-    repo.fetchPusanmartDaily(date, end).then(function (r) {
+    repo.fetchPusanmartDaily(date, end, S.campus).then(function (r) {
       var days = (r && r.days || []).filter(function (x) { return x.date >= date && x.date <= end; })
         .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
       if (!days.length) { toast('No data for ' + date + (end !== date ? ' ~ ' + end : ''), 3000); return; }
@@ -2230,8 +2457,17 @@
     return '🖨 X Reading — ' + from + ' ~ ' + to + ' (1 page per day)';
   }
   function payListTabs() {
-    var h = '<div class="chips tabs" style="padding-bottom:8px">';
-    [['daily', 'Daily Closing / Cost'], ['list', 'Payments']].forEach(function (c) {
+    var h = '';
+    // Accounts running both Pusan Marts pick the store; Payments (Pusan Pay) exist only at the Capital one.
+    if (payListCampuses().length > 1) {
+      h += '<div class="filterbar">' + pillDropdown('pl_campus', S.campus, payListCampuses(), function (v) {
+        S.campus = v; S.error = null; if (!payListIsCapital()) S.view = 'daily'; runPayList();
+      }, '📍') + '</div>';
+    }
+    h += '<div class="chips tabs" style="padding-bottom:8px">';
+    [['daily', payListIsCapital() ? 'Daily Closing / Cost' : 'Daily Closing'], ['list', 'Payments']].filter(function (c) {
+      return c[0] !== 'list' || payListIsCapital();
+    }).forEach(function (c) {
       h += '<div class="chip' + (S.view === c[0] ? ' sel' : '') + '" data-act="' + act(function () {
         if (S.view === c[0]) return; S.view = c[0]; S.error = null; runPayList();
       }) + '">' + c[1] + '</div>';
@@ -2282,11 +2518,13 @@
     if (cd) {
       h += '<div class="card" style="padding:12px;margin-bottom:10px">' + closingReportHtml(cd, true) + spacer(10) +
         primaryBtn('🖨 Print Closing Report', function () { printClosingReport(cd); }, false, ' style="height:38px"') + spacer(8) +
+        secondaryBtn('⬇ Restock List 적정재고 (' + cd.date + ')', function () { downloadClosingRestock(cd.date); }) + spacer(8) +
         secondaryBtn('🖨 Print X Reading (' + cd.date + ')', function () { printXReading(cd.date); }) + '</div>';
     }
 
     // Pusan Pay cost: items rung up on the Bizmatech POS, so its "Cost Exp." is typed in. Barcode sales cost is automatic.
-    if (!REPORT_ONLY) {
+    // The Encanto Pusan Mart has no Pusan Pay: barcode cost only, nothing to type.
+    if (!REPORT_ONLY && payListIsCapital()) {
     h += '<div class="card" style="padding:12px;margin-bottom:10px">' +
       '<div style="font-size:12px;font-weight:800;padding-bottom:8px">Pusan Pay Cost <span style="font-weight:400;color:var(--ink3)">· Cost Exp. on the Bizmatech report</span></div>' +
       half(dateField('Date', S.costDate, function (v) { S.costDate = v; S.costMsg = null; syncCostInput(); }),
@@ -2502,7 +2740,7 @@
     if (!session.manager) {
       body = '<div class="content">' + loginScreen() + '</div>';
     } else {
-      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen, stock: stockScreen,
+      var fn = { sales: salesScreen, register: registerScreen, modify: modifyScreen, history: historyScreen, report: reportScreen, stock: stockScreen, inventory: inventoryScreen, restock: restockScreen,
         buyer: buyerScreen, pusanpay: pusanPayScreen, paylist: payListScreen, receipt: receiptScreen }[route] || salesScreen;
       body = relayPhone ? '<div class="content">' + relayReaderScreen() + '</div>' : '<div class="content">' + fn() + '</div>' + navBar();
     }

@@ -57,6 +57,16 @@
   .empty { text-align: center; color: var(--ink2); padding: 36px 10px; }
   .note { color: var(--ink2); font-size: 12px; margin-top: 14px; text-align: center; }
   .bottom { display: flex; justify-content: center; margin-top: 18px; }
+
+  /* phone as this PC's card reader (PC only) */
+  #relay { margin-top: 12px; text-align: center; font-size: 13px; color: var(--ink2); }
+  #relay .rbox { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+                 background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  #relay .rbox.wait { border-color: #f0b48f; background: #fff7f2; }
+  #relay .rbox.on { border-color: #9ccc9f; background: #f1f8f1; color: #1b5e20; }
+  #relay .code { font: 700 26px/1 ui-monospace, Menlo, monospace; letter-spacing: .18em; color: var(--ink); }
+  #relay .how { flex-basis: 100%; font-size: 12px; color: var(--ink2); }
+  #relay button { padding: 6px 12px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -73,7 +83,7 @@
       </svg>
     </div>
     <h2>Tap your student card</h2>
-    <p>Tap your student card on the back of the phone (Android Chrome) or on the card reader to see your purchases at the campus cafe, mart and Pusan Mart.</p>
+    <p>Tap your student card on the back of the phone (Android Chrome), on the card reader, or on the paired phone reader to see your purchases at the campus cafe, mart and Pusan Mart.</p>
     <details id="manual">
       <summary>Card not reading? Enter the UID</summary>
       <form id="manualForm" autocomplete="off">
@@ -104,6 +114,8 @@
     <div class="bottom"><button type="button" class="ghost" id="close">Close · Look up another card</button></div>
     <div class="note">For privacy, this screen closes after 3 seconds. Touch the screen to keep it open.</div>
   </section>
+
+  <section id="relay" hidden aria-live="polite"></section>
 </main>
 
 <script src="../src/nfcService.js"></script>
@@ -232,6 +244,103 @@
   nfc.enableKeyboardReader(function () { return true; });
   nfc.keepPhoneNfc(function () { return true; });
   nfc.connectPcReader();
+
+  // ----- phone as this PC's card reader (api/src/cardRelay.mjs, kiosk pairing) -----
+  // A PC with no NFC reader shows a 4-digit code; a logged-in staff Android phone enters it
+  // (Mart app: Sales › Use this phone as a PC's card reader, or Office: 🖥 PC reader), and every card
+  // tapped on that phone opens here. On a phone this is hidden: the phone reads the card itself.
+  var IS_PHONE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '') || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent || '');
+  var RELAY_KEY = 'studentRelayHost';
+  var host = null; // { code, key, seq, phone }
+  var relayErr = '';
+
+  function relayApi(path, body) {
+    return fetch(API + '/api/card-relay/kiosk' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) {
+        if (!res.ok) { var e = new Error(d.error || ('Error ' + res.status)); e.status = res.status; throw e; }
+        return d;
+      });
+    });
+  }
+  function relaySave() {
+    try {
+      if (host) localStorage.setItem(RELAY_KEY, JSON.stringify({ code: host.code, key: host.key, seq: host.seq }));
+      else localStorage.removeItem(RELAY_KEY);
+    } catch (e) { /* ignore */ }
+  }
+  function relayDraw() {
+    var box = $('relay');
+    box.hidden = false;
+    if (!host) {
+      box.innerHTML = '<button type="button" class="ghost" id="relayStart">📱 No card reader on this PC? Use a phone</button>' +
+        (relayErr ? '<div class="err">' + esc(relayErr) + '</div>' : '');
+      $('relayStart').addEventListener('click', relayStart);
+      return;
+    }
+    box.innerHTML = host.phone
+      ? '<div class="rbox on"><span>● Phone reader connected · ' + esc(host.phone) + '</span>' +
+        '<button type="button" class="ghost" id="relayStop">Stop</button></div>'
+      : '<div class="rbox wait"><span>Phone reader code</span><span class="code">' + esc(host.code) + '</span>' +
+        '<button type="button" class="ghost" id="relayStop">Cancel</button>' +
+        '<div class="how">On a staff Android phone (Chrome, logged in): Mart app › Sales › “Use this phone as a PC’s card reader”, ' +
+        'or Office › “🖥 PC reader”, and enter this code. Then students tap their card on the phone.</div></div>';
+    $('relayStop').addEventListener('click', function () {
+      if (host.phone && !window.confirm('Stop the phone reader?')) return;
+      relayStop();
+    });
+  }
+  function relayStart() {
+    relayErr = '';
+    relayApi('').then(function (r) {
+      host = { code: r.code, key: r.key, seq: 0, phone: null };
+      relaySave(); relayDraw(); relayLoop(host);
+    }, function (e) {
+      relayErr = 'Could not start the phone reader. ' + (e.message === 'Failed to fetch' ? 'Check the internet connection.' : e.message);
+      relayDraw();
+    });
+  }
+  function relayStop() {
+    var h = host; if (!h) return;
+    host = null; relaySave(); relayDraw();
+    relayApi('/' + h.code + '/close', { key: h.key }).catch(function () { /* expires anyway */ });
+  }
+  function relayLoop(h) {
+    if (host !== h) return;
+    relayApi('/' + h.code + '/poll', { key: h.key, after: h.seq, phone: h.phone || '' }).then(function (r) {
+      if (host !== h) return;
+      var changed = (r.phone || null) !== h.phone;
+      h.phone = r.phone || null;
+      if (r.seq > h.seq) {
+        h.seq = r.seq; relaySave();
+        // A tap older than 20 s (made while this PC was closed / offline) is not replayed.
+        if (r.uid && r.tapAt && Date.now() - new Date(r.tapAt).getTime() < 20000) {
+          nfc.dispatchNfcTag({ uid: r.uid, source: 'phone-relay', timestamp: Date.now() });
+        }
+      }
+      if (changed) relayDraw();
+      relayLoop(h);
+    }, function (e) {
+      if (host !== h) return;
+      if (e.status === 404 || e.status === 403 || e.status === 501) {
+        host = null; relaySave();
+        relayErr = 'Phone reader stopped. ' + e.message;
+        relayDraw();
+        return;
+      }
+      setTimeout(function () { relayLoop(h); }, 3000); // offline / server hiccup: keep trying
+    });
+  }
+  if (!IS_PHONE) {
+    try {
+      var saved = JSON.parse(localStorage.getItem(RELAY_KEY) || 'null');
+      if (saved && saved.code && saved.key) { host = { code: saved.code, key: saved.key, seq: Number(saved.seq) || 0, phone: null }; relayLoop(host); }
+    } catch (e) { /* ignore */ }
+    relayDraw();
+  }
 })();
 </script>
 </body>

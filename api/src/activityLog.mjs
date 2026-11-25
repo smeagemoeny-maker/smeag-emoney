@@ -34,6 +34,7 @@ const ACTIONS = [
   ["GET", /^\/api\/pusanmart\/payments$/, "View PusanMart payments"],
   ["GET", /^\/api\/pusanmart\/daily$/, "View PusanMart daily summary"],
   ["PUT", /^\/api\/pusanmart\/daily\/[^/]+$/, "Save PusanMart daily cost"],
+  ["GET", /^\/api\/pusanmart\/restock$/, "View PusanMart restock list"],
   ["GET", /^\/api\/sales$/, "View sales history"],
   ["GET", /^\/api\/reports\/sales$/, "View sales report"],
   ["GET", /^\/api\/people$/, "Search buyers"],

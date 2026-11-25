@@ -132,7 +132,7 @@ test("list: still out, late counter, campus filter", async () => {
   tables.student_outing[1].expected_return_at = inHours(-1);
   const all = await outing.list({ view: "out" }, admin);
   assert.equal(all.outings.length, 2);
-  assert.deepEqual(all.summary, { outing: 1, overnight: 1, late: 1, returnedToday: 0 });
+  assert.deepEqual(all.summary, { outing: 1, overnight: 1, late: 1, outingLate: 0, overnightNoon: 0, overnightMidnight: 0, returnedToday: 0 });
   assert.equal(all.outings.find((r) => r.studentName === "LEE TEST").status, "late");
   const cap = await outing.list({ view: "out" }, capital);
   assert.equal(cap.outings.length, 1);
@@ -166,6 +166,32 @@ test("check in, late return, undo, void", async () => {
   // voided -> can go out again
   const next = await outing.checkOut({ uid: "04aa11", kind: "OVERNIGHT", expectedReturnAt: inHours(20) }, "k", admin);
   assert.equal(next.outing.kind, "OVERNIGHT");
+});
+
+test("overnight check points: next day 12:00 and 24:00 (PH)", async () => {
+  // left 2026-11-24 23:30 PH (= 15:30Z) -> noon 2026-11-25 12:00 PH, midnight 2026-11-26 00:00 PH
+  assert.deepEqual(outing.overnightDeadlines("2026-11-24T15:30:00.000Z"),
+    { noon: "2026-11-25T04:00:00.000Z", midnight: "2026-11-25T16:00:00.000Z" });
+  // left 00:30 PH on the 25th -> it is already "the 25th": check points are the 26th
+  assert.equal(outing.overnightDeadlines("2026-11-24T16:30:00.000Z").noon, "2026-11-26T04:00:00.000Z");
+
+  tables.student_outing.length = 0;
+  const mk = (id, personId, kind, outAgoH) => tables.student_outing.push({ id: 100 + id, person_id: personId, uid: "u" + id, student_name: "S" + id,
+    campus: "Capital", kind, out_at: inHours(-outAgoH), expected_return_at: inHours(-outAgoH + 1), returned_at: null, voided_at: null });
+  mk(1, 51, "OVERNIGHT", 1);    // just left: fine
+  mk(2, 52, "OVERNIGHT", 40);   // past next-day noon, maybe past midnight
+  mk(3, 53, "OVERNIGHT", 60);   // surely past next-day 24:00
+  mk(4, 54, "OUTING", 60);      // outings never count here
+  const noon = await outing.list({ view: "overnight_noon" }, admin);
+  const mid = await outing.list({ view: "overnight_midnight" }, admin);
+  assert.ok(noon.outings.every((r) => r.kind === "OVERNIGHT" && r.overnightStage >= 1));
+  assert.ok(noon.outings.some((r) => r.studentName === "S3") && noon.outings.some((r) => r.studentName === "S2"));
+  assert.ok(mid.outings.some((r) => r.studentName === "S3"));
+  assert.ok(!mid.outings.some((r) => r.studentName === "S1") && !noon.outings.some((r) => r.studentName === "S1"));
+  assert.equal(noon.summary.overnightNoon, noon.outings.length);
+  assert.equal(noon.summary.overnightMidnight, mid.outings.length);
+  assert.equal((await outing.list({ view: "out_outing" }, admin)).outings.length, 1);
+  assert.equal((await outing.list({ view: "out_overnight" }, admin)).outings.length, 3);
 });
 
 test("phDayRange: Philippine day is UTC+8", () => {

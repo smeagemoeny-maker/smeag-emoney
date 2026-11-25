@@ -8,6 +8,7 @@ import { normalizeUid } from "./db.mjs";
 import { httpError } from "./repository.mjs";
 import { cleanBarcode, escapeLike, q, rest, withProductColumns } from "./supabaseRepository.mjs";
 import { validateOfficeLines } from "./backoffice.mjs";
+import { PUSAN_MART, PUSAN_MARTS, PUSAN_MART_ENCANTO } from "./stores.mjs";
 
 const PAGE_SIZE = 1000;
 const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -502,10 +503,12 @@ const PUSANMART_CAMPUS = "Pusan Mart";
 export const pusanmartNameKey = (v) => String(v ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 const nameKey = pusanmartNameKey;
 
-export async function pusanmartUnitCosts() {
+// storeCampus: store_menus Campus whose list comes first (the Encanto Pusan Mart's own list, then the Capital one).
+export async function pusanmartUnitCosts(storeCampus = "PUSAN MART") {
   // Current Pusan Mart list first, then the old hand-made list, so a name only on the old list still has a price.
   const byName = new Map();
-  for (const campus of ["PUSAN MART", "PUSAN MART (OLD)"]) {
+  const lists = [...new Set([String(storeCampus).toUpperCase(), "PUSAN MART", "PUSAN MART (OLD)"])];
+  for (const campus of lists) {
     let rows;
     try {
       rows = await rest(`store_menus?select=s_menu,payment,cost&Campus=ilike.${encodeURIComponent(escapeLike(campus))}&limit=5000`);
@@ -525,7 +528,11 @@ export async function pusanmartUnitCosts() {
   return byName;
 }
 
-export async function pusanmartDaily({ from, to }) {
+// campus: "Pusan Mart" (Capital, default) or "Pusan Mart Encanto". The Encanto store has barcode sales only
+// (no Pusan Pay, no typed cost): every row is a barcode line, costed from its own store_menus list.
+export async function pusanmartDaily({ from, to, campus = PUSANMART_CAMPUS }) {
+  const encanto = String(campus).toUpperCase() === PUSAN_MART_ENCANTO.toUpperCase();
+  const bankCampus = encanto ? PUSAN_MART_ENCANTO : PUSANMART_CAMPUS;
   const [start, end] = range(from, to);
   if (from > to) throw httpError(400, "Start date must be on or before the end date.");
   const blank = () => ({
@@ -539,13 +546,13 @@ export async function pusanmartDaily({ from, to }) {
   // Pusan Mart campus, any source. So Net Sales / Trans. here always equal Total Revenue / Transactions there.
   //   category "Pusan Mart Mart" -> barcode item line; anything else -> Pusan Pay (amount only).
   const rows = await pagedBank(
-    `${bankFilter({ from, to, campus: PUSANMART_CAMPUS })}&transaction_type=eq.decrease`,
+    `${bankFilter({ from, to, campus: bankCampus })}&transaction_type=eq.decrease`,
     "id,category,subcategory,quantity,payment,remark,order,transaction_date",
     100000,
   );
   const itemRows = [];
   for (const b of rows) {
-    if (nameKey(b.category) === nameKey(PUSANMART_ITEM_CATEGORY)) { itemRows.push(b); continue; }
+    if (encanto || nameKey(b.category) === nameKey(PUSANMART_ITEM_CATEGORY)) { itemRows.push(b); continue; }
     // Pusan Pay: discount label is the remark ("<label>" or "<label> · <memo>"); gross = paid / (1 - rate).
     const d = dayOf(phDateTime(b.transaction_date).slice(0, 10));
     const paid = Number(b.payment || 0);
@@ -556,7 +563,7 @@ export async function pusanmartDaily({ from, to }) {
     d.payGross += round(paid / (1 - rate));
   }
 
-  const costs = itemRows.length ? await pusanmartUnitCosts() : new Map();
+  const costs = itemRows.length ? await pusanmartUnitCosts(encanto ? "PUSAN MART ENCANTO" : "PUSAN MART") : new Map();
   for (const b of itemRows) {
     const d = dayOf(phDateTime(b.transaction_date).slice(0, 10));
     const qty = Number(b.quantity || 0);
@@ -576,7 +583,8 @@ export async function pusanmartDaily({ from, to }) {
 
   const typed = new Map();
   let costTableMissing = false;
-  try {
+  // pusanmart_daily_cost is the Capital store's Pusan Pay cost (keyed by day only): not read for Encanto.
+  if (!encanto) try {
     const costRows = await rest(`pusanmart_daily_cost?select=day,cost,note,updated_by,updated_at&day=gte.${from}&day=lte.${to}&limit=${PAGE_SIZE}`);
     for (const c of costRows) typed.set(c.day, c);
   } catch (e) {
@@ -623,6 +631,7 @@ export async function pusanmartDaily({ from, to }) {
   }
   const withCost = days.filter((d) => d.cost !== null && (d.count > 0 || d.cost > 0));
   return {
+    campus: bankCampus,
     days,
     costTableMissing,
     settleShare: PUSANMART_SETTLE_SHARE,
@@ -684,6 +693,105 @@ async function writePusanmartCost(date, { cost, note } = {}, staffLoginId) {
     },
   });
   return { date: row.day, cost: Number(row.cost), note: row.note, updatedBy: row.updated_by, updatedAt: phDateTime(row.updated_at) };
+}
+
+// ---------- PusanMart restock list (적정재고 / 입고 예정, downloaded at the daily closing) ----------
+// Per product: daily rate from the store's barcode sales of the last RESTOCK.windowDays days (divided by the days
+// the store actually sold something), target = rate x coverDays (at least minFace), order = target - stock.
+// A new store (Pusan Mart Encanto, opened 2026-11-25) has little history of its own: its rate is blended with the
+// Capital Pusan Mart's rate of the same product, w = own selling days / matureDays (0..1):
+//   rate = w x own + (1 - w) x Capital.
+// Products never sold: the new store keeps a display stock (displayFace) of items the Capital store carries,
+// until it has matureDays of its own; after that (and in the Capital store) they get min_stock only.
+// Phone loads (SMART / GLOBE ...) and SERVICES are not physical stock and are left out.
+export const RESTOCK = { windowDays: 14, coverDays: 10, minFace: 3, displayFace: 2, matureDays: 10 };
+const RESTOCK_SKIP = /^(SMART|GLOBE|TNT|TM|DITO)\b/i;
+
+function phDayAdd(day, n) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function restockSales(storeCampus, from, to) {
+  const rows = await pagedBank(
+    `${bankFilter({ from, to })}&category=eq.${encodeURIComponent(`${storeCampus} Mart`)}&transaction_type=eq.decrease`,
+    "subcategory,quantity,transaction_date",
+    100000,
+  );
+  const qty = new Map();
+  const days = new Set();
+  for (const b of rows) {
+    days.add(phDateTime(b.transaction_date).slice(0, 10));
+    const k = nameKey(b.subcategory);
+    qty.set(k, (qty.get(k) || 0) + Number(b.quantity || 0));
+  }
+  return { qty, days: days.size };
+}
+
+async function restockProducts(storeCampus) {
+  return rest(`store_menus?select=id,m_menu,s_menu,payment,stock,min_stock,barcode,item_code,cost` +
+    `&Campus=ilike.${encodeURIComponent(escapeLike(storeCampus))}&order=m_menu.asc,s_menu.asc&limit=5000`);
+}
+
+export async function pusanmartRestock({ campus, date }) {
+  const store = PUSAN_MARTS.find((c) => c.toUpperCase() === String(campus || "").trim().toUpperCase());
+  if (!store) throw httpError(400, "The restock list is for Pusan Mart / Pusan Mart Encanto only.");
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : phDateTime(new Date()).slice(0, 10);
+  const from = phDayAdd(to, -(RESTOCK.windowDays - 1));
+  const isRef = store === PUSAN_MART;
+
+  const [products, own, ref, refProducts] = await Promise.all([
+    restockProducts(store),
+    restockSales(store, from, to),
+    isRef ? null : restockSales(PUSAN_MART, from, to),
+    isRef ? null : restockProducts(PUSAN_MART),
+  ]);
+  const w = isRef ? 1 : Math.min(1, own.days / RESTOCK.matureDays);
+  const refStock = new Map((refProducts || []).map((p) => [nameKey(p.s_menu), Number(p.stock || 0)]));
+
+  const rows = [];
+  for (const p of products) {
+    const name = String(p.s_menu || "").trim();
+    const category = String(p.m_menu || "").replace(/^Pusan Mart\(|\)$/g, "");
+    if (!name || RESTOCK_SKIP.test(name) || /SERVICES/i.test(category)) continue;
+    const k = nameKey(name);
+    const ownQty = own.qty.get(k) || 0;
+    const refQty = ref ? ref.qty.get(k) || 0 : 0;
+    const ownRate = own.days ? ownQty / own.days : 0;
+    const refRate = ref && ref.days ? refQty / ref.days : 0;
+    const rate = w * ownRate + (1 - w) * refRate;
+    const minStock = Number(p.min_stock || 0);
+    let target;
+    if (rate > 0) target = Math.max(Math.ceil(rate * RESTOCK.coverDays - 1e-9), RESTOCK.minFace);
+    else if (!isRef && w < 1 && (refStock.get(k) || 0) > 0) target = Math.max(RESTOCK.displayFace, minStock);
+    else target = minStock;
+    const stock = Number(p.stock || 0);
+    const order = target - Math.max(stock, 0);
+    if (order <= 0) continue;
+    const grade = rate >= 1 ? "A" : rate * 7 >= 3 ? "B" : rate > 0 ? "C" : "D";
+    const cost = p.cost == null ? null : Number(p.cost);
+    rows.push({
+      id: p.id, grade, category, name, barcode: p.barcode || "", itemCode: p.item_code || "",
+      soldOwn: ownQty, soldRef: ref ? refQty : null, rate: round(rate), target, stock, order,
+      cost, price: Number(p.payment || 0), amount: cost == null ? null : round(order * cost),
+    });
+  }
+  rows.sort((a, b) => a.grade.localeCompare(b.grade) || b.rate - a.rate || a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+
+  const byGrade = {};
+  for (const g of ["A", "B", "C", "D"]) {
+    const list = rows.filter((r) => r.grade === g);
+    byGrade[g] = { items: list.length, qty: list.reduce((a, r) => a + r.order, 0), amount: round(list.reduce((a, r) => a + (r.amount || 0), 0)) };
+  }
+  return {
+    campus: store, date: to, from, to,
+    params: { ...RESTOCK, ownDays: own.days, refDays: ref ? ref.days : null, weight: round(w), refCampus: isRef ? null : PUSAN_MART },
+    totals: { items: rows.length, qty: rows.reduce((a, r) => a + r.order, 0), amount: round(rows.reduce((a, r) => a + (r.amount || 0), 0)),
+      noCost: rows.filter((r) => r.cost == null).length },
+    byGrade,
+    rows,
+  };
 }
 
 // ---------- office program (office_menus + bank) ----------

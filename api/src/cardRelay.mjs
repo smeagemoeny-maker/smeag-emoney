@@ -6,8 +6,11 @@
 //   join(code, by)            phone: attach to the pairing (logged-in staff only)
 //   tap(code, uid, by)        phone: a card was read -> tap_seq + 1
 //   close(code, key)          PC: end the pairing
+//   createKiosk()             My Purchases screen (student/, no login): same pairing, created_by KIOSK_BY
 //
-// Table: api/migrations/supabase_card_relay.sql. Everything here needs a staff login (app.mjs).
+// Table: api/migrations/supabase_card_relay.sql. The phone side (join / tap) always needs a staff login
+// (app.mjs). The PC side needs one too, except on the My Purchases screen: there the pc_key alone opens
+// poll / close, and the card UID it receives is what that screen already takes from any card reader.
 import crypto from "node:crypto";
 import { httpError } from "./repository.mjs";
 import { rest } from "./supabaseRepository.mjs";
@@ -75,6 +78,16 @@ export async function create(by, campus) {
     }
   }
   throw httpError(503, "No free pairing code. Try again.");
+}
+
+// My Purchases (student kiosk, no staff login on that PC). Capped so an anonymous caller cannot use up
+// the 4-digit codes the staff screens need.
+export const KIOSK_BY = "My Purchases";
+const KIOSK_MAX_OPEN = 30;
+export async function createKiosk() {
+  const open = await db(`card_relay?created_by=eq.${enc(KIOSK_BY)}&expires_at=gt.${enc(new Date().toISOString())}&select=code`);
+  if ((open?.length || 0) >= KIOSK_MAX_OPEN) throw httpError(429, "Too many My Purchases screens are paired right now. Try again later.");
+  return create(KIOSK_BY, KIOSK_BY);
 }
 
 // Returns as soon as there is a tap newer than `after`, the phone joined/left, or after ~25 s.

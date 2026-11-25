@@ -16,7 +16,8 @@ const PUSAN_MART_ALL_ACCOUNTS = new Set(["busan"]);
 //   Admin/Manager in PUSAN_MART_ALL_ACCOUNTS -> both Pusan Marts (Capital + Encanto) and PusanMart pay
 //   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
 //   Admin/Manager @ Pusan Mart Encanto -> ONLY the Encanto Pusan Mart (own products / stock / sales), no Pusan Pay
-//                                        (Pusan Pay / Pay List are the Capital Pusan Mart's PusanmartPayments)
+//                                        (Pusan Pay is the Capital Pusan Mart's PusanmartPayments); Pay List of the
+//                                        Encanto store itself (daily closing / X Reading, payListCampuses)
 //   Admin/Manager @ Capital/Encanto/Talrac -> ONLY the own campus: cafe AND mart sales, buyer lookup, office program
 //                                        (Admin, and Managers in PUSAN_PAY_MANAGERS, also keep PusanMart pay)
 //   Admin @ a campus that is none of the above -> every campus (incl. the office program)
@@ -124,6 +125,24 @@ export function assertCanCharge(access, campus) {
   if (!access.cafeCampuses.some((c) => c.toUpperCase() === String(campus || "").toUpperCase())) {
     throw httpError(403, `This account cannot charge at the ${campus} cafe.`);
   }
+}
+
+// Pay List (daily closing / X Reading / payments) is per Pusan Mart: the Capital one holds the Pusan Pay payments,
+// so it needs canPusanPay; the Encanto one (barcode sales only, no Pusan Pay) is open to every account running that mart.
+export function payListCampuses(access) {
+  const marts = (access?.martCampuses || []).map((c) => c.toUpperCase());
+  return [
+    ...(access?.canPusanPay ? [PUSAN_MART] : []),
+    ...(marts.includes(PUSAN_MART_ENCANTO.toUpperCase()) ? [PUSAN_MART_ENCANTO] : []),
+  ];
+}
+
+// Returns the Pay List campus (default: the Capital Pusan Mart).
+export function assertCanPayList(access, campus) {
+  const wanted = String(campus || PUSAN_MART).trim().toUpperCase();
+  const hit = payListCampuses(access).find((c) => c.toUpperCase() === wanted);
+  if (!hit) throw httpError(403, `This account cannot view the ${campus || PUSAN_MART} Pay List.`);
+  return hit;
 }
 
 export function assertCanPusanPay(access) {

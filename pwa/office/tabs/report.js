@@ -45,11 +45,19 @@
     return { get: function () { return value; }, set: set };
   }
 
+  /* options: 'VALUE' or ['VALUE', 'Label'] */
   function comboHtml(key, style, options, selected) {
     return '<div class="g2-combo" style="' + style + '"><select data-k="' + key + '">' +
-      options.map(function (o) { return '<option' + (o === selected ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+      options.map(function (o) {
+        var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o;
+        return '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + l + '</option>';
+      }).join('') +
       '</select><span class="g2-chev"></span></div>';
   }
+
+  /* Campus filter: the four campuses, then the two Pusan Mart stores as their own report
+     (PUSAN MART = Capital store + Pusan Pay, PUSAN MART ENCANTO = Encanto store, opened 2026-11-25). */
+  var CAMPUSES = ['CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM', ['PUSAN MART', 'PUSAN MART (Capital)'], ['PUSAN MART ENCANTO', 'PUSAN MART (Encanto)']];
 
   var CARDS = [['Recharge', '0.00'], ['Cash Out', '0.00'], ['Receipt', '0'], ['Store shop', '0.00'], ['Total amount of', '0.00']];
   /* hover tooltip of each card: what it counts (numbers are added after SEARCH, see cardTips()) */
@@ -70,7 +78,7 @@
       var html =
         '<div class="g2-panel" style="left:0;top:0;width:1706px;height:263px"></div>' +
         '<span class="g2-lbl f10" style="left:33px;top:26px">Campus:</span>' +
-        comboHtml('campus', 'left:135px;top:21px;width:110px;height:25px', ['CAPITAL', 'ENCANTO', 'TARLAC', 'BAYDREAM', 'PUSAN MART'], 'CAPITAL') +
+        comboHtml('campus', 'left:105px;top:21px;width:175px;height:25px', CAMPUSES, 'CAPITAL') +
         dtpHtml('start', 'f10', 'left:310px;top:21px;width:110px;height:25px') +
         dtpHtml('end', 'f10', 'left:485px;top:21px;width:110px;height:25px') +
         '<input class="g2-txt" data-k="week" type="text" value="1" spellcheck="false" autocomplete="off" style="left:660px;top:21px;width:50px;height:25px">' +
