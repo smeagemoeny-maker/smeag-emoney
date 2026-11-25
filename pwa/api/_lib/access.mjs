@@ -8,8 +8,12 @@ const CAFE_CAMPUS_BY_ACCOUNT = { CAPITAL: "Capital", ENCANTO: "Encanto", TALRAC:
 export const ALL_CAFE_CAMPUSES = ["Capital", "Encanto", "Tarlac"];
 // Campus Manager accounts that may also use PusanMart pay / Pay List (login_id, case-insensitive).
 const PUSAN_PAY_MANAGERS = new Set(["key"]);
+// Accounts that run BOTH Pusan Marts (Capital + Encanto): products / stock / sales / reports of each,
+// plus Pusan Pay / Pay List. No cafe, no office program (login_id, case-insensitive).
+const PUSAN_MART_ALL_ACCOUNTS = new Set(["busan"]);
 
 // What a manager account may do in the POS.
+//   Admin/Manager in PUSAN_MART_ALL_ACCOUNTS -> both Pusan Marts (Capital + Encanto) and PusanMart pay
 //   Admin/Manager @ Pusan Mart       -> Pusan Mart sales, buyer lookup, PusanMart pay (no cafe, no charge)
 //   Admin/Manager @ Pusan Mart Encanto -> ONLY the Encanto Pusan Mart (own products / stock / sales), no Pusan Pay
 //                                        (Pusan Pay / Pay List are the Capital Pusan Mart's PusanmartPayments)
@@ -24,6 +28,9 @@ export function accessFor(manager) {
   const campus = String(manager?.campus || "").toUpperCase();
   const loginId = String(manager?.login_id ?? manager?.loginId ?? "").toLowerCase();
 
+  if ((position === "Admin" || position === "Manager") && PUSAN_MART_ALL_ACCOUNTS.has(loginId)) {
+    return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART, PUSAN_MART_ENCANTO], canCharge: false, canPusanPay: true, office: false };
+  }
   if ((position === "Admin" || position === "Manager") && campus === PUSAN_MART_ENCANTO.toUpperCase()) {
     return { stores: ["mart"], cafeCampuses: [], martCampuses: [PUSAN_MART_ENCANTO], canCharge: false, canPusanPay: false, office: false };
   }
