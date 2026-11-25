@@ -492,3 +492,19 @@ button, input { font-family: inherit; }
   #printArea .rpt { --ink: #000; --ink2: #222; --ink3: #444; --out: #000; color: #000; }
   body { background: #fff !important; }
 }
+
+/* Camera barcode scan (mart.js openCameraScan): full-screen camera over the Sales screen */
+.camscan { position: fixed; inset: 0; z-index: 2147482000; background: #000; color: #fff; font-family: inherit; }
+.camscan video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.camscan .camguide {
+  position: absolute; left: 50%; top: 42%; width: min(80vw, 420px); height: min(34vw, 180px);
+  transform: translate(-50%, -50%); border: 3px solid rgba(255, 255, 255, .9); border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .35);
+}
+.camscan .camtop { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px; }
+.camscan .cammode { padding: 8px 14px; border-radius: 18px; background: #2E7D32; font-weight: 700; font-size: 14px; cursor: pointer; }
+.camscan .cammode.rm { background: #C62828; }
+.camscan .camx { width: 44px; height: 44px; border: 0; border-radius: 22px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 20px; }
+.camscan .cambottom { position: absolute; left: 0; right: 0; bottom: 44px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.camscan .camstatus { min-height: 22px; text-align: center; font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px #000; }
+.camscan .camdone { height: 54px; border: 0; border-radius: 12px; background: #1565C0; color: #fff; font-size: 17px; font-weight: 700; }

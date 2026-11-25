@@ -330,6 +330,88 @@
     render();
     return true;
   }
+  // ----- camera barcode scan (Pusan Marts, Sales): the phone camera instead of a barcode scanner.
+  // Android Chrome's BarcodeDetector reads the code; each read goes through onBarcode() like a scanner burst.
+  // The same code is ignored while it stays in view, so 2 of one item = take it away, show it again.
+  var cam = null;   // { el, video, stream, timer, seen: { code: lastSeenMs }, busy }
+  var CAM_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'codabar', 'itf'];
+  function openCameraScan() {
+    if (cam) return;
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('The camera works only on an HTTPS address.', 3000); return;
+    }
+    if (!('BarcodeDetector' in window)) { toast('Camera barcode scan needs Chrome on Android. Use a barcode scanner here.', 3500); return; }
+    var el = document.createElement('div');
+    el.className = 'camscan';
+    el.innerHTML = '<video playsinline muted autoplay></video><div class="camguide"></div>' +
+      '<div class="camtop"><span class="cammode"></span><button type="button" class="camx" aria-label="Close">✕</button></div>' +
+      '<div class="cambottom"><div class="camstatus">Starting the camera…</div>' +
+      '<button type="button" class="camdone"></button></div>';
+    document.body.appendChild(el);
+    var c = cam = { el: el, video: el.querySelector('video'), stream: null, timer: null, seen: {}, busy: false };
+    el.querySelector('.camx').onclick = closeCameraScan;
+    el.querySelector('.camdone').onclick = closeCameraScan;
+    el.querySelector('.cammode').onclick = function () { S.scanRemove = !S.scanRemove; updateCameraScan(); render(); };
+    updateCameraScan('Point the camera at a barcode.');
+    Promise.resolve(window.BarcodeDetector.getSupportedFormats ? window.BarcodeDetector.getSupportedFormats() : CAM_FORMATS)
+      .then(function (have) {
+        var formats = CAM_FORMATS.filter(function (f) { return have.indexOf(f) >= 0; });
+        c.detector = new window.BarcodeDetector(formats.length ? { formats: formats } : undefined);
+        return navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      })
+      .then(function (stream) {
+        if (cam !== c) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        c.stream = stream;
+        c.video.srcObject = stream;
+        return c.video.play().then(function () { c.timer = setInterval(function () { scanFrame(c); }, 200); });
+      })
+      .catch(function (e) {
+        if (cam !== c) return;
+        closeCameraScan();
+        toast(e && e.name === 'NotAllowedError' ? 'Camera permission was denied. Allow the camera for this site in Chrome settings.'
+          : 'Could not start the camera: ' + ((e && e.message) || e), 4000);
+      });
+  }
+  function scanFrame(c) {
+    if (cam !== c || c.busy || c.video.readyState < 2) return;
+    c.busy = true;
+    c.detector.detect(c.video).then(function (codes) {
+      c.busy = false;
+      if (cam !== c) return;
+      var now = Date.now();
+      (codes || []).forEach(function (b) {
+        var code = cleanCode(b.rawValue);
+        if (!code) return;
+        var fresh = !c.seen[code] || now - c.seen[code] > 1200;   // gone from view for 1.2 s = a new scan
+        c.seen[code] = now;
+        if (!fresh) return;
+        if (route !== 'sales') { closeCameraScan(); return; }
+        if (!onBarcode(code, true)) { beep('error'); toast('Barcode not registered: ' + code, 2600); }
+        if (navigator.vibrate) try { navigator.vibrate(60); } catch (e) { /* optional */ }
+        updateCameraScan(ui.toast || '');
+      });
+    }, function () { c.busy = false; });
+  }
+  function updateCameraScan(msg) {
+    if (!cam) return;
+    var n = 0, total = 0;
+    vm.cart.forEach(function (it) { n += it.quantity; total += lineNet(it); });
+    cam.el.querySelector('.cammode').textContent = S.scanRemove ? '− Scan removes' : '＋ Scan adds';
+    cam.el.querySelector('.cammode').className = 'cammode' + (S.scanRemove ? ' rm' : '');
+    if (msg != null) cam.el.querySelector('.camstatus').textContent = msg;
+    cam.el.querySelector('.camdone').textContent = 'Done · ' + n + ' item' + (n === 1 ? '' : 's') + ' · ₱' + money(total);
+  }
+  function closeCameraScan() {
+    var c = cam;
+    if (!c) return;
+    cam = null;
+    clearInterval(c.timer);
+    if (c.stream) c.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+    render();
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState !== 'visible') closeCameraScan(); });
+
   function removeOne(p) {
     var line = vm.cart.filter(function (c) { return c.product.id === p.id; })[0];
     if (!line) { beep('error'); toast('Not in the list: ' + (p.sMenu || '-'), 1800); return; }
@@ -576,6 +658,7 @@
     if (ROUTES.indexOf(r) < 0) r = HOME;
     if (!routeAllowed(r)) r = r === 'paylist' ? 'report' : HOME;
     if (r === 'receipt' && !vm.last) r = HOME;
+    if (r !== 'sales') closeCameraScan();
     route = r;
     ui.dropdown = null; ui.dialog = null;
     initScreen(r);
@@ -595,6 +678,7 @@
     // The phone reader is always on, so a tap can come before the NFC box was pressed: pay right away when
     // the screen is ready (the box says "Payment completes as soon as you tap"), otherwise say why not.
     if (route === 'sales') {
+      closeCameraScan();   // card tapped while the camera is open: show the Pay confirm
       if (S.paying) { toast('Processing payment... please wait.'); return; }
       S.awaitingTap = false;
       showPayConfirm(uidStr, !vm.cart.length); // empty cart: only show the student's info and balance
@@ -791,7 +875,8 @@
     var h = '<div class="screen' + (wide ? ' wide' : '') + '">' +
       '<div class="sb salesHead"><div class="title" style="padding:0">Sales</div>' +
       '<input class="tf search" id="s_search" data-in="in_s_search" type="search" placeholder="' + (isPusan(S.campus) ? '🔍 Search or scan barcode' : '🔍 Search product') + '" value="' + esc(S.search || '') + '" autocomplete="off" spellcheck="false">' +
-      '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>' +
+      (isPusan(S.campus) ? '<button class="iconbtn camscanbtn" title="Scan barcode with the phone camera" data-act="' + act(openCameraScan) + '">📷</button></div>'
+        : '<button class="iconbtn" title="Find product by photo" data-act="' + act(notInBrowser) + '">📷</button></div>') +
       // Tapped card's student info gets its own row under "Sales" so product search stays available.
       (S.confirm ? '<div class="buyerrow">' + buyerChip() + '</div>' : '') +
       '<div class="filterbar">' +
@@ -815,7 +900,7 @@
     var cartHead = scan ? cartScanHeader() : eyebrow('CART');
     if (wide) h += '</div><div class="cartPane"><div class="vscroll fill">' + cartHead + spacer(8);
     else h += '<div class="divider" style="margin:14px 0"></div>' + cartHead + spacer(8);
-    if (!vm.cart.length) h += txt(scan ? 'Scan a barcode or select a product ' + (wide ? 'on the left.' : 'above.') :
+    if (!vm.cart.length) h += txt(scan ? 'Scan a barcode (or tap 📷 to use the camera) or select a product ' + (wide ? 'on the left.' : 'above.') :
       'Your cart is empty. Select a product ' + (wide ? 'on the left.' : 'above.'), 'font-size:12px;color:var(--ink3)');
     vm.cart.forEach(function (it) {
       var p = it.product, unit = unitOf(it), gross = unit * it.quantity, net = lineNet(it);
