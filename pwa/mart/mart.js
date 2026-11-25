@@ -519,7 +519,7 @@
     if (relayHost) {
       return '<div class="relayline on">' + (relayHost.phone
         ? '📱 <b>Phone reader connected</b> (' + esc(relayHost.phone) + ') · code ' + relayHost.code + ' — tap cards on the phone.'
-        : '📱 Phone reader code <b class="relaycode">' + relayHost.code + '</b><br><span>On the phone: Mart app › Sales › “Use this phone as a PC’s card reader” › enter ' + relayHost.code + '</span>') +
+        : '📱 Phone reader code <b class="relaycode">' + relayHost.code + '</b><br><span>On the phone: Mart app › Sales › “Use this phone as a PC’s card reader” (or Office › 🖥 PC reader) › enter ' + relayHost.code + '</span>') +
         ' <button class="pill" data-act="' + act(relayStopHost) + '">Stop</button></div>';
     }
     if (IS_PHONE) return '<div class="relayline"><button class="pill" data-act="' + act(relayJoin) + '">🖥 Use this phone as a PC’s card reader</button></div>';
@@ -530,6 +530,7 @@
     var ph = relayPhone, l = ph.last;
     var two = function (n) { return ('0' + n).slice(-2); };
     return '<div class="screen relayreader">' +
+      '<img class="rr-logo" src="/office/tabs/idcard/smeag-logo.png" alt="SMEAG">' +
       '<div class="rr-title">PC CARD READER</div>' +
       '<div class="rr-code">Code ' + ph.code + (ph.pcBy ? ' · PC ' + esc(ph.pcBy) : '') + '</div>' +
       '<div class="rr-icon' + (ph.sending ? ' busy' : '') + '">📶</div>' +

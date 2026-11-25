@@ -963,7 +963,9 @@
     function capturing() { return !!cardCapture && layer.lastElementChild === cardCapture.dlg; }
     function canTap() { return loggedIn() && (capturing() || layer.hidden || (!!cardDialogClose && layer.children.length === 1)); }
     N.enableKeyboardReader(canTap);
+    var relay = relayCtl = wireRelay(api);
     N.listenForNfc(function (d) {
+      if (relay.readerMode() && d.source !== 'phone-relay') { if (loggedIn()) relay.sendTap(String(d.uid || '')); return; }
       if (!canTap()) return;
       if (cardDialogClose) cardDialogClose();
       var uid = String(d.uid || '').toUpperCase();
@@ -995,6 +997,154 @@
     }
     // Phone NFC: kept running (retried on touch, restarted when the page returns) with a status badge.
     if (N.keepPhoneNfc) N.keepPhoneNfc();
+  }
+
+  /* ================= phone as the PC's card reader (api/src/cardRelay.mjs) ================= */
+  // PC (no USB reader): title bar "📱 Phone reader" opens a 4-digit pairing code; each card tapped on the phone
+  // arrives here as an nfc-tag event, so OFFICE MENU loads the student and every other tab shows the card / balance.
+  // Phone: title bar "🖥 PC reader" + the code -> full-screen reader mode; taps go to the PC instead of this page.
+  // Same pairing as the Mart app (Sales), so either app can be the PC or the phone.
+  var relayCtl = null;   // set by wireNfc; LOGOUT uses it
+  var RELAY_HOST_KEY = 'officeRelayHost', RELAY_PHONE_KEY = 'officeRelayPhone';
+  var IS_PHONE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
+  function wireRelay(api) {
+    var host = null;    // PC:    { code, key, seq, phone }
+    var phone = null;   // phone: { code, pcBy, last, lastOk, sending }
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'tb-relay'; btn.tabIndex = -1;
+    document.querySelector('.titlebar').appendChild(btn);
+    var screen = null;
+    function token() { var s = api.session(); return s && s.token; }
+    function save() {
+      try {
+        if (host) localStorage.setItem(RELAY_HOST_KEY, JSON.stringify({ code: host.code, key: host.key, seq: host.seq }));
+        else localStorage.removeItem(RELAY_HOST_KEY);
+        if (phone) localStorage.setItem(RELAY_PHONE_KEY, JSON.stringify({ code: phone.code, pcBy: phone.pcBy }));
+        else localStorage.removeItem(RELAY_PHONE_KEY);
+      } catch (e) { /* ignore */ }
+    }
+    function draw() {
+      btn.classList.toggle('on', !!(host && host.phone) || !!phone);
+      btn.classList.toggle('wait', !!(host && !host.phone));
+      if (host) btn.textContent = host.phone ? '📱 Phone reader ● ' + host.phone : '📱 Phone code ' + host.code + ' (waiting)';
+      else btn.textContent = IS_PHONE ? '🖥 PC reader' : '📱 Phone reader';
+      btn.title = host ? 'Click to stop the phone reader' : IS_PHONE ? 'Use this phone as a PC’s card reader' : 'No card reader on this PC? Use an Android phone';
+      drawScreen();
+    }
+    function drawScreen() {
+      if (!phone) { if (screen) { screen.remove(); screen = null; } return; }
+      if (!screen) { screen = document.createElement('div'); screen.className = 'relay-screen'; document.body.appendChild(screen); }
+      var l = phone.last, two = function (n) { return ('0' + n).slice(-2); };
+      screen.innerHTML = '<img class="rr-logo" src="tabs/idcard/smeag-logo.png" alt="SMEAG">' +
+        '<div class="rr-title">PC CARD READER</div>' +
+        '<div class="rr-code">Code ' + escapeHtml(phone.code) + (phone.pcBy ? ' · PC ' + escapeHtml(phone.pcBy) : '') + '</div>' +
+        '<div class="rr-icon' + (phone.sending ? ' busy' : '') + '">📶</div>' +
+        '<div class="rr-msg">' + (phone.sending ? 'Sending to the PC…' : 'Tap the student card on the back of this phone.<br>The card / balance opens on the PC.') + '</div>' +
+        (l ? '<div class="rr-last ' + (phone.lastOk ? 'ok' : 'bad') + '">' + (phone.lastOk ? '✓ Sent to PC' : '✕ Not sent: ' + escapeHtml(l.error || '')) +
+          ' · ' + escapeHtml(l.uid.toUpperCase()) + ' · ' + two(l.at.getHours()) + ':' + two(l.at.getMinutes()) + ':' + two(l.at.getSeconds()) + '</div>' : '') +
+        '<button type="button" class="rr-stop">Stop reader mode</button>';
+      screen.querySelector('.rr-stop').addEventListener('click', function () { phone = null; save(); draw(); });
+    }
+
+    // ----- PC side -----
+    function startHost() {
+      if (!token()) return warn('Please log in first.');
+      api.request('POST', '/api/card-relay', {}).then(function (r) {
+        host = { code: r.code, key: r.key, seq: 0, phone: null };
+        save(); draw(); loop(host);
+        messageBox('Phone reader code: ' + r.code + '\n\nOn the Android phone (Chrome, logged in):\n' +
+          '• Office: tap “🖥 PC reader” at the top, or\n• Mart app: Sales › “Use this phone as a PC’s card reader”\n' +
+          'and enter ' + r.code + '.\n\nThen tap student cards on the phone: OFFICE MENU loads the student,\nother tabs show the card and its balance.',
+          'PHONE READER', 'OK', 'info');
+      }, function (e) { warn('Could not start the phone reader.\n' + (e && e.message ? e.message : e)); });
+    }
+    function stopHost() {
+      var h = host; if (!h) return;
+      host = null; save(); draw();
+      api.request('POST', '/api/card-relay/' + h.code + '/close', { key: h.key }).catch(function () { /* expires anyway */ });
+    }
+    function loop(h) {
+      if (host !== h) return;
+      if (!token()) { setTimeout(function () { loop(h); }, 3000); return; }   // wait for the login
+      api.request('POST', '/api/card-relay/' + h.code + '/poll', { key: h.key, after: h.seq, phone: h.phone || '' }).then(function (r) {
+        if (host !== h) return;
+        var changed = (r.phone || null) !== h.phone;
+        h.phone = r.phone || null;
+        if (r.seq > h.seq) {
+          h.seq = r.seq; save();
+          // A tap older than 20 s (made while this PC was closed / offline) is not replayed.
+          if (r.uid && r.tapAt && Date.now() - new Date(r.tapAt).getTime() < 20000) {
+            window.dispatchEvent(new CustomEvent('nfc-tag', { detail: { uid: r.uid, source: 'phone-relay', timestamp: Date.now() } }));
+          }
+        }
+        if (changed) draw();
+        loop(h);
+      }, function (e) {
+        if (host !== h) return;
+        if (e.status === 404 || e.status === 403 || e.status === 501) {
+          host = null; save(); draw();
+          warn('Phone reader stopped.\n' + e.message);
+          return;
+        }
+        setTimeout(function () { loop(h); }, 3000);   // offline / server hiccup: keep trying
+      });
+    }
+
+    // ----- phone side -----
+    function join() {
+      if (!token()) return warn('Please log in first.');
+      var code = String(window.prompt('Enter the 4-digit code shown on the PC (📱 Phone reader):') || '').trim();
+      if (!code) return;
+      if (!/^\d{4}$/.test(code)) return warn('The pairing code is 4 digits.');
+      api.request('POST', '/api/card-relay/' + code + '/join').then(function (r) {
+        phone = { code: code, pcBy: r.pcBy, last: null, lastOk: true };
+        save(); draw();
+      }, function (e) { warn(e && e.message ? e.message : String(e)); });
+    }
+    function ping() {
+      if (!phone || !token() || document.visibilityState !== 'visible') return;
+      var ph = phone;
+      api.request('POST', '/api/card-relay/' + ph.code + '/join').catch(function (e) {
+        if (phone === ph && (e.status === 404 || e.status === 501)) { phone = null; save(); draw(); warn('The PC closed the phone reader.'); }
+      });
+    }
+    setInterval(ping, 30000);
+    document.addEventListener('visibilitychange', ping);
+    function sendTap(uid) {
+      var ph = phone;
+      if (!ph || ph.sending) return;
+      ph.sending = true; drawScreen();
+      api.request('POST', '/api/card-relay/' + ph.code + '/tap', { uid: uid }).then(function () {
+        if (phone !== ph) return;
+        ph.sending = false; ph.last = { uid: uid, at: new Date() }; ph.lastOk = true;
+        if (navigator.vibrate) navigator.vibrate(60);
+        drawScreen();
+      }, function (e) {
+        if (phone !== ph) return;
+        ph.sending = false; ph.last = { uid: uid, at: new Date(), error: e && e.message }; ph.lastOk = false;
+        if (e && e.status === 404) { phone = null; save(); warn(e.message); }
+        draw();
+      });
+    }
+
+    btn.addEventListener('click', function () {
+      if (host) { messageBox('Stop the phone reader (code ' + host.code + ')?', 'PHONE READER', 'YesNo', 'question').then(function (v) { if (v === 'Yes') stopHost(); }); return; }
+      if (IS_PHONE) join(); else startHost();
+    });
+    // Restore after a reload (the pairing lasts 12 h on the server).
+    try {
+      var h = JSON.parse(localStorage.getItem(RELAY_HOST_KEY) || 'null');
+      if (h && h.code && h.key) { host = { code: h.code, key: h.key, seq: Number(h.seq) || 0, phone: null }; loop(host); }
+      var p = JSON.parse(localStorage.getItem(RELAY_PHONE_KEY) || 'null');
+      if (p && p.code) { phone = { code: p.code, pcBy: p.pcBy, last: null, lastOk: true }; setTimeout(ping, 1500); }
+    } catch (e) { /* ignore */ }
+    draw();
+    return {
+      readerMode: function () { return !!phone; },
+      sendTap: sendTap,
+      // LOGOUT: close this PC's pairing while the token still works, and leave reader mode.
+      logout: function () { if (host) stopHost(); if (phone) { phone = null; save(); draw(); } }
+    };
   }
 
   /* ================= startup ================= */
@@ -1035,6 +1185,7 @@
     var logoutBtn = document.getElementById('btnLogout');
     if (logoutBtn) logoutBtn.addEventListener('click', function () {
       logoutBtn.disabled = true;
+      if (relayCtl) relayCtl.logout();   // before the token is gone (closing the pairing needs it)
       api.logout().then(function () {
         logoutBtn.disabled = false;
         api.setSession(null);

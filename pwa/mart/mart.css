@@ -516,6 +516,7 @@ button, input { font-family: inherit; }
 .relayline.on span { font-size: 10.5px; color: var(--ink2); }
 .relayline .relaycode { font-size: 22px; letter-spacing: 4px; vertical-align: middle; }
 .relayreader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 92vh; padding: 24px; text-align: center; }
+.relayreader .rr-logo { width: 220px; max-width: 70%; height: auto; margin-bottom: 6px; }
 .relayreader .rr-title { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
 .relayreader .rr-code { font-size: 14px; color: var(--ink2); }
 .relayreader .rr-icon { font-size: 96px; line-height: 1; }

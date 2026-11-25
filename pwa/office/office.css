@@ -378,3 +378,31 @@ body {
 /* ACR122U bridge status (office.js wireNfc) */
 .tb-nfc { position: absolute; right: 160px; top: 0; line-height: 30px; font-size: 12px; color: #A0A0A0; }
 .tb-nfc.on { color: #2E7D32; font-weight: 700; }
+
+/* phone as the PC's card reader (office.js wireRelay) */
+.tb-relay {
+  position: absolute; right: 530px; top: 4px; height: 22px; padding: 0 10px;
+  border: 1px solid #ADADAD; background: #F3F3F3; font: 11px var(--font); color: #000; cursor: pointer; white-space: nowrap;
+}
+.tb-relay:hover { background: #E5F1FB; }
+.tb-relay.wait { background: #FFF8E1; border-color: #F9A825; font-weight: 700; }
+.tb-relay.on { background: #E8F5E9; border-color: #2E7D32; color: #1B5E20; font-weight: 700; }
+.relay-screen {
+  position: fixed; inset: 0; z-index: 9000; background: #F7F7F7; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
+  text-align: center; font-family: var(--font), sans-serif; color: #111;
+}
+.relay-screen .rr-logo { width: 220px; max-width: 70%; height: auto; margin-bottom: 6px; }
+.relay-screen .rr-title { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+.relay-screen .rr-code { font-size: 14px; color: #555; }
+.relay-screen .rr-icon { font-size: 96px; line-height: 1; }
+.relay-screen .rr-icon.busy { animation: rrPulse .8s ease-in-out infinite; }
+@keyframes rrPulse { 50% { transform: scale(.85); opacity: .6; } }
+.relay-screen .rr-msg { font-size: 16px; font-weight: 600; line-height: 1.5; }
+.relay-screen .rr-last { padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; }
+.relay-screen .rr-last.ok { background: #E8F5E9; color: #1B5E20; }
+.relay-screen .rr-last.bad { background: #FFEBEE; color: #B71C1C; }
+.relay-screen .rr-stop {
+  margin-top: 18px; width: 100%; max-width: 320px; height: 48px; border-radius: 10px;
+  border: 1px solid #BDBDBD; background: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+}
