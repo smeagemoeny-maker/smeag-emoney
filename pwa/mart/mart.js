@@ -1072,16 +1072,18 @@
       if (editing) h += itemDiscEditor(it);
       if (pricing) h += itemPriceEditor(it);
     });
-    h += spacer(4) + '<div class="chips">';
+    // Wide screen: discount + Total sit below the scrolling cart list, so a long cart never hides the total.
+    if (wide) h += '</div><div class="cartfoot">'; else h += spacer(4);
+    h += '<div class="chips">';
     [['No Discount', 0], ['Manager 15%', 0.15], ['Teacher 10%', 0.10]].forEach(function (c) {
       h += '<div class="chip' + (vm.discountLabel === c[0] ? ' sel' : '') + '" data-act="' + act(function () { vm.discountLabel = c[0]; vm.discountRate = c[1]; }) + '">' + c[0] + '</div>';
     });
     h += '</div>' + spacer(10) +
       (vm.cart.some(function (it) { return it.disc; }) ? txt('Items with their own discount (%-tag) ignore the cart discount above.', 'font-size:10.5px;color:var(--ink3);padding-top:6px') : '') +
-      '<div class="sb" style="padding-top:10px"><span style="font-size:12px;color:var(--ink2)">Total</span>' +
-      '<span style="font-size:13px;font-weight:700">₱' + money(cartTotalAfterDiscount()) + '</span></div>';
+      '<div class="sb carttotal"><span>Total' + (vm.cart.length ? ' · ' + vm.cart.reduce(function (a, i) { return a + i.quantity; }, 0) + ' pcs' : '') + '</span>' +
+      '<span class="amt">₱' + money(cartTotalAfterDiscount()) + '</span></div>';
     if (vm.checkoutError) h += txt(vm.checkoutError, 'color:var(--out);font-size:12px;padding-top:8px');
-    h += '</div>';
+    h += '</div>';   // .cartfoot (wide) / .vscroll (narrow)
     // A balance lookup (tap with an empty cart) stays shown but is never payable: tap again to pay,
     // so a payment never goes to a previously looked-up card by mistake.
     if (S.confirm && !S.confirm.lookupOnly && !vm.cart.length) S.confirm = null;

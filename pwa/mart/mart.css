@@ -527,3 +527,8 @@ button, input { font-family: inherit; }
 .relayreader .rr-last.ok { background: #E8F5E9; color: #1B5E20; }
 .relayreader .rr-last.bad { background: #FFEBEE; color: #B71C1C; }
 .relayreader .rr-stop { margin-top: 18px; width: 100%; max-width: 320px; }
+/* Cart total: always visible and easy to read (wide: fixed under the scrolling cart list). */
+.carttotal { padding-top: 10px; align-items: baseline; }
+.carttotal > span:first-child { font-size: 13px; color: var(--ink2); font-weight: 600; }
+.carttotal .amt { font-size: 22px; font-weight: 800; color: var(--brand); }
+.screen.wide .cartPane > .cartfoot { flex: 0 0 auto; padding-top: 10px; margin-bottom: 10px; border-top: 1px solid rgba(0,0,0,.08); }
