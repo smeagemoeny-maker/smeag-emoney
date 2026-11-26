@@ -532,3 +532,14 @@ button, input { font-family: inherit; }
 .carttotal > span:first-child { font-size: 13px; color: var(--ink2); font-weight: 600; }
 .carttotal .amt { font-size: 22px; font-weight: 800; color: var(--brand); }
 .screen.wide .cartPane > .cartfoot { flex: 0 0 auto; padding-top: 10px; margin-bottom: 10px; border-top: 1px solid rgba(0,0,0,.08); }
+/* Wide cart on a short screen: the cart list keeps room for at least ~4 rows (the pane scrolls instead of
+   squeezing the list to nothing), shows a visible scrollbar, and the NFC box / relay line get compact. */
+.screen.wide .cartPane { overflow-y: auto; }
+.screen.wide .cartPane > .vscroll.fill { flex: 1 0 220px; min-height: 220px; scrollbar-width: thin; }
+.screen.wide .cartPane > .vscroll.fill::-webkit-scrollbar { display: block; width: 6px; }
+.screen.wide .cartPane > .vscroll.fill::-webkit-scrollbar-thumb { background: rgba(0,0,0,.25); border-radius: 3px; }
+.screen.wide .cartPane > .cartfoot, .screen.wide .cartPane > .nfcbox, .screen.wide .cartPane > .paybox,
+.screen.wide .cartPane > .relayline { flex-shrink: 0; }
+.screen.wide .cartPane > .cartfoot { margin-bottom: 0; }
+.screen.wide .cartPane .nfcbox { padding: 10px 0; }
+.screen.wide .cartPane .relayline { margin-top: 0; }
